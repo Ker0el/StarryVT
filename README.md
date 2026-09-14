@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.1.0-7aa2ff?style=for-the-badge" alt="版本">
+  <img src="https://img.shields.io/badge/版本-1.0-7aa2ff?style=for-the-badge" alt="版本">
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-2ea44f?style=for-the-badge" alt="平台">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="引擎">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="MiMo">
@@ -108,6 +108,22 @@ output/<视频名>-<日期时间>/
 - **BS-Roformer**（人声分离，让有背景音乐的视频也能识别准）
 
 下载一次永久复用，**重装软件也不用重下**。
+</details>
+
+<details>
+<summary><b>🎯 没有代理 / 梯子，能用吗？</b></summary>
+
+**能，但功能有所取舍**：
+
+| 功能 | 没有代理 |
+|:--|:--|
+| 翻译（DeepSeek） | ✅ 可以（国内直连） |
+| 配音（MiMo） | ✅ 可以（国内直连） |
+| 语音识别 / 字幕 / 烧录 | ✅ 可以（全部本地） |
+| 下载 YouTube 链接 | ❌ 不行 |
+| 视频语境纠错 / 联网查证 | ❌ 不行（要访问 Google） |
+
+**没代理的正确用法**：输入选「本地文件」，关掉设置里的两个 Gemini 增强，其余照常用。
 </details>
 
 <details>
