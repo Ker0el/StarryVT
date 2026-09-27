@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe",
-  "notes": "首个正式版：视频翻译 · MiMo 配音（9 音色 + 试听）· 批量翻译（文件夹/合集）· 字幕烧录 · 原声可调 · 一键装引擎 · 自动更新",
-  "published": "2026-09-14"
+  "notes": "内置 FFmpeg / FFprobe / yt-dlp：不用再自己安装或配置环境变量，装完即用 · 修复部分电脑上提示「系统找不到指定的文件」却看不出缺什么（现在会明确指出是哪个组件、怎么修）· 新增运行组件自检提示条 · 诊断报告新增随包组件信息",
+  "published": "2026-09-27"
 }
