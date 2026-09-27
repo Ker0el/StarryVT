@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-1.1-7aa2ff?style=for-the-badge" alt="版本">
+  <img src="https://img.shields.io/badge/版本-1.2-7aa2ff?style=for-the-badge" alt="版本">
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-2ea44f?style=for-the-badge" alt="平台">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="引擎">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="MiMo">
