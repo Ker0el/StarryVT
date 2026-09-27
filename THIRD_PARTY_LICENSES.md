@@ -24,10 +24,18 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
-| FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll） | N-126889-gb139ba11d8-20260926 | LGPL-3.0-or-later |
+| FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll） | n9.0.2-10-g51c4a23d74-20260926 | LGPL-3.0-or-later |
 | yt-dlp（yt-dlp.exe） | 2026.08.19 | Unlicense（公有领域） |
 - **FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll）**：**随本软件分发**。刻意选用 LGPL 构建（不含 GPL 的 libx264/libx265），以独立进程方式调用、未修改其代码，用户可自行替换。许可证原文见 `licenses/LGPL-3.0.txt` 与 `licenses/GPL-3.0.txt`；对应源码见 <https://ffmpeg.org/download.html>，本构建的打包脚本见 <https://github.com/BtbN/FFmpeg-Builds>。
 - **yt-dlp（yt-dlp.exe）**：**随本软件分发**。许可证原文见 `licenses/yt-dlp-Unlicense.txt`；源码见 <https://github.com/yt-dlp/yt-dlp>。
+
+另外，翻译引擎首次运行需要的一个 Python 包只发布在 GitHub 上（没有代理的机器
+下不动，会导致引擎装不上），因此也随安装包分发一份原样副本（位于 `wheelhouse\`）：
+
+| 组件 | 版本 | 许可证 |
+| --- | --- | --- |
+| CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.4.0.cu128 | MIT |
+- **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。
 
 ## 三、运行时依赖，但**不由本软件分发**
 
