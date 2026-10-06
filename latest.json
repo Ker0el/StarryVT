@@ -1,7 +1,7 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe",
-  "sha256": "deff3991504ab3d3d90923e1d8ef98dd24ef6b4207b63a0677dda6f2ecfe998c",
-  "notes": "修「没有代理的机器翻译不出中文字幕」这个根本问题：翻译引擎自带的模型通道只有 Gemini，而国内直连 Google 必然超时——所以这台机器以前无论怎么填 Key 都出不来中文字幕。现在软件自己指定翻译模型，用国内的 DeepSeek 直连，翻译本地文件不需要任何代理 · 环境自检新增「翻译模型」一项，一眼看出翻译到底走哪家、能不能用 · 诊断报告新增「翻译模型路由」一段 · 找不到可用翻译模型时给出能照做的中文提示，不再只说「看日志」 · 顺带更新随包的 yt-dlp 与 ffmpeg",
-  "published": "2026-09-27"
+  "sha256": "b22697a8fba637e5318e3382c9aece81bb1f4fd85d8f8e5ddfdd11f4efff17e9",
+  "notes": "下载在线视频失败时会自动重试，不再一次不成就中断 · 下载器（yt-dlp）支持自动更新：软件每次启动自动检查，设置 → 高级选项里也能手动点「立即更新」 · 环境自检新增「下载器」一项，显示当前版本与更新通道",
+  "published": "2026-10-07"
 }
