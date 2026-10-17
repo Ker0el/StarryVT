@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.0-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.1-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -34,6 +34,7 @@
 - **🎨 字幕样式可调**：字体、字号、字间距、描边、颜色、底部距离都能改，设置页里实时预览，点预览图可放大。
 - **🔒 本地运行，保护隐私**：视频处理在本机完成，不上传至作者服务器。翻译与配音通过你自己的 API Key 调用服务。
 - **🎙️ AI 配音与音色替换**：为外语视频生成中文配音，也可为中文视频重新合成配音。
+- **📝 字幕检查与编辑**：翻译完成后暂停，双语对照检查译文，改完再继续配音和压制（默认关闭，可在设置里开启）。
 - **🌏 多语言支持**：支持英语、日语、韩语、俄语等语言的视频翻译。
 - **📦 批量处理**：支持整个文件夹及子文件夹批量处理，单个任务失败不影响其他任务。
 - **🔗 链接直接导入**：支持 YouTube / B 站视频链接，自动获取视频信息并进行处理。
@@ -99,6 +100,10 @@
 </div>
 
 <div align="center">
+  <img src="assets/ui-subtitle.jpg" alt="字幕检查：上面是原文，下面是可编辑的译文" width="100%">
+</div>
+
+<div align="center">
   <img src="assets/ui-working.jpg" alt="翻译过程：进度、日志与任务状态" width="100%">
 </div>
 
@@ -125,7 +130,7 @@
 
 星译可以把本机翻译能力通过 MCP 暴露给 AI Agent，让它直接启动翻译、查看进度、取消任务、查询术语库。MCP 服务和界面共用同一套设置、API Key、引擎与输出目录。
 
-> 当前状态：MCP 服务已内置在 6.0 安装包里，安装版用户不需要安装 Python 或 mcp SDK，只需要配置 MCP 客户端。
+> 当前状态：MCP 服务已内置在 6.0 及更高版本的安装包里，安装版用户不需要安装 Python 或 mcp SDK，只需要配置 MCP 客户端。
 
 ### 支持的客户端
 
