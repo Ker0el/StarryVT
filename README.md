@@ -189,30 +189,12 @@ args = ["--mcp"]
 "<星译安装目录>\backend\StarryVT.exe" --mcp-http
 ```
 
-源码开发版：
-
-```bash
-python "<星译源码目录>\mcp_server.py" --http
-```
-
 然后在客户端的 MCP / 连接器里填：
 
 - 传输类型：`HTTP` 或 `Streamable HTTP`
 - 服务器 URL：`http://127.0.0.1:24139/mcp`
 
 HTTP 服务只监听 `127.0.0.1`，不会暴露到局域网。这个窗口要一直开着，关掉后 Agent 就调不动星译了。
-
-<details>
-<summary><b>作者开发版（当前想先试）</b></summary>
-
-源码版需要 Python 3.11+ 和 MCP SDK：
-
-```bash
-python -m pip install "mcp>=1.30,<2"
-claude mcp add --transport stdio starryvt -- python "<星译源码目录>\mcp_server.py"
-```
-
-</details>
 
 检查是否连上：
 
@@ -236,7 +218,7 @@ Agent 会调用 `starryvt_translate` 启动任务，拿到 `job_id` 后用 `star
 - 第一次使用仍要先在星译界面点【一键初始化】，并在设置里填好 API Key；MCP 不会代替这一步。
 - 任务使用你自己的 API Key，可能产生费用。
 - 一次只跑一个任务；MCP 服务器要在 Agent 会话期间保持运行。
-- 目前只支持本机 stdio，不开放公网访问。
+- 目前支持本机 stdio 和本地 HTTP（只监听 `127.0.0.1`），不开放公网访问。
 
 ## 🎯 适用场景
 
@@ -327,7 +309,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 <details>
 <summary><b>背景壁纸是哪来的？</b></summary>
 
-随包那条默认视频背景由 B 站「星雨布丁」授权使用（软件内「关于」页有署名，点一下能到原片）。
+随包那条默认视频背景由 B 站[「星雨布丁」](https://www.bilibili.com/video/BV1PaQHBaEsg)授权使用（软件内「关于」页有署名，点一下能到原片）。
 
 其余壁纸来自第三方公开图源，在你本机实时获取、缓存在本地，软件不转存也不再分发；
 图片版权归原作者，请勿用于商业用途。不想用可在「设置 → 外观」里换掉。
@@ -375,7 +357,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 | [Windows App SDK](https://github.com/microsoft/WindowsAppSDK) / [.NET](https://github.com/dotnet/runtime) | 界面 |
 
 配音的音色来自 [小米 MiMo](https://github.com/XiaomiMiMo)。\
-随包那条默认视频背景来自 B 站 **星雨布丁**（已获授权）。\
+随包那条默认视频背景来自 B 站 [**星雨布丁**](https://www.bilibili.com/video/BV1PaQHBaEsg)（已获授权）。\
 「关于」页的版式与入场动效参考自 [DreamTranslatePO](https://github.com/TypeDreamMoon/DreamTranslatePO)。
 
 随包分发的组件与各自的许可证原文，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
@@ -387,7 +369,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 <div align="center">
   <img src="web/zs.png" alt="赞赏码" width="150">
   <br>
-  <sub>软件完全免费，如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕</sub>
+  <sub>如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕</sub>
 </div>
 
 ## English
