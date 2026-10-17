@@ -387,7 +387,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 <div align="center">
   <img src="web/zs.png" alt="赞赏码" width="150">
   <br>
-  <sub>如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕</sub>
+  <sub>软件完全免费，如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕</sub>
 </div>
 
 ## English
