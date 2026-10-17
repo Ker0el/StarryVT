@@ -1,7 +1,7 @@
 {
-  "version": "6.0",
-  "sha256": "9274bf32066eaa06a470d9ab1abe979aededf5f2cf2592b600336f32ed4dfb85",
-  "notes": "AI Agent 可以通过 MCP 直接启动翻译 · 配音默认标准语速 · 字幕字体固定为随包思源黑体 Light",
+  "version": "6.1",
+  "sha256": "8cfc36342e50bdcb823a3b7ed09f5ce624ff6ff00eacddf606e88782000ea5c0",
+  "notes": "翻译完成后可双语对照检查字幕 · 设置页点空白不再跳回顶部 · 可选 DeepSeek 联网查证（默认关闭）",
   "published": "2026-10-17",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
