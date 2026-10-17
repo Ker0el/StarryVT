@@ -1,7 +1,7 @@
 {
-  "version": "6.1",
-  "sha256": "8cfc36342e50bdcb823a3b7ed09f5ce624ff6ff00eacddf606e88782000ea5c0",
-  "notes": "翻译完成后可双语对照检查字幕 · 设置页点空白不再跳回顶部 · 可选 DeepSeek 联网查证（默认关闭）",
-  "published": "2026-10-17",
+  "version": "6.2",
+  "sha256": "43d5835367c0ac16f51885b3ea700264afc08214e0b1ef2ef26f835906703990",
+  "notes": "修复长路径成品打不开 · 术语学习更稳 · 成品输出目录自动缩短",
+  "published": "2026-10-18",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
