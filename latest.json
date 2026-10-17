@@ -1,7 +1,7 @@
 {
-  "version": "6.2",
-  "sha256": "43d5835367c0ac16f51885b3ea700264afc08214e0b1ef2ef26f835906703990",
-  "notes": "修复长路径成品打不开 · 术语学习更稳 · 成品输出目录自动缩短",
+  "version": "6.3",
+  "sha256": "0e6015f62f09fba263f3814edd7c90487229e678216fe716d1a7e18e21802983",
+  "notes": "默认输出新增「下载视频」 · 保留原声 · 封面一起保存",
   "published": "2026-10-18",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
