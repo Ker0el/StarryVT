@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.2-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.3-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -295,7 +295,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 <details>
 <summary><b>可以只要字幕，不要配音吗？</b></summary>
 
-可以。设置 → 翻译与配音 → 默认输出里选「只出字幕」，只会导出一份 SRT；想保留原声、只把字幕烧进视频，选「只加字幕（保留原声）」；选「只出配音」则只生成配音文件。
+可以。设置 → 翻译与配音 → 默认输出里选「只出字幕」，只会导出一份 SRT；想保留原声、只把字幕烧进视频，选「只加字幕（保留原声）」；选「只出配音」则只生成配音文件；选「下载视频」则只把视频下载到输出目录，不翻译也不配音。
 </details>
 
 <details>
