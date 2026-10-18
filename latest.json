@@ -1,7 +1,7 @@
 {
-  "version": "6.4",
-  "sha256": "fde9e93ecc3293cdb7c023de93eebc325d14329584e09c67c6bcb74e3c6ee4e4",
-  "notes": "下载视频模式改完设置立即生效 · 不再多跑识别和翻译",
-  "published": "2026-10-18",
+  "version": "6.5",
+  "sha256": "aa361e78201077f1461d571ec91b029b739e7618c29b1cc034876d8a464fd1ea",
+  "notes": "设置可查 DeepSeek 余额 · 日志显示本次消耗",
+  "published": "2026-10-19",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
