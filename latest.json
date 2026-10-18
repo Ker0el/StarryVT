@@ -1,7 +1,7 @@
 {
-  "version": "6.3",
-  "sha256": "92ee54d25060d7feac99e2e98c30cf4d7cefb782b4658a429fea337ab9eb42a3",
-  "notes": "默认输出新增「下载视频」 · 保留原声 · 封面一起保存",
+  "version": "6.4",
+  "sha256": "fde9e93ecc3293cdb7c023de93eebc325d14329584e09c67c6bcb74e3c6ee4e4",
+  "notes": "下载视频模式改完设置立即生效 · 不再多跑识别和翻译",
   "published": "2026-10-18",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
