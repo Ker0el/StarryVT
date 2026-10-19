@@ -1,7 +1,7 @@
 {
-  "version": "6.9",
-  "sha256": "20df8ff60026d93b00dc090d6fad37e70c0d4eddebd08fbb0f592b993e542026",
-  "notes": "下载视频模式下，按钮显示为「下载视频」",
+  "version": "6.10",
+  "sha256": "4fd6855d18d6deabf0416ad40eb5e747154f92815417ce7f6034d423085fa033",
+  "notes": "修复更新完成后仍提示有新版本的问题",
   "published": "2026-10-19",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
