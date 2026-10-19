@@ -109,7 +109,7 @@ WinUI 3 深色界面，截图和界面说明见[使用文档](https://docs.qq.co
 **免管理员权限**，装哪个盘自己选。
 
 **② 一键初始化**
-打开软件，主页点【一键初始化】。引擎运行环境加三个模型权重**一次下齐**，
+打开软件，主页点【一键初始化】。翻译引擎本体已经随安装包带好，这一步会把引擎运行环境和三个模型权重**一次下齐**，
 约 6 GB 下载、装完占约 12 GB，带进度带校验。下载一次永久复用，重装软件也不用重下。
 
 **③ 填 API Key**
@@ -270,8 +270,8 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 <details>
 <summary><b>首次为什么要下载这么多东西？</b></summary>
 
-- **一键初始化**（约 6 GB 下载 / 约 12 GB 磁盘）：引擎运行环境（Python + CUDA 版 torch，约 2.6 GB）
-  和三个模型权重，人声分离、语音识别、第二模型校验（约 3.7 GB）。
+- **一键初始化**（约 6 GB 下载 / 约 12 GB 磁盘）：翻译引擎本体已随安装包带好；这一步下载的是
+  引擎运行环境（Python + CUDA 版 torch，约 2.6 GB）和三个模型权重，人声分离、语音识别、第二模型校验（约 3.7 GB）。
   这是**一辈子一次**的，装好后重装软件也不用重下。
 - **本地语音克隆**（可选，约 15 GB）：在设置里手动点，不用就永远不用下。
 
@@ -342,8 +342,8 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
   （FFmpeg / yt-dlp / CTranslate2 等）的许可证原文与源码地址见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) 与安装目录下的 `licenses\`；
   引擎运行时文件由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发
 - FFmpeg 选用 LGPL 构建（不含 GPL 部分），按 LGPL 要求附许可证原文，并允许用户自行替换 `bin\` 下的文件
-- 翻译引擎 [finesub](https://github.com/caca2331/finesub)（GPL-3.0-or-later）**不随安装包分发**：
-  首次使用时在用户自己的电脑上从上游渠道安装，本软件仅以独立进程方式调用，不修改其源码
+- 翻译引擎 [finesub](https://github.com/caca2331/finesub)（GPL-3.0-or-later）以 PyPI 上**未修改的纯 Python wheel** 随安装包分发，
+  wheel 内含完整源码；运行时环境和模型由引擎在首次使用时从上游下载
 - 链接导入仅用于个人学习、翻译与本地观看；作者标注「禁止转载」的作品请勿转载、二次上传或商用
 - 使用条款见 [TERMS.md](TERMS.md)。AI 生成结果仅供参考，请自行核对
 
@@ -389,9 +389,6 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 ## 👥 贡献者
 
 - **星空（Ker0el）**：作者、维护者
-- **Claude Code（Anthropic）**：代码、文档、测试与发布流程协助
-
-> Claude Code 是 Anthropic 的 AI 编程助手，不持有本项目的版权。
 
 ## 💬 联系作者
 
@@ -417,7 +414,7 @@ your own machine, and translation / TTS use *your own* API keys (DeepSeek, Xiaom
 - Free and fully functional; the app's UI is in Chinese
 - Source code: [github.com/Ker0el/StarryVT](https://github.com/Ker0el/StarryVT), licensed under **GPL-3.0**
 
-**Contributors:** Ker0el (author and maintainer), Claude Code (Anthropic, development assistance).
+**Contributors:** Ker0el (author and maintainer).
 
 ---
 
