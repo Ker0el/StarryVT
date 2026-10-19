@@ -155,6 +155,33 @@ def _listed_only(spec: dict) -> bool:
     return bool(spec.get("listedOnly") or spec.get("listed_only"))
 
 
+def _drop_incomplete_snapshot(model_id: str, params: dict, report,
+                              announce: bool = True) -> None:
+    """把加载不了的 snapshot 目录删掉，让引擎自己按全仓库重下。
+
+    只在**缺 `_REQUIRED` 小文件**时动手；blobs 一个都不删（1.6GB 的大权重会被
+    huggingface_hub 认出来复用，只补几 MB 的小文件）。这是 API 清单拿不到时的兜底：
+    留着那个 snapshot 的话，引擎会把它当完整快照、继续开 local_files_only。
+    """
+    spec = _models().get(model_id) or {}
+    repo, rev = spec.get("repo"), spec.get("revision")
+    required = _REQUIRED.get(model_id)
+    if not (repo and rev and required):
+        return
+    snap = (_home(params) / _HF_HUB / ("models--" + repo.replace("/", "--"))
+            / "snapshots" / rev)
+    try:
+        if all((snap / n).is_file() for n in required):
+            return                              # 已经齐了，别动
+        if snap.is_dir():
+            shutil.rmtree(snap, ignore_errors=True)
+            if announce:
+                report("engine", None,
+                       f"（{_LABEL.get(model_id, model_id)}缓存不完整，已交给引擎重新补齐）")
+    except OSError:
+        pass
+
+
 def _plan(spec: dict, home: Path, params: dict,
           repo_files: list[dict] | None = None) -> tuple[list, list]:
     """算出这个模型要下哪些文件、下完还要建哪些硬链。
@@ -409,6 +436,7 @@ def prefetch_one(model_id: str, params: dict, job: Job, report,
         if not repo_files:
             # 拿不到完整清单就**什么都不下、也不建 snapshot**：让引擎自己按
             # 老路子（snapshot_download 全仓库）去拿。造一个残缺快照比不预取更糟。
+            _drop_incomplete_snapshot(model_id, params, report, announce)
             if announce:
                 report("engine", None,
                        f"（{label}跳过预取：没拿到完整文件清单，交给引擎自己下载）")
@@ -416,6 +444,7 @@ def prefetch_one(model_id: str, params: dict, job: Job, report,
         files, links = _plan(spec, home, params, repo_files=repo_files)
         total = sum(f[2] for f in files)
         if not files or not total or total > _MAX_BYTES:
+            _drop_incomplete_snapshot(model_id, params, report, announce)
             return False
 
     if announce:
@@ -430,6 +459,7 @@ def prefetch_one(model_id: str, params: dict, job: Job, report,
                 got = True
                 break
         if not got:
+            _drop_incomplete_snapshot(model_id, params, report, announce)
             return False
     for blob, snap in links:          # HF 类：blob 链进 snapshots/<rev>/（引擎只看那儿）
         _link(blob, snap)
