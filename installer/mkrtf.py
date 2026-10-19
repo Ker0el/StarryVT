@@ -26,7 +26,7 @@ SRC = r'说明.txt'
 DST = r'说明.rtf'
 ISSPATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'installer.iss')
 
-URL = 'https://space.bilibili.com/177308205'
+LINK_RE = re.compile(r'https?://[^\s)]+')
 
 
 def installer_version():
@@ -68,6 +68,17 @@ def link(url, text):
             '{\\fldrslt{\\ul\\cf2 %s}}}' % (url, esc(text)))
 
 
+def linkify(line):
+    """一行里所有 URL 都做成可点的链接（GitHub / 文档 / B 站主页）"""
+    out, last = [], 0
+    for m in LINK_RE.finditer(line):
+        out.append(esc(line[last:m.start()]))
+        out.append(link(m.group(0), m.group(0)))
+        last = m.end()
+    out.append(esc(line[last:]))
+    return ''.join(out)
+
+
 def main():
     lines = io.open(SRC, encoding='utf-8').read().split('\n')
     ver = installer_version()
@@ -76,10 +87,7 @@ def main():
     body = []
     for ln in lines:
         s = ln.rstrip('\r')
-        if URL in s:
-            body.append(esc(s.split(URL)[0]) + link(URL, URL))
-        else:
-            body.append(esc(s))
+        body.append(linkify(s))
 
     rtf = ('{\\rtf1\\ansi\\ansicpg936\\deff0\\uc1\n'
            '{\\fonttbl{\\f0\\fnil\\fcharset134 Microsoft YaHei;}}\n'

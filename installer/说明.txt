@@ -11,6 +11,9 @@
 
 本软件免费开源。
 
+GitHub：https://github.com/Ker0el/StarryVT
+使用文档：https://docs.qq.com/doc/DUmpxWE1kVUFXVHpG
+
 星空
 B 站主页：https://space.bilibili.com/177308205
 使用过程中遇到问题、都欢迎来B站找我反馈！
