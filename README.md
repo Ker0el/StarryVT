@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
-  <a href="../../blob/main/LICENSE"><img src="https://img.shields.io/badge/许可-GPL--3.0-blue?style=for-the-badge" alt="GPL-3.0"></a>
+  <a href="https://github.com/Ker0el/StarryVT/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可-GPL--3.0-blue?style=for-the-badge" alt="GPL-3.0"></a>
 </p>
 
 <p align="center">
