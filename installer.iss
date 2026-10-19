@@ -63,6 +63,9 @@ Type: files; Name: "{autoprograms}\星译.lnk"
 ; ⚠️ 这三条 [InstallDelete] 跑在 [Icons] 之前，所以先删后建，不会把新快捷方式删掉。
 Type: files; Name: "{autoprograms}\星译·免费版.lnk"
 Type: files; Name: "{autodesktop}\星译·免费版.lnk"
+; 旧版曾把试听样音写进 web\；源码和安装包已不再带这个文件，升级时清掉残留
+Type: files; Name: "{app}\backend\web\voice_*.wav"
+Type: files; Name: "{app}\web\voice_*.wav"
 ; 2.3 及以前的版本是 pywebview 界面，程序本体就摆在这一层（StarryVT.exe + _internal\）。
 ; 3.0 改成「界面在根目录、Python 后端挪进 backend\」，不删掉旧的就会留一份 380 MB 的
 ; 旧运行时在盘上，而且根目录会同时躺着两个 exe。
