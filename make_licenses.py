@@ -69,7 +69,9 @@ BUNDLED_WHEELS = [
         "note": ("**随本软件分发**（位于程序目录的 `wheelhouse\\`）。上游为 OpenNMT 的 "
                  "CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。"
                  "这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；"
-                 "该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。"),
+                 "该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。"
+                 "该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等"
+                 "上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。"),
     },
 ]
 
@@ -82,6 +84,58 @@ BUNDLED_FONTS = [
                  "Light（wght=300）静态实例；按 OFL 1.1 的保留字体名条款，内部族名改为 "
                  "`Starry Han Sans Light`，未使用 Reserved Font Name `Source`。"
                  "许可证原文见 `assets\\fonts\\OFL.txt`；上游见 <https://github.com/notofonts/noto-cjk>。"),
+    },
+]
+
+# 随包分发的运行时 DLL（不在 Python 包元数据里，也不是 .tools/bin 下的程序）
+BUNDLED_RUNTIME_DLLS = [
+    {
+        "name": "OpenSSL（libcrypto-3.dll / libssl-3.dll）",
+        "version": "3.0.16",
+        "license": "Apache-2.0",
+        "file": "licenses/OpenSSL-LICENSE.txt",
+        "note": "**随本软件分发**（安装目录 `backend\\`）。Python `ssl` 模块使用的 OpenSSL 运行时；未修改其代码。",
+    },
+    {
+        "name": "libffi（libffi-8.dll）",
+        "version": "随 Python 3.12",
+        "license": "MIT",
+        "file": "licenses/libffi-MIT.txt",
+        "note": "**随本软件分发**（安装目录 `backend\\`）。Python `ctypes` 使用的 libffi 运行时；未修改其代码。",
+    },
+    {
+        "name": "Intel OpenMP Runtime（libiomp5md.dll）",
+        "version": "5.0",
+        "license": "Intel Simplified Software License (ISSL)",
+        "file": "licenses/Intel-OpenMP-LICENSE.txt",
+        "note": "**随本软件分发**（`wheelhouse\\` 的 CTranslate2 wheel 内）。CTranslate2 使用的线程并行运行时；按 ISSL 原样再分发，未修改。",
+    },
+]
+
+# 随包素材（不由代码许可证覆盖，单独说明授权）
+BUNDLED_ASSETS = [
+    {
+        "name": "默认视频背景（bg-default.mp4 / hero.png）",
+        "license": "已获原作者授权（B 站 星雨布丁 channel）",
+        "note": "画师：梅原生；动效：Ieno伊诺_Official。授权用于本软件界面背景，随安装包分发；"
+                "素材不放入源码仓库。",
+    },
+    {
+        "name": "鼠标光标主题（Assets\\cursors\\）",
+        "license": "用户购买的个人授权（不单独分发）",
+        "note": "仅随安装包使用，源码仓库不包含这些文件；购买凭证由作者保留。",
+    },
+]
+
+# 构建工具（不随安装包分发，但产物里含其运行时）
+BUILD_TOOLS = [
+    {
+        "name": "Nuitka",
+        "version": "构建工具",
+        "license": "AGPL-3.0-or-later + Nuitka Runtime Library Exception 1.0",
+        "files": ["licenses/Nuitka-AGPL-3.0.txt", "licenses/Nuitka-RUNTIME-EXCEPTION.txt"],
+        "note": "仅用于构建后端。Runtime Library Exception 明确允许把编译产物按自选许可分发；"
+                "Nuitka 编译器本身仍为 AGPL-3.0。",
     },
 ]
 
@@ -122,12 +176,29 @@ RUNTIME_NOTES = [
      "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"),
     ("BS-Roformer 人声分离模型（权重与 .yaml）", "MIT（依 UVR 的模型声明）",
      "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"
-     "模型作者为 Anjok07、aufr33、viperx；代码架构来自 lucidrains/BS-Roformer（MIT）。"),
+     "模型作者为 Anjok07、aufr33、viperx；代码架构来自 lucidrains/BS-Roformer（MIT）。"
+     "UVR README 要求署名，许可证原文见 `licenses/UVR-MIT.txt`。"),
+    ("faster-whisper large-v3-turbo 模型权重", "MIT",
+     "由翻译引擎从 HuggingFace 下载，本软件不镜像、不分发。"),
+    ("whisper-ja-1.5B-ct2（日语重解码）", "上游未声明许可证",
+     "由翻译引擎从 HuggingFace 下载，本软件不镜像、不分发。"
+     "上游模型卡没有声明许可证，商业使用前请向作者确认。"),
+    ("DiariZen 说话人分离模型", "CC-BY-NC-4.0",
+     "由翻译引擎按需下载，本软件不镜像、不分发。**非商业许可**；"
+     "当前 `--diarize` 默认关闭，开启后用于商业用途前需另行取得授权。"),
+    ("DiariZen 导出的 CUDA/CPU TorchScript", "CC-BY-NC-4.0",
+     "由翻译引擎按需下载，本软件不镜像、不分发；继承 DiariZen 模型的非商业限制。"),
+    ("WeSpeaker 声纹模型", "CC-BY-4.0",
+     "由翻译引擎按需下载，本软件不镜像、不分发；使用时需保留署名。"),
+    ("Nemotron-3-Diarization", "OpenMDW-1.1",
+     "由翻译引擎按需下载，本软件不镜像、不分发；启用说话人分离时使用，"
+     "商业使用前请按 OpenMDW-1.1 条款确认。"),
     ("IndexTTS-2.5（本地语音克隆，可选的备用音色）", "bilibili 模型使用许可",
      "**本软件不打包、不分发此组件**：用户在设置里点「下载并启用」时，由本软件"
      "从官方渠道（GitHub / HuggingFace）下载到本机数据目录，随附其原始许可协议；"
      "免费使用、可商用：许可 §2.1 是 worldwide / royalty-free 的完整授权，没有非商业限制，"
-     "只有规模门槛：月活超过 1 亿**或**年收入超过 10 亿人民币才需要另行申请书面许可（§2.2）。"
+     "只有规模门槛：月活超过 1 亿**或**年收入超过 1 亿人民币才需要另行申请书面许可（§2.2）。"
+     "**注意：英文版许可写的是 1 billion，和中文版 1 亿不一致，这里按更严格的 1 亿理解。**"
      "另外要求保留版权声明与许可原文（§3.4b）、不得用于训练或改进其它 AI 模型（§3.4c）、"
      "不得用于医疗诊断等高风险场景（§4.2）。"),
     ("MiMo / DeepSeek / Gemini API", "商业服务",
@@ -146,7 +217,9 @@ RUNTIME_NOTES = [
 MIRRORED: list[tuple[str, str, str]] = []
 
 # 元数据里没写许可证的，用已知信息补齐
-KNOWN_LICENSES = {"clr_loader": "MIT", "pythonnet": "MIT", "pywebview": "BSD-3-Clause"}
+KNOWN_LICENSES = {"clr_loader": "MIT", "pythonnet": "MIT", "pywebview": "BSD-3-Clause",
+                  "socksio": "MIT"}
+EXTRA_LICENSE_FILES = {"socksio": [ROOT / "licenses" / "socksio-MIT.txt"]}
 
 
 def _license_of(dist_name: str) -> str:
@@ -260,6 +333,8 @@ def _write_package_license_texts(rows: list[tuple[str, str, str]]) -> None:
     for name, ver, lic in rows:
         files = _license_files(name)
         if not files:
+            files = EXTRA_LICENSE_FILES.get(name, [])
+        if not files:
             missing.append(name)
             continue
         chunks.append(f"{'=' * 72}\n{name} {ver} | {lic}\n{'=' * 72}")
@@ -364,6 +439,30 @@ def main() -> int:
             lines.append(f"| {it['name']} | {it['license']} |")
         for it in BUNDLED_FONTS:
             lines.append(f"- **{it['name']}**：{it['note']}")
+    if BUNDLED_RUNTIME_DLLS:
+        lines += [
+            "",
+            "随包分发的运行时 DLL（由 Python / CTranslate2 带入）：",
+            "",
+            "| 组件 | 版本 | 许可证 |",
+            "| --- | --- | --- |",
+        ]
+        for it in BUNDLED_RUNTIME_DLLS:
+            lines.append(f"| {it['name']} | {it['version']} | {it['license']} |")
+        for it in BUNDLED_RUNTIME_DLLS:
+            lines.append(f"- **{it['name']}**：{it['note']} 许可证原文见 `{it['file']}`。")
+    if BUNDLED_ASSETS:
+        lines += [
+            "",
+            "## 二·五、随包素材（不适用代码许可证）",
+            "",
+            "| 素材 | 授权 |",
+            "| --- | --- |",
+        ]
+        for it in BUNDLED_ASSETS:
+            lines.append(f"| {it['name']} | {it['license']} |")
+        for it in BUNDLED_ASSETS:
+            lines.append(f"- **{it['name']}**：{it['note']}")
     lines += [
         "",
         "## 三、随本软件分发的界面侧组件",
@@ -380,7 +479,17 @@ def main() -> int:
         lines.append(f"- **{it['name']}**：{it['note']}{tail}")
     lines += [
         "",
-        "## 四、运行时依赖，但**不由本软件分发**",
+        "## 四、构建工具",
+        "",
+        "| 工具 | 许可证 | 说明 |",
+        "| --- | --- | --- |",
+    ]
+    for it in BUILD_TOOLS:
+        files = "、".join(f"`{f}`" for f in it.get("files", []))
+        lines.append(f"| {it['name']} | {it['license']} | {it['note']} 许可证原文见 {files}。 |")
+    lines += [
+        "",
+        "## 五、运行时依赖，但**不由本软件分发**",
         "",
         "| 组件 | 许可证 | 说明 |",
         "| --- | --- | --- |",
@@ -389,15 +498,15 @@ def main() -> int:
         lines.append(f"| {name} | {lic} | {note} |")
     lines += [
         "",
-        "## 五、本软件不再镜像托管第三方文件",
+        "## 六、本软件不再镜像托管第三方文件",
         "",
         "用户 2026-10-17 决定不再维护国内对象存储。翻译引擎首次运行时所需的 uv、"
         "FFmpeg（GPL 构建）、MinGit、tokcount、BS-Roformer 模型由引擎从上游 GitHub 下载，"
         "本软件不镜像、不分发。",
         "",
-        "## 六、说明",
+        "## 七、说明",
         "",
-        "- **安装包内**不含任何 GPL 许可的代码、也不打包 GPL 组件；随包分发的 FFmpeg 为 **LGPL 构建**"
+        "- **安装包内**不含任何第三方 GPL-only 组件；本软件自身以 GPL-3.0 开源。随包分发的 FFmpeg 为 **LGPL 构建**"
         "（不含 libx264/libx265 等 GPL 部分），按 LGPL 的要求附上许可证原文并允许用户替换 `bin\\` 下的文件。",
         "  翻译引擎（finesub，GPL-3.0-or-later）不随安装包分发，首次使用时在用户自己的电脑上从上游渠道",
         "  安装，本软件仅以独立进程方式调用、不修改其源码（GPLv3 第 9 条：运行一份副本本身不需要接受该许可，也不产生义务）。",
@@ -407,7 +516,7 @@ def main() -> int:
         "字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。",
         "- 若你二次分发本软件，请一并保留本清单与 `licenses\\` 目录。",
         "",
-        f"（本清单由 `make_licenses.py` 自动生成，共 {len(rows)} 个打包组件 + {len(BUNDLED_BINARIES)} 个随包外部程序 + {len(BUNDLED_FONTS)} 个随包字体）",
+        f"（本清单由 `make_licenses.py` 自动生成，共 {len(rows)} 个打包组件 + {len(BUNDLED_BINARIES)} 个随包外部程序 + {len(BUNDLED_RUNTIME_DLLS)} 个随包运行时 DLL + {len(BUNDLED_FONTS)} 个随包字体）",
         "",
     ]
     OUT.write_text("\n".join(lines), encoding="utf-8")

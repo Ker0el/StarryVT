@@ -368,6 +368,10 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 配音的音色来自 [小米 MiMo](https://github.com/XiaomiMiMo)。\
 随包那条默认视频背景来自 B 站 [**星雨布丁**](https://www.bilibili.com/video/BV1PaQHBaEsg)（已获授权）。\
+
+- 画师：梅原生
+- 动效：Ieno伊诺_Official
+
 「关于」页的版式与入场动效参考自 [DreamTranslatePO](https://github.com/TypeDreamMoon/DreamTranslatePO)。
 
 随包分发的组件与各自的许可证原文，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。

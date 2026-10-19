@@ -191,6 +191,9 @@
                                      Opacity="0.72" HorizontalAlignment="Center"
                                      Content="视频背景来自 B站 星雨布丁 channel"
                                      Click="WallpaperBy_Click" />
+                    <TextBlock FontSize="11" LineHeight="17" Opacity="0.48"
+                               TextAlignment="Center" HorizontalAlignment="Center"
+                               Text="画师：梅原生 · 动效：Ieno伊诺_Official" />
                     <TextBlock x:Name="BCreditSources" FontSize="12" LineHeight="19" Opacity="0.48"
                                TextAlignment="Center" HorizontalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="640"
