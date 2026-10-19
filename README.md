@@ -18,6 +18,10 @@
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
 </p>
 
+<p align="center">
+  <a href="https://docs.qq.com/doc/DUmpxWE1kVUFXVHpG"><b>📘 使用文档</b></a>
+</p>
+
 ---
 
 ## 📖 这是什么
@@ -126,6 +130,8 @@
 
 **④ 开始翻译**
 选视频或贴链接，点【开始翻译】。第一次翻译不会再下模型（初始化时已经下齐）。
+
+📘 **图文使用文档**：[星译使用文档（腾讯文档）](https://docs.qq.com/doc/DUmpxWE1kVUFXVHpG)
 
 ## 🤖 MCP 接入（AI Agent 调用）
 
