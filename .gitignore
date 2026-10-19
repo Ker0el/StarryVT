@@ -25,6 +25,7 @@ _shots/
 *.spec
 .tools/
 wheelhouse/
+engine_whl/
 
 # ---- 只留本地、不进库也不随包的素材（授权待定的东西放这儿）----
 # 现在里面是 _private/星雨/ —— 那条默认视频壁纸，等原作者授权（见它的说明.txt）
