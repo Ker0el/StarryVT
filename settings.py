@@ -78,7 +78,7 @@ DEFAULTS: dict = {
 # MiMo TTS 合法音色（2026-09-14 逐个调用 API 验证；API 返回的可用列表）
 VOICES = ["冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean", "mimo_default"]
 LANGS = [("en", "英语"), ("ja", "日语"), ("ko", "韩语"), ("ru", "俄语"),
-         ("zh", "中文"), ("zh-en", "中文 → 英语")]
+         ("de", "德语"), ("zh", "中文"), ("zh-en", "中文 → 英语")]
 
 # 各服务的申请入口（设置页展示给用户）
 APPLY_LINKS = {

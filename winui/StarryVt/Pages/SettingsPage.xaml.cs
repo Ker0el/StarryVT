@@ -78,6 +78,7 @@ public sealed partial class SettingsPage : Page
 
         LangBox.SetItems([("英语 → 中文", "en"), ("日语 → 中文", "ja"),
                           ("韩语 → 中文", "ko"), ("俄语 → 中文", "ru"),
+                          ("德语 → 中文", "de"),
                           ("中文 → 英语", "zh-en"),
                           ("中文（换音色重配）", "zh")]);
         LangBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>

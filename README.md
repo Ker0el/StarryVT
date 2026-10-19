@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.11-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.12-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -40,7 +40,7 @@
 - **🔒 本地运行，保护隐私**：视频处理在本机完成，不上传至作者服务器。翻译与配音通过你自己的 API Key 调用服务。
 - **🎙️ AI 配音与音色替换**：为外语视频生成中文配音，也可为中文视频重新合成配音。
 - **📝 字幕检查与编辑**：翻译完成后暂停，双语对照检查译文，改完再继续配音和压制（默认关闭，可在设置里开启）。
-- **🌏 多语言支持**：支持英语、日语、韩语、俄语等语言的视频翻译。
+- **🌏 多语言支持**：支持英语、日语、韩语、俄语、德语等语言的视频翻译。
 - **📦 批量处理**：支持整个文件夹及子文件夹批量处理，单个任务失败不影响其他任务。
 - **🔗 链接直接导入**：支持 YouTube / B 站视频链接，自动获取视频信息并进行处理。
 - **🤖 AI Agent 接入**：通过 MCP 让 Claude Code / DeepSeek Harness / Codex / WorkBuddy / Cursor / Trae / 豆包工作 直接启动翻译、查询进度、取消任务（安装包 6.0 起内置）。
@@ -245,7 +245,7 @@ Agent 会调用 `starryvt_translate` 启动任务，拿到 `job_id` 后用 `star
 
 ## 🌏 支持的语言
 
-- 英语 / 日语 / 韩语 / 俄语 **译成中文**
+- 英语 / 日语 / 韩语 / 俄语 / 德语 **译成中文**
 - **中文 → 英语**：中文语音识别 → DeepSeek 翻英文 → MiMo 英文配音，支持原声克隆。英文配音建议选 Mia / Chloe / Milo / Dean
 - 中文（换音色重配）：把中文语音用所选音色重新朗读一遍
 
@@ -408,7 +408,7 @@ burned-in subtitles → final MP4**.
 Your video is **never uploaded**. Recognition, translation, dubbing and muxing all run on
 your own machine, and translation / TTS use *your own* API keys (DeepSeek, Xiaomi MiMo).
 
-- Language directions: English / Japanese / Korean / Russian → **Chinese**, and **Chinese → English** (Chinese ASR + DeepSeek translation + English TTS)
+- Language directions: English / Japanese / Korean / Russian / German → **Chinese**, and **Chinese → English** (Chinese ASR + DeepSeek translation + English TTS)
 - One-click setup: the runtime and models are downloaded automatically, no Python / CUDA / FFmpeg setup
 - Modern WinUI 3 interface, dark by default: no ads, no promotional pop-ups, no bundled software
 - Input: single files, whole folders, YouTube / Bilibili links, batch queues

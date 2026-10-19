@@ -687,6 +687,17 @@ def _review_final_subtitles(srt: Path, params: dict, job: Job, report,
 
 def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) -> Path:
     """finesub 翻译（带临时性失败自动重试），返回成品中文 SRT 路径"""
+    if (params.get("source_lang") or "").strip().lower() == "de":
+        # 引擎的翻译提示词是按日语场景写的（「日本轻小说感」那些）。德语走同一个
+        # 模型没问题，但得把这条说明塞进 extra_info，别让译文带出日语语气。
+        # ⚠️ 必须改**调用方那个 dict**，不能 `params = dict(params)`：`_work_dir()`
+        #    会把 extra_info 算进任务目录哈希，只改副本的话翻译和配音会各自
+        #    指向不同目录，配音那步就找不到 `-raw.srt`（实测过）。
+        old = str(params.get("extra_info") or "").strip()
+        if "源语言是德语" not in old:
+            hint = ("【语言】源语言是德语。请译成自然、通顺的简体中文；"
+                    "不要套用日语语气词、敬语或轻小说风格。")
+            params["extra_info"] = (hint + ("\n\n" + old if old else "")).strip()
     if params.get("deepseek_web_search"):
         params = dict(params)
         block = _deepseek_web_extra(video, params, report)

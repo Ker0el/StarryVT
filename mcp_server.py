@@ -198,7 +198,7 @@ async def starryvt_probe(source: str) -> dict:
 @mcp.tool()
 def starryvt_translate(
     source: str,
-    source_lang: Literal["en", "ja", "ko", "ru", "zh-en", "zh"] = "en",
+    source_lang: Literal["en", "ja", "ko", "ru", "de", "zh-en", "zh"] = "en",
     output_mode: Literal["final", "dub", "subs", "subs-burn", "download"] = "final",
     output_dir: str = "",
     voice: str = "冰糖",
@@ -213,7 +213,7 @@ def starryvt_translate(
 
     Args:
         source: 本地视频 / 文件夹路径，或 YouTube / B 站链接。
-        source_lang: 源语言。en / ja / ko / ru 译为中文，zh-en 是中文译为英文，zh 是中文换音色重配。
+        source_lang: 源语言。en / ja / ko / ru / de 译为中文，zh-en 是中文译为英文，zh 是中文换音色重配。
         output_mode: final = 成片（配音 + 烧录字幕）；dub = 只出配音；subs = 只出字幕；subs-burn = 只烧字幕、保留原声；download = 只下载/输出视频，不翻译。
         output_dir: 输出目录；空 = 视频旁边的 output\\ 或设置里的输出目录。
         voice: 配音音色，必须是 starryvt_env 返回的 voices 之一。
