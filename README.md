@@ -376,6 +376,13 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 随包分发的组件与各自的许可证原文，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
 
+## 👥 贡献者
+
+- **星空（Ker0el）**：作者、维护者
+- **Claude Code（Anthropic）**：代码、文档、测试与发布流程协助
+
+> Claude Code 是 Anthropic 的 AI 编程助手，不持有本项目的版权。
+
 ## 💬 联系作者
 
 反馈问题、提建议、定制需求都欢迎，微信：**Star0xcc**
@@ -399,6 +406,8 @@ your own machine, and translation / TTS use *your own* API keys (DeepSeek, Xiaom
 - Requires: Windows 10/11 x64, ~20 GB disk, an NVIDIA GPU recommended (CPU works, slower)
 - Free and fully functional; the app's UI is in Chinese
 - Source code: [github.com/Ker0el/StarryVT](https://github.com/Ker0el/StarryVT), licensed under **GPL-3.0**
+
+**Contributors:** Ker0el (author and maintainer), Claude Code (Anthropic, development assistance).
 
 ---
 
