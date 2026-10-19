@@ -28,6 +28,7 @@ if not ISCC.is_file():
     ISCC = next((p for p in _ISCC_CANDIDATES if p.is_file()), _ISCC_CANDIDATES[0])
 BIN_DIR = ROOT / ".tools" / "bin"
 WHEELHOUSE = ROOT / "wheelhouse"      # 随包分发的 Python 包（只放在 GitHub 上的那几个）
+ENGINE_WHL = ROOT / "engine_whl"      # 翻译引擎本体 + 它的 Python 依赖（离线装引擎用）
 UI_PROJ = ROOT / "winui" / "StarryVt" / "StarryVt.csproj"
 STAGE = ROOT / "_stage" / "app"
 
@@ -70,6 +71,14 @@ def main() -> int:
     print(f"    OK: wheelhouse {len(wheels)} 个包，"
           f"{sum(f.stat().st_size for f in wheels) / 1048576:.0f} MB")
 
+    engine_wheels = sorted(ENGINE_WHL.glob("*.whl")) if ENGINE_WHL.is_dir() else []
+    if not engine_wheels or not any(f.name.startswith("finesub-") for f in engine_wheels):
+        print("!! 缺少随包分发的翻译引擎（engine_whl\\ 里没有 finesub-*.whl）")
+        print("   先运行  python fetch_tools.py --proxy http://127.0.0.1:7897")
+        return 1
+    print(f"    OK: engine_whl {len(engine_wheels)} 个包，"
+          f"{sum(f.stat().st_size for f in engine_wheels) / 1048576:.0f} MB")
+
     if USE_PYINSTALLER:
         print("=== [1/4] PyInstaller 构建（--pyinstaller）===")
         # ⚠️⚠️ **别把 dist/ 整个 rmtree 掉** —— 用户的成品视频就在
@@ -97,6 +106,7 @@ def main() -> int:
             "--add-data", "TERMS.md;.",     # 许可证清单构建后才生成，由安装包直接放安装根目录
             "--add-data", ".tools/bin;bin",  # ffmpeg/ffprobe/yt-dlp：随包分发，用户不必自己装
             "--add-data", "wheelhouse;wheelhouse",  # 只放在 GitHub 上的 Python 包（无代理用户离线装运行时用）
+            "--add-data", "engine_whl;engine_whl",  # 翻译引擎本体 + 依赖（离线安装引擎用）
             "--add-data", "licenses;licenses", # 上面那些程序的许可证原文（LGPL/GPL/Unlicense）
             "--collect-submodules", "mcp",     # MCP 服务（app.py --mcp / --mcp-http）
             "--hidden-import", "mcp_server",

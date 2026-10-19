@@ -21,6 +21,7 @@ from job import Job, no_window_kwargs
 import datadir
 import engine_mirror
 import mirrors
+import tools
 import wheels
 
 
@@ -42,6 +43,8 @@ BIN_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT" / "bin"
 UV_ZIP_URL = "https://github.com/astral-sh/uv/releases/download/0.13.1/uv-x86_64-pc-windows-msvc.zip"
 UV_ZIP_SHA256 = "3b2661a463a5baea7f5076ea2b25ab71d77f36a6c0d809e5350651792f80a672"
 TUNA_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
+#: 翻译引擎的版本范围（随包 wheelhouse 和在线安装共用这一个字符串）
+ENGINE_REQ = "finesub>=0.6,<0.7"
 
 
 # ---------- 检测 ----------
@@ -356,16 +359,25 @@ def install_finesub(params: dict, job: Job, report) -> str:
     # ★ 钉住 0.6.x：我们的 pylock / 路由配置 / 知识库都按 0.6 写死，
     #   上游一旦发 0.7 而不改这里，全新安装的机器会拿到一个没测过的引擎。
     #   0.6.x 的补丁版仍然能装上（上游修 bug 不受影响）。
-    base = [uv, "tool", "install", "finesub>=0.6,<0.7", "--force"]
+    # 引擎的运行时 pylock 是 win-py312，工具环境也钉 3.12，避免 uv 挑到 3.11
+    # 然后找不到随包的 cp312 wheel（2026-10-19 离线安装实测踩到）。
+    base = [uv, "tool", "install", ENGINE_REQ, "--force", "--python", "3.12"]
+    # 随包分发引擎本体和它的 Python 依赖（约 32MB）：先试本地 wheelhouse，
+    # 再做网络兜底。这样没有代理、镜像又抽风的机器也能把引擎装上。
+    local_whl = tools.bundle_dir() / "engine_whl"
+    has_local = local_whl.is_dir() and any(local_whl.glob("finesub-*.whl"))
     # 直连上游源容易超时：先走清华镜像，失败再退回官方源。
     # 走不走镜像看的是那个地址**真的通不通**，不是「填没填」。
     # ⚠️ 有代理时也把清华源垫在官方源后面：用户填的代理可能只是端口开着、
     #    实际出不去（2026-10-19 全面检查时补的），官方源失败后还能靠镜像装上。
     tuna = not mirrors.proxy_ok(params)
     if tuna:
-        tries = [base + ["--index-url", TUNA_INDEX], base]
+        net_tries = [base + ["--index-url", TUNA_INDEX], base]
     else:
-        tries = [base, base + ["--index-url", TUNA_INDEX]]
+        net_tries = [base, base + ["--index-url", TUNA_INDEX]]
+    tries = ([base + ["--no-index", "--find-links", str(local_whl)]] if has_local else []) + net_tries
+    if has_local:
+        report("engine", None, "使用随包的翻译引擎组件…")
     out = ""
     r = None
     for i, cmd in enumerate(tries):

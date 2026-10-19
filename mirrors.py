@@ -42,6 +42,7 @@ from pathlib import Path
 #       "<镜像>/https://github.com/astral-sh/uv/releases/download/0.13.1/uv-x86_64-pc-windows-msvc.zip"
 #   看 x 的头两个字节是不是 PK。-L 必须带（hk.gh-proxy.com 现在是 302 过去的）。
 CANDIDATES: tuple[str, ...] = (
+    "https://gh-proxy.org/",          # 2026-10-19 实测：真 ZIP（15MB uv.zip 正常），优先国内直连
     "https://hk.gh-proxy.com/",       # 2026-10-16 实测：302→hk.gh-proxy.org，跟跳转后回真 ZIP（0.31 MB/s）
     "https://gh-proxy.com/",          # 2026-10-16 实测：回真 ZIP（0.08 MB/s）
     # ⚠️ 2026-10-16 删掉 ghfile.geekertao.top：请求直接被重置（0 字节、181ms）。
@@ -50,6 +51,8 @@ CANDIDATES: tuple[str, ...] = (
     #    BadZipFile」那个报障的真凶 —— 探针只看状态码，把停放页当成好镜像挑中，
     #    下回来的「uv.zip」其实是那张网页。**加新镜像时一定要真下一个二进制文件验一验**，
     #    只探根路径/小文件是验不出来的。
+    # ⚠️ 2026-10-19 实测不通、别加回来：ghfast.top / github.moeyy.xyz / ghproxy.net /
+    #    gh.llkk.cc / gh-proxy.net / gitproxy.click / ghproxy.cc / hub.gitmirror.com。
 )
 
 # 2026-10-17：用户决定只用 GitHub，不再维护腾讯云 COS 自建源（流量按 0.5 元/GB 计费）。

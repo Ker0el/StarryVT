@@ -91,6 +91,26 @@
 | CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.4.0.cu128 / 4.8.1+finesub0.6.0.cu128 | MIT |
 - **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；同时带 0.4.0 与 0.6.0 两个引擎版本对应的构建，运行时按引擎实际需要选用。该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。
 
+### 翻译引擎及其 Python 依赖（随本软件分发，位于 `engine_whl\`）
+
+| 组件 | 版本 | 许可证 |
+| --- | --- | --- |
+| annotated-types | 0.8.0 | MIT |
+| anyio | 4.15.1 | MIT |
+| certifi | 2026.10.18 | MPL-2.0 |
+| finesub | 0.6.0 | GPL-3.0-or-later |
+| h11 | 0.16.0 | MIT |
+| httpcore | 1.0.9 | BSD-3-Clause |
+| httpx | 0.28.1 | BSD-3-Clause |
+| idna | 3.20 | BSD-3-Clause |
+| pydantic | 2.14.1 | MIT |
+| pydantic_core | 2.50.1 | MIT |
+| typing_extensions | 4.16.0 | PSF-2.0 |
+| typing-inspection | 0.4.4 | MIT |
+| uv | 0.11.32 | MIT OR Apache-2.0 |
+- **finesub（翻译引擎）**：GPL-3.0-or-later。随包的是 PyPI 上**未修改的纯 Python wheel**，wheel 本身即完整源码；上游源码见 <https://github.com/caca2331/finesub>。安装引擎时优先从这份本地 wheelhouse 离线安装，失败再走网络。
+- 其余依赖均为宽松许可（MIT / BSD / Apache-2.0 / MPL-2.0 / PSF-2.0 等），许可证原文汇总见 `licenses/ENGINE-WHEELS-LICENSES.txt`。
+
 随包的字体（位于程序目录的 `assets\fonts\`）：
 
 | 组件 | 许可证 |
@@ -143,10 +163,9 @@
 
 | 组件 | 许可证 | 说明 |
 | --- | --- | --- |
-| finesub（翻译引擎） | GPL-3.0-or-later | **本软件不打包、不分发此组件**；首次使用时在用户自己的电脑上从上游渠道安装，本软件仅以独立进程方式调用。 |
 | faster-whisper / Whisper 模型 | MIT | 由翻译引擎在首次使用时自动下载，本软件不分发。 |
 | Qwen3-ASR 模型 | Apache-2.0 | 由翻译引擎在首次使用时自动下载，本软件不分发。 |
-| uv（引擎运行时用，两个版本） | Apache-2.0 / MIT | 由翻译引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。 |
+| uv（引擎运行时用） | Apache-2.0 / MIT | 引擎本体随包时已带一份 uv 0.11.32（见上面的引擎依赖清单，随包分发）；运行时另外用到的 uv 由引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。 |
 | FFmpeg（引擎运行时用，GPL 构建） | GPL-3.0 | 由翻译引擎从上游 GitHub（BtbN/FFmpeg-Builds）下载，本软件不镜像、不分发。**与随包那个 LGPL 构建不是同一份文件**。 |
 | MinGit（引擎运行时用） | GPL-2.0 | 由翻译引擎从上游 GitHub（git-for-windows/git）下载，本软件不镜像、不分发。 |
 | tokcount（引擎的本地分词器） | 随 finesub（GPL-3.0-or-later） | 由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。 |
@@ -167,11 +186,9 @@
 
 ## 七、说明
 
-- **安装包内**不含任何第三方 GPL-only 组件；本软件自身以 GPL-3.0 开源。随包分发的 FFmpeg 为 **LGPL 构建**（不含 libx264/libx265 等 GPL 部分），按 LGPL 的要求附上许可证原文并允许用户替换 `bin\` 下的文件。
-  翻译引擎（finesub，GPL-3.0-or-later）不随安装包分发，首次使用时在用户自己的电脑上从上游渠道
-  安装，本软件仅以独立进程方式调用、不修改其源码（GPLv3 第 9 条：运行一份副本本身不需要接受该许可，也不产生义务）。
-- 翻译引擎首次运行时所需的第三方文件（uv / FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer 模型）由引擎从上游 GitHub 下载，本软件不镜像、不分发；版权与许可归各自作者所有。
+- **安装包内**随包分发了翻译引擎 finesub（GPL-3.0-or-later）：分发的是 PyPI 上**未修改的纯 Python wheel**，wheel 内含完整源码，上游源码见 <https://github.com/caca2331/finesub>；本软件自身也以 GPL-3.0 开源。随包分发的 FFmpeg 为 **LGPL 构建**（不含 libx264/libx265 等 GPL 部分），按 LGPL 的要求附上许可证原文并允许用户替换 `bin\` 下的文件。
+- 翻译引擎首次运行时所需的第三方文件（FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer 模型）由引擎从上游 GitHub 下载，本软件不镜像、不分发；版权与许可归各自作者所有。
 - 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\fonts\OFL.txt`；字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。
 - 若你二次分发本软件，请一并保留本清单与 `licenses\` 目录。
 
-（本清单由 `make_licenses.py` 自动生成，共 60 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体）
+（本清单由 `make_licenses.py` 自动生成，共 60 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）

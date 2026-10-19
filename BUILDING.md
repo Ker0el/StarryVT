@@ -48,5 +48,6 @@ dotnet publish winui\StarryVt\StarryVt.csproj -c Release -p:Platform=x64 `
 
 ## 运行依赖
 
-翻译引擎、模型和运行环境由程序在用户机器上从上游渠道安装，不随安装包分发。详见
+翻译引擎本体及其 Python 依赖随安装包分发（`engine_whl\`，GPL-3.0 纯 Python wheel，内含源码）；
+引擎运行环境和模型由程序在用户机器上首次使用时从上游下载。详见
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。

@@ -21,6 +21,7 @@ import importlib.metadata as md
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -29,6 +30,8 @@ NUITKA_DIST = ROOT / "dist-nuitka" / "app.dist"
 NUITKA_BUILD = ROOT / "dist-nuitka" / "app.build"
 OUT = ROOT / "THIRD_PARTY_LICENSES.md"
 COMBINED = ROOT / "licenses" / "PYTHON-PACKAGES-LICENSES.txt"
+ENGINE_WHL = ROOT / "engine_whl"
+ENGINE_LICENSES = ROOT / "licenses" / "ENGINE-WHEELS-LICENSES.txt"
 
 # 打进包里但不在 site-packages 元数据里的（解释器本体等）
 EXTRA = [
@@ -160,14 +163,13 @@ UI_STACK = [
 
 # 运行时依赖但不由本软件分发（用户自行安装/获取）
 RUNTIME_NOTES = [
-    ("finesub（翻译引擎）", "GPL-3.0-or-later",
-     "**本软件不打包、不分发此组件**；首次使用时在用户自己的电脑上从上游渠道安装，本软件仅以独立进程方式调用。"),
     ("faster-whisper / Whisper 模型", "MIT",
      "由翻译引擎在首次使用时自动下载，本软件不分发。"),
     ("Qwen3-ASR 模型", "Apache-2.0",
      "由翻译引擎在首次使用时自动下载，本软件不分发。"),
-    ("uv（引擎运行时用，两个版本）", "Apache-2.0 / MIT",
-     "由翻译引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。"),
+    ("uv（引擎运行时用）", "Apache-2.0 / MIT",
+     "引擎本体随包时已带一份 uv 0.11.32（见上面的引擎依赖清单，随包分发）；"
+     "运行时另外用到的 uv 由引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。"),
     ("FFmpeg（引擎运行时用，GPL 构建）", "GPL-3.0",
      "由翻译引擎从上游 GitHub（BtbN/FFmpeg-Builds）下载，本软件不镜像、不分发。"
      "**与随包那个 LGPL 构建不是同一份文件**。"),
@@ -251,6 +253,68 @@ def _binary_version(item: dict) -> str:
     first = (out.splitlines() or [""])[0]
     m = re.search(r"version (\S+)", first)
     return (m.group(1) if m else first.strip()) or "?"
+
+
+def _engine_wheel_rows() -> list[tuple[str, str, str, Path]]:
+    """随包的翻译引擎及其依赖：(包名, 版本, 许可证, wheel 路径)"""
+    rows: list[tuple[str, str, str, Path]] = []
+    if not ENGINE_WHL.is_dir():
+        return rows
+    for w in sorted(ENGINE_WHL.glob("*.whl")):
+        try:
+            with zipfile.ZipFile(w) as z:
+                meta = next((n for n in z.namelist() if n.endswith(".dist-info/METADATA")), "")
+                if not meta:
+                    continue
+                text = z.read(meta).decode("utf-8", "replace")
+        except (OSError, zipfile.BadZipFile):
+            continue
+        name = re.search(r"^Name: (.+)$", text, re.M)
+        ver = re.search(r"^Version: (.+)$", text, re.M)
+        lic = re.search(r"^License-Expression: (.+)$", text, re.M)
+        if not lic:
+            lic = re.search(r"^License: (.+)$", text, re.M)
+        if not lic or len(lic.group(1)) > 80:
+            cls = [c.split("::")[-1].strip() for c in re.findall(r"^Classifier: License :: (.+)$", text, re.M)]
+            value = " / ".join(sorted(set(cls))) if cls else "见许可证原文"
+        else:
+            value = lic.group(1).strip()
+        rows.append((name.group(1).strip() if name else w.stem,
+                     ver.group(1).strip() if ver else "?",
+                     value, w))
+    return rows
+
+
+def _write_engine_license_texts(rows: list[tuple[str, str, str, Path]]) -> None:
+    """把随包引擎及各依赖 wheel 里的许可证原文汇总成一个文件"""
+    ENGINE_LICENSES.parent.mkdir(parents=True, exist_ok=True)
+    chunks = [
+        "翻译引擎及其 Python 依赖的许可证原文",
+        "由 make_licenses.py 从随包的 engine_whl\\ 各 wheel 中收集。",
+        "",
+    ]
+    for name, ver, lic, wheel in rows:
+        chunks.append(f"{'=' * 72}\n{name} {ver} | {lic}\n{'=' * 72}")
+        try:
+            with zipfile.ZipFile(wheel) as z:
+                files = []
+                for n in z.namelist():
+                    low = n.lower()
+                    leaf = low.rsplit("/", 1)[-1]
+                    if (leaf.startswith(("license", "copying", "notice", "copyright"))
+                            or "/licenses/" in low):
+                        files.append(n)
+                for n in files:
+                    try:
+                        text = z.read(n).decode("utf-8", "replace").strip()
+                    except (OSError, KeyError):
+                        continue
+                    if text:
+                        chunks.append(f"--- {n} ---\n{text}\n")
+        except (OSError, zipfile.BadZipFile):
+            continue
+    ENGINE_LICENSES.write_text("\n".join(chunks), encoding="utf-8")
+    print(f"[OK] 已写 {ENGINE_LICENSES.name}（{len(rows)} 个引擎依赖包）")
 
 
 def _wheel_version(item: dict) -> str:
@@ -380,6 +444,9 @@ def main() -> int:
         rows.append((dist, ver, _license_of(dist)))
 
     _write_package_license_texts(rows)
+    engine_rows = _engine_wheel_rows()
+    if engine_rows:
+        _write_engine_license_texts(engine_rows)
 
     lines = [
         "# 第三方开源组件许可证清单",
@@ -433,6 +500,23 @@ def main() -> int:
             lines.append(f"| {it['name']} | {_wheel_version(it)} | {it['license']} |")
         for it in BUNDLED_WHEELS:
             lines.append(f"- **{it['name']}**：{it['note']}")
+    if engine_rows:
+        lines += [
+            "",
+            "### 翻译引擎及其 Python 依赖（随本软件分发，位于 `engine_whl\\`）",
+            "",
+            "| 组件 | 版本 | 许可证 |",
+            "| --- | --- | --- |",
+        ]
+        for name, ver, lic, _wheel in engine_rows:
+            lines.append(f"| {name} | {ver} | {lic} |")
+        lines += [
+            "- **finesub（翻译引擎）**：GPL-3.0-or-later。随包的是 PyPI 上**未修改的纯 Python wheel**，"
+            "wheel 本身即完整源码；上游源码见 <https://github.com/caca2331/finesub>。"
+            "安装引擎时优先从这份本地 wheelhouse 离线安装，失败再走网络。",
+            "- 其余依赖均为宽松许可（MIT / BSD / Apache-2.0 / MPL-2.0 / PSF-2.0 等），"
+            "许可证原文汇总见 `licenses/ENGINE-WHEELS-LICENSES.txt`。",
+        ]
     if BUNDLED_FONTS:
         lines += [
             "",
@@ -512,17 +596,17 @@ def main() -> int:
         "",
         "## 七、说明",
         "",
-        "- **安装包内**不含任何第三方 GPL-only 组件；本软件自身以 GPL-3.0 开源。随包分发的 FFmpeg 为 **LGPL 构建**"
+        "- **安装包内**随包分发了翻译引擎 finesub（GPL-3.0-or-later）：分发的是 PyPI 上**未修改的纯 Python wheel**，"
+        "wheel 内含完整源码，上游源码见 <https://github.com/caca2331/finesub>；本软件自身也以 GPL-3.0 开源。"
+        "随包分发的 FFmpeg 为 **LGPL 构建**"
         "（不含 libx264/libx265 等 GPL 部分），按 LGPL 的要求附上许可证原文并允许用户替换 `bin\\` 下的文件。",
-        "  翻译引擎（finesub，GPL-3.0-or-later）不随安装包分发，首次使用时在用户自己的电脑上从上游渠道",
-        "  安装，本软件仅以独立进程方式调用、不修改其源码（GPLv3 第 9 条：运行一份副本本身不需要接受该许可，也不产生义务）。",
-        "- 翻译引擎首次运行时所需的第三方文件（uv / FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer 模型）"
+        "- 翻译引擎首次运行时所需的第三方文件（FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer 模型）"
         "由引擎从上游 GitHub 下载，本软件不镜像、不分发；版权与许可归各自作者所有。",
         "- 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\\fonts\\OFL.txt`；"
         "字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。",
         "- 若你二次分发本软件，请一并保留本清单与 `licenses\\` 目录。",
         "",
-        f"（本清单由 `make_licenses.py` 自动生成，共 {len(rows)} 个打包组件 + {len(BUNDLED_BINARIES)} 个随包外部程序 + {len(BUNDLED_RUNTIME_DLLS)} 个随包运行时 DLL + {len(BUNDLED_FONTS)} 个随包字体）",
+        f"（本清单由 `make_licenses.py` 自动生成，共 {len(rows)} 个打包组件 + {len(BUNDLED_BINARIES)} 个随包外部程序 + {len(BUNDLED_RUNTIME_DLLS)} 个随包运行时 DLL + {len(BUNDLED_FONTS)} 个随包字体 + {len(engine_rows)} 个翻译引擎依赖包）",
         "",
     ]
     OUT.write_text("\n".join(lines), encoding="utf-8")

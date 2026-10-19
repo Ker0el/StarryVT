@@ -148,6 +148,36 @@ def verify() -> None:
         print(f"  yt-dlp 版本: {v}")
 
 
+def fetch_engine_wheels(proxy: str) -> None:
+    """随包分发翻译引擎本体和它的 Python 依赖（engine_whl\\）
+
+    引擎是 GPL-3.0 的纯 Python wheel，原样随包（未修改，wheel 里就带源码），
+    再配齐它的依赖，装引擎时先用本地 wheelhouse，失败再走网络。这样没有代理、
+    GitHub 镜像又抽风的机器也能把引擎装上（运行时和模型仍然首次下载）。
+
+    版本范围跟 `engine.ENGINE_REQ` 走；换引擎版本时两边一起改。
+    """
+    import engine
+    out = ROOT / "engine_whl"
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("*.whl"):
+        old.unlink()
+    cmd = [sys.executable, "-m", "pip", "download", engine.ENGINE_REQ,
+           "--dest", str(out), "--only-binary=:all:",
+           "--python-version", "3.12", "--platform", "win_amd64", "--implementation", "cp",
+           "--index-url", "https://pypi.tuna.tsinghua.edu.cn/simple"]
+    if proxy:
+        cmd += ["--proxy", proxy]
+    print(f"下载 {engine.ENGINE_REQ} + 依赖 …")
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        raise SystemExit("!! 引擎 wheelhouse 下载失败：\n" + (r.stderr or r.stdout or "")[-800:])
+    wheels = sorted(out.glob("*.whl"))
+    if not any(w.name.startswith("finesub-") for w in wheels):
+        raise SystemExit("!! 下载完没找到 finesub-*.whl")
+    print(f"  {out}  {len(wheels)} 个包 / {sum(w.stat().st_size for w in wheels) / 1048576:.0f} MB")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--proxy", default="", help="如 http://127.0.0.1:7897（国内访问 GitHub 用）")
@@ -166,6 +196,8 @@ def main() -> int:
     fetch_ytdlp(opener)
     print("=== 只放在 GitHub 上的 Python 包（随包分发）===")
     fetch_wheels(args.proxy)
+    print("=== 翻译引擎本体 + 依赖（随包分发，离线装引擎）===")
+    fetch_engine_wheels(args.proxy)
 
     # 装完不留下载缓存，避免 .tools 里留一份重复的百兆压缩包
     for f in tmp.glob("*.zip"):

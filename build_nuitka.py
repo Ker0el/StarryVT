@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 BIN_DIR = ROOT / ".tools" / "bin"
 WHEELHOUSE = ROOT / "wheelhouse"
+ENGINE_WHL = ROOT / "engine_whl"      # 翻译引擎本体 + 它的 Python 依赖（离线装引擎用）
 OUT = ROOT / "dist-nuitka"
 DIST = OUT / "app.dist"
 
@@ -63,6 +64,14 @@ def main() -> int:
     print(f"    OK: wheelhouse {len(wheels)} 个包，"
           f"{sum(f.stat().st_size for f in wheels) / 1048576:.0f} MB")
 
+    engine_wheels = sorted(ENGINE_WHL.glob("*.whl")) if ENGINE_WHL.is_dir() else []
+    if not engine_wheels or not any(f.name.startswith("finesub-") for f in engine_wheels):
+        print("!! 缺少随包分发的翻译引擎（engine_whl\\ 里没有 finesub-*.whl）")
+        print("   先运行  python fetch_tools.py --proxy http://127.0.0.1:7897")
+        return 1
+    print(f"    OK: engine_whl {len(engine_wheels)} 个包，"
+          f"{sum(f.stat().st_size for f in engine_wheels) / 1048576:.0f} MB")
+
     print("=== [1/2] Nuitka 构建（几分钟，第一次会下载 depends.exe）===")
     shutil.rmtree(OUT, ignore_errors=True)
     cmd = [
@@ -93,6 +102,7 @@ def main() -> int:
         "--include-data-file=clone_download.py=clone/clone_download.py",
         "--include-raw-dir=.tools/bin=bin",  # ★ 见文件头：这里不能用 include-data-dir
         "--include-data-dir=wheelhouse=wheelhouse",
+        "--include-data-dir=engine_whl=engine_whl",  # 翻译引擎本体 + 依赖（离线安装）
         "--include-data-dir=licenses=licenses",
         # 内置术语词条（builtin_kb.py 导入用户的词条库用；装引擎那步和启动兜底都读它）
         "--include-data-dir=builtin_knowledge=builtin_knowledge",
@@ -116,7 +126,7 @@ def main() -> int:
         print(f"!! 包里缺随包程序：{', '.join(miss)}")
         print("   八成是又把 .tools/bin 写成 --include-data-dir 了，改回 --include-raw-dir")
         return 1
-    for d in ("web", "assets", "licenses", "wheelhouse", "builtin_knowledge"):
+    for d in ("web", "assets", "licenses", "wheelhouse", "engine_whl", "builtin_knowledge"):
         if not (DIST / d).is_dir():
             print(f"!! 包里缺目录：{d}")
             return 1

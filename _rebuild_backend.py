@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 BIN_DIR = ROOT / ".tools" / "bin"
 WHEELHOUSE = ROOT / "wheelhouse"
+ENGINE_WHL = ROOT / "engine_whl"
 DST = ROOT / "dist" / "StarryVT"
 TMP = ROOT / "_stage" / "_rebuild"
 KEEP = ROOT / "_stage" / "_output_keep"
@@ -23,12 +24,13 @@ EXCLUDES = [
 
 # 前置检查：--add-data 的源目录缺一个，PyInstaller 会直接报错
 need = [ROOT / "web", ROOT / "assets", ROOT / "icon.png", ROOT / "TERMS.md",
-        ROOT / "licenses", BIN_DIR, WHEELHOUSE, ROOT / "builtin_knowledge",
+        ROOT / "licenses", BIN_DIR, WHEELHOUSE, ENGINE_WHL, ROOT / "builtin_knowledge",
         ROOT / "clone_synth.py", ROOT / "clone_download.py"]   # 少了这个用户那边点克隆就报错
 miss = [str(p) for p in need if not p.exists()]
 if miss:
     print("!! 缺目录/文件，先别编："); [print("   ", m) for m in miss]; sys.exit(1)
 print(f"前置检查 OK：wheelhouse {len(list(WHEELHOUSE.glob('*.whl')))} 个包，"
+      f"engine_whl {len(list(ENGINE_WHL.glob('*.whl')))} 个包，"
       f".tools/bin {len(list(BIN_DIR.iterdir()))} 个文件")
 
 if TMP.exists():
@@ -53,6 +55,7 @@ cmd = [
     "--add-data", f"{ROOT / 'clone_download.py'};clone",
     "--add-data", f"{BIN_DIR};bin",
     "--add-data", f"{WHEELHOUSE};wheelhouse",
+    "--add-data", f"{ENGINE_WHL};engine_whl",
     "--add-data", f"{ROOT / 'licenses'};licenses",
     # 内置术语词条（builtin_kb.py 装引擎/启动时导进用户的词条库）
     "--add-data", f"{ROOT / 'builtin_knowledge'};builtin_knowledge",
