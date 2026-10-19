@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Starry.Vt.App.Pages.SubtitlePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="42,24,42,20" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="5">
+            <TextBlock Text="字幕检查" FontSize="38" FontWeight="SemiBold" />
+            <TextBlock Text="翻译完成后会暂停，对照原文检查译文，改完点「保存并继续翻译」"
+                       FontSize="14" Opacity="0.78" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="SearchBox" Grid.Column="0" HorizontalAlignment="Stretch"
+                     Height="30" MinHeight="30" Padding="10,0" VerticalContentAlignment="Center"
+                     PlaceholderText="搜索字幕内容" TextChanged="Search_TextChanged" />
+
+            <Button x:Name="RetranslateButton" Grid.Column="1" Content="保存并继续翻译"
+                    VerticalAlignment="Center" Visibility="Collapsed"
+                    Click="Retranslate_Click" Style="{StaticResource AccentButtonStyle}" />
+        </Grid>
+
+        <Border Grid.Row="2" CornerRadius="8" Background="{ThemeResource PanelBrush}"
+                BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+            <Grid>
+                <ListView x:Name="SegmentList" SelectionMode="None" Padding="12"
+                          Visibility="Collapsed">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,0,0,4" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="14" Padding="8,6" HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="132" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Top"
+                                            Margin="0,5,0,0">
+                                    <TextBlock Text="{Binding IndexText}" FontSize="12" Opacity="0.55" />
+                                    <TextBlock Text="{Binding TimeText}" FontFamily="Consolas"
+                                               FontSize="11.5" Opacity="0.8" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <!-- 成品字幕才有：上面只读的原文，下面可编辑的译文 -->
+                                    <TextBlock Text="{Binding SourceDisplay}"
+                                               Visibility="{Binding SourceVisibility}"
+                                               FontSize="12.5" Opacity="0.62" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True" />
+                                    <TextBox
+                                             Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             TextChanged="SegmentText_TextChanged"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinHeight="38" MaxHeight="140" IsSpellCheckEnabled="False"
+                                             Padding="8,5" BorderThickness="0" CornerRadius="6"
+                                             Background="{ThemeResource PanelSubtleBrush}" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Spacing="10" Padding="40">
+                    <FontIcon Glyph="&#xE8A5;" FontSize="46" Opacity="0.4"
+                              HorizontalAlignment="Center" />
+                    <TextBlock x:Name="EmptyTitle" Text="还没有可检查的字幕"
+                               FontSize="17" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="EmptyHint" Text="在本地翻译或在线翻译页开始一个任务"
+                               FontSize="13" Opacity="0.6" HorizontalAlignment="Center"
+                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TextBlock x:Name="StatusText" Grid.Row="3" Text="等待任务…" FontSize="13" Opacity="0.72"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+    </Grid>
+</Page>

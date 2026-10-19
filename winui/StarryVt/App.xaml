@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Starry.Vt.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ctl="using:Starry.Vt.App.Controls">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PanelBrush" Color="#73080B14" />
+                    <!-- 模态卡片（术语库那种密排文字的浮层）专用：PanelBrush 只有 45% 不透明，
+                         壁纸和底下的设置页会透上来，字一多就糊成一片（实测），所以这里接近不透明 -->
+                    <SolidColorBrush x:Key="ModalCardBrush" Color="#F2080B14" />
+                    <SolidColorBrush x:Key="PanelSubtleBrush" Color="#1FFFFFFF" />
+                    <SolidColorBrush x:Key="PanelStrokeBrush" Color="#26FFFFFF" />
+                    <SolidColorBrush x:Key="ActionButtonBrush" Color="#8C0A0E18" />
+                    <SolidColorBrush x:Key="ActionButtonHoverBrush" Color="#A6171E2C" />
+                    <SolidColorBrush x:Key="ActionButtonPressedBrush" Color="#B3242C3E" />
+                    <SolidColorBrush x:Key="ActionButtonStroke" Color="#33FFFFFF" />
+                    <!-- 主按钮（「一键初始化」）：主题色的**淡化**版本 —— 还是半透明的，
+                         壁纸照样透出来，别用纯色块（用户：纯色按钮太丑） -->
+                    <SolidColorBrush x:Key="PrimaryButtonBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.26" />
+                    <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.38" />
+                    <SolidColorBrush x:Key="PrimaryButtonPressedBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.50" />
+                    <SolidColorBrush x:Key="PrimaryButtonStroke" Color="{ThemeResource SystemAccentColor}" Opacity="0.72" />
+                    <Color x:Key="ScrimStartColor">#A6000000</Color>
+                    <Color x:Key="ScrimMidColor">#40000000</Color>
+                    <Color x:Key="ScrimEndColor">#B3000000</Color>
+                    <Color x:Key="TopBandBrushColor">#59040610</Color>
+                    <Color x:Key="TopBandEndColor">#00040610</Color>
+                    <SolidColorBrush x:Key="LogBoxBrush" Color="#40000000" />
+                    <!-- 按钮：悬停/按下用自家的半透明白。
+                         框架默认那套会把我们设的半透明底「盖掉」，一悬停就成一块灰。 -->
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#1FFFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#33FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#40FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#0FFFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#26FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#40FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#59FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="#1AFFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PanelBrush" Color="#D9FFFFFF" />
+                    <SolidColorBrush x:Key="ModalCardBrush" Color="#FAFFFFFF" />
+                    <SolidColorBrush x:Key="PanelSubtleBrush" Color="#14000000" />
+                    <SolidColorBrush x:Key="PanelStrokeBrush" Color="#1F000000" />
+                    <SolidColorBrush x:Key="ActionButtonBrush" Color="#E6FFFFFF" />
+                    <SolidColorBrush x:Key="ActionButtonHoverBrush" Color="#F5FFFFFF" />
+                    <SolidColorBrush x:Key="ActionButtonPressedBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ActionButtonStroke" Color="#33000000" />
+                    <SolidColorBrush x:Key="PrimaryButtonBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.24" />
+                    <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.36" />
+                    <SolidColorBrush x:Key="PrimaryButtonPressedBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.48" />
+                    <SolidColorBrush x:Key="PrimaryButtonStroke" Color="{ThemeResource SystemAccentColor}" Opacity="0.72" />
+                    <!-- 浅色：壁纸上盖一层白纱，黑字才看得清 -->
+                    <Color x:Key="ScrimStartColor">#C7FFFFFF</Color>
+                    <Color x:Key="ScrimMidColor">#8CFFFFFF</Color>
+                    <Color x:Key="ScrimEndColor">#E0FFFFFF</Color>
+                    <Color x:Key="TopBandBrushColor">#B3FFFFFF</Color>
+                    <Color x:Key="TopBandEndColor">#00FFFFFF</Color>
+                    <SolidColorBrush x:Key="LogBoxBrush" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D9FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#F2FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#59FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#1F000000" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#33000000" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#47000000" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="#14000000" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <!-- 输入框的渐变版模板：放在后面，覆盖框架自带的那份（顺序不能颠倒） -->
+                <ResourceDictionary Source="ms-appx:///Controls/SmoothTextBox.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- 强调色：用星空自己的蓝紫，别跟着系统主题色走
+                 （系统那边设成粉色的话，勾选框、按钮、滑杆会全变粉） -->
+            <Color x:Key="SystemAccentColor">#FFFF6FB5</Color>
+            <Color x:Key="SystemAccentColorLight1">#FF89C2</Color>
+            <Color x:Key="SystemAccentColorLight2">#FFA0CE</Color>
+            <Color x:Key="SystemAccentColorLight3">#FFB7DA</Color>
+            <Color x:Key="SystemAccentColorDark1">#FFCC5991</Color>
+            <Color x:Key="SystemAccentColorDark2">#FFA34774</Color>
+            <Color x:Key="SystemAccentColorDark3">#FF7A3557</Color>
+
+
+            <!-- 按主题各一套：浅色下文字会变黑，面板/压暗必须跟着变浅，否则黑字压深底 -->
+
+            <!-- 日志里那些下载进度条的颜色：横向彩虹渐变。
+                 放在主题字典**外面** —— 它跟深浅色无关，两套主题共用一份。
+                 ⚠️ WinUI 至今没有 ConicGradientBrush（官方 issue #8482 还只是提案），
+                    所以只能做**条形**彩虹，圆环那种做不了。
+                 ⚠️ 别做成动的：实测 XAML 渐变上的依赖动画每秒只更新一两次，会卡（见 AboutPage 那条五彩标语）。 -->
+            <LinearGradientBrush x:Key="RainbowBarBrush" StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#FF7AD7FF" Offset="0.00" />
+                <GradientStop Color="#FF9E8CFF" Offset="0.20" />
+                <GradientStop Color="#FFFF8AD8" Offset="0.40" />
+                <GradientStop Color="#FFFF9E6B" Offset="0.60" />
+                <GradientStop Color="#FFFFE07A" Offset="0.80" />
+                <GradientStop Color="#FF6EE7B7" Offset="1.00" />
+            </LinearGradientBrush>
+
+            <!-- 卡片：和 WinUI 的 SettingsCard 一个观感，但自己写，少引一个包 -->
+            <Style x:Key="CardStyle" TargetType="Border">
+                <!-- 颜色不写在样式里：App 级样式的 ThemeResource 只在首次解析，
+                     运行期切主题不会重算（深→浅时面板会留在深色）。颜色一律写在元素上。 -->
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="16" />
+                <!-- ★ 阴影：设计上「透明 / 圆角 / 阴影」三宝，我们本来一宝都没有 ——
+                     所有卡片贴在同一个平面上，没有"谁在上面"的暗示。
+                     WinUI 3 的 ThemeShadow 会自动投到下层元素上，不需要再手写 Receivers；
+                     Translation 的 Z（离背景多远、越大影子越散）没法在 Style 里设，写在每个元素上。
+                     只想挪一点点就用 16~24；浮出层（弹窗、下拉）可以给到 32。 -->
+                <Setter Property="Shadow">
+                    <Setter.Value>
+                        <ThemeShadow />
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CardTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+                <Setter Property="FontSize" Value="14" />
+            </Style>
+
+            <Style x:Key="CaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="FieldLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Margin" Value="0,0,0,4" />
+            </Style>
+
+            <!-- 字体：思源黑体（本机装的是它 Google 版的注册名「Noto Sans SC」，同一个字体）。
+                 控制类走 ContentControlThemeFontFamily —— 模板里的 FontFamily 都绑的这个；
+                 散落的 TextBlock 走下面那条隐式样式（BasedOn 保底，别把默认尺寸/颜色丢了）。 -->
+            <FontFamily x:Key="ContentControlThemeFontFamily">Noto Sans SC</FontFamily>
+
+            <Style TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+                <Setter Property="FontFamily" Value="Noto Sans SC" />
+            </Style>
+
+            <!-- 深色玻璃按钮（「开始翻译」这种右下角的大按钮）。
+                 默认模板悬停时是「换一套浅色画刷」—— 深色按钮一悬停整块变白，很跳；
+                 这里自己写模板：底色**在同色系里**变亮一档，靠 Border 的 BackgroundTransition 渐变。 -->
+            <Style x:Key="GlassButtonStyle" TargetType="Button">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource ActionButtonBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ActionButtonStroke}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Padding" Value="19,12" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="{ThemeResource ActionButtonHoverBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="{ThemeResource ActionButtonPressedBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Fill"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.45" Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <Border x:Name="Fill" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="{TemplateBinding CornerRadius}">
+                                    <Border.BackgroundTransition>
+                                        <BrushTransition Duration="0:0:0.18" />
+                                    </Border.BackgroundTransition>
+                                </Border>
+
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- 主按钮（「一键初始化」）：还是那块玻璃，只是颜色取主题色的淡化版，
+                 悬停/按下在同色系里变浓 —— 不用纯色块，壁纸照样透出来 -->
+            <Style x:Key="PrimaryGlassButtonStyle" TargetType="Button">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource PrimaryButtonBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource PrimaryButtonStroke}" />
+                <Setter Property="BorderThickness" Value="1.5" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="24,14" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="{ThemeResource PrimaryButtonHoverBrush}" />
+                                                <Setter Target="Fill.BorderBrush" Value="{ThemeResource PrimaryButtonStroke}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="{ThemeResource PrimaryButtonPressedBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Fill"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.45" Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <Border x:Name="Fill" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="{TemplateBinding CornerRadius}">
+                                    <Border.BackgroundTransition>
+                                        <BrushTransition Duration="0:0:0.18" />
+                                    </Border.BackgroundTransition>
+                                </Border>
+
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- 浮出层（调色板 / 赞赏码）：压掉默认那圈留白和阴影底。
+                 ⚠️ RequestedTheme 必须在这儿钉死：浮出层不在主界面的元素树里，
+                 它不会继承根元素的深色设置，不写就是白底（实测踩过）。 -->
+            <Style x:Key="PaletteFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+                <Setter Property="Padding" Value="10" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="RequestedTheme" Value="Dark" />
+                <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource PanelStrokeBrush}" />
+            </Style>
+
+            <!-- 所有按钮自动挂上「悬停手感」（见 Controls/SmoothHover.cs）：
+                 颜色慢慢亮起来 + 轻微放大，按下去缩一点 -->
+            <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="ctl:SmoothHover.Enabled" Value="True" />
+            </Style>
+
+            <!-- 所有输入框自动挂上「聚焦渐变」（见 Controls/SmoothField.cs）。
+                 编译期只认 App.xaml 这种带 x:Class 的文件里的本地类型，
+                 写在单独的 ResourceDictionary 里会报「Unknown attachable member」。 -->
+            <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+                <Setter Property="ctl:SmoothField.Glow" Value="True" />
+            </Style>
+
+            <!-- API Key 那种密码框也要同一套聚焦渐变（默认样式跟输入框长得不一样，这里对齐一下） -->
+            <Style TargetType="PasswordBox" BasedOn="{StaticResource DefaultPasswordBoxStyle}">
+                <Setter Property="ctl:SmoothField.Glow" Value="True" />
+                <Setter Property="Background" Value="#1AFFFFFF" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="#26FFFFFF" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Padding" Value="10,6,10,6" />
+                <Setter Property="FontSize" Value="14" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

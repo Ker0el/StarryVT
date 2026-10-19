@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Starry.Vt.App.Pages.OnlinePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:fakes="using:Starry.Vt.App.Fakes"
+    xmlns:ctl="using:Starry.Vt.App.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style x:Key="RowIconButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="11,9" />
+        </Style>
+        <Style x:Key="ActionButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource GlassButtonStyle}">
+            <Setter Property="MinWidth" Value="196" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Padding="42,24,42,20" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="5">
+            <TextBlock Text="在线翻译" FontSize="38" FontWeight="SemiBold" />
+            <TextBlock Text="贴链接或复制链接，自动读取并翻译" FontSize="14" Opacity="0.78" />
+            <TextBlock Text="支持 YouTube 与 B 站，YouTube 需要自备代理" FontSize="14" Opacity="0.6" />
+            <TextBlock Text="下载仅供个人学习与翻译；作者标注「禁止转载」的作品请勿传播"
+                       FontSize="12.5" Opacity="0.45" TextWrapping="Wrap" />
+        </StackPanel>
+            <SelectorBar x:Name="ModeBar" Grid.Row="1" SelectionChanged="ModeBar_SelectionChanged">
+                <SelectorBarItem Text="视频链接" IsSelected="True" Tag="online-single" />
+                <SelectorBarItem Text="合集列表" Tag="online-batch" />
+            </SelectorBar>
+
+        <Grid Grid.Row="2" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="760" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" VerticalAlignment="Top"
+                    CornerRadius="8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Padding="18,15,18,13" Spacing="10">
+                        <TextBlock x:Name="InputTitle" Text="粘贴视频链接" FontSize="17" FontWeight="SemiBold" />
+                        <Grid ColumnSpacing="9">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 粘上链接自己就读，不用按钮；右边这个圈只在读的时候转 -->
+                            <TextBox x:Name="LinkBox" Grid.Column="0" TextChanged="LinkBox_TextChanged"
+                                     KeyDown="LinkBox_KeyDown"
+                                     PlaceholderText="https://www.youtube.com/watch?v=…" />
+                            <ProgressRing x:Name="ReadRing" Grid.Column="1" Width="18" Height="18"
+                                          Margin="3,0,7,0" VerticalAlignment="Center"
+                                          IsActive="False" Visibility="Collapsed" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <!-- 单个视频：解析出来的信息 + 语言/音色 -->
+                        <StackPanel x:Name="SinglePane" Padding="18,0,18,18" Spacing="13">
+                            <Border x:Name="InfoCard" Visibility="Collapsed" CornerRadius="8" Padding="11"
+                                    Background="{ThemeResource PanelSubtleBrush}" BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Width="126" Height="71" CornerRadius="4">
+                                        <Grid>
+                                            <!-- 封面：按视频 id 拼出来的 YouTube 缩略图，BitmapImage 自己会去下 -->
+                                            <Border CornerRadius="4">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#FF3D6FB8" Offset="0" />
+                                                        <GradientStop Color="#FF6E5AB0" Offset="1" />
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                                <FontIcon Glyph="&#xE8B5;" FontSize="20" Opacity="0.85" />
+                                            </Border>
+                                            <Rectangle RadiusX="4" RadiusY="4">
+                                                <Rectangle.Fill>
+                                                    <ImageBrush x:Name="InfoShot" Stretch="UniformToFill" />
+                                                </Rectangle.Fill>
+                                            </Rectangle>
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                        <TextBlock x:Name="InfoTitle" Text="粘上链接，自动读取标题" FontSize="15"
+                                                   TextWrapping="Wrap" />
+                                        <!-- 作者 · 时长 · 认出来的软件 -->
+                                        <TextBlock x:Name="InfoMeta" Text="" FontSize="12.5" Opacity="0.62"
+                                                   TextWrapping="Wrap" />
+                                        <!-- 按标题认出来的背景信息：给翻译模型的一句话上下文（也会跟着任务发过去） -->
+                                        <TextBlock x:Name="InfoPath" Text="" FontSize="12.5" Opacity="0.5"
+                                                   TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                                                   Visibility="Collapsed" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- 源语言 / 音色 / 输出都在设置里配 -->
+                        </StackPanel>
+
+                        <!-- 合集：读出来的列表 -->
+                        <Grid x:Name="PlaylistBox" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <!-- 读合集时 / 读空的时候在这儿说话 -->
+                            <TextBlock x:Name="PlaylistHint" Grid.Row="0" Margin="18,0,18,10"
+                                       FontSize="12.5" Opacity="0.7" TextWrapping="Wrap" Visibility="Collapsed" />
+                            <ListView x:Name="PlaylistPane" Grid.Row="1" SelectionMode="None"
+                                      IsItemClickEnabled="False" Padding="12,0,12,12" MaxHeight="358">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0,0,0,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="fakes:QueueItem">
+                                    <Grid ColumnSpacing="12" Padding="11,10" CornerRadius="6" Background="{ThemeResource PanelSubtleBrush}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Width="86" Height="61" CornerRadius="4">
+                                            <Grid>
+                                                <!-- 封面（YouTube 的缩略图直接按 id 拼出来，不用下载） -->
+                                                <Border CornerRadius="4">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                            <GradientStop Color="#FF3D6FB8" Offset="0" />
+                                                            <GradientStop Color="#FF6E5AB0" Offset="1" />
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                    <FontIcon Glyph="&#xE8B5;" FontSize="20" Opacity="0.85" />
+                                                </Border>
+                                                <Rectangle RadiusX="4" RadiusY="4">
+                                                    <Rectangle.Fill>
+                                                        <ImageBrush ImageSource="{x:Bind Thumb, Mode=OneWay}"
+                                                                    Stretch="UniformToFill" />
+                                                    </Rectangle.Fill>
+                                                </Rectangle>
+                                            </Grid>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" FontSize="15"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind Detail}" FontSize="12.5" Opacity="0.62"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <FontIcon Grid.Column="2" Glyph="{x:Bind Glyph}" FontSize="16"
+                                                  Foreground="{x:Bind IconBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,7,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        </Grid>
+                    </Grid>
+
+                    <Border x:Name="StateBar" Grid.Row="2" Visibility="Collapsed"
+                            Padding="18,14" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource PanelStrokeBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                    <ProgressRing x:Name="BusyRing" Width="16" Height="16" IsActive="False"
+                                                  Visibility="Collapsed" />
+                                    <TextBlock x:Name="StateText" Text="正在下载…" FontSize="14" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock x:Name="PctText" Text="0%" FontSize="13.5" HorizontalAlignment="Right"
+                                           Opacity="0.75" />
+                            </Grid>
+                            <ProgressBar x:Name="Bar" Minimum="0" Maximum="100" Value="0" />
+                            <Grid>
+                                <TextBlock x:Name="StageText" Text="准备中" FontSize="12.5" Opacity="0.6"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Button x:Name="CancelButton" Content="取消" FontSize="12.5" Padding="12,5"
+                                        HorizontalAlignment="Right" Background="{ThemeResource PanelSubtleBrush}" BorderThickness="0"
+                                        Click="Cancel_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="TaskPanel" Grid.Column="1" Visibility="Collapsed"
+                    VerticalAlignment="Top"
+                    CornerRadius="8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Padding="18,15,18,13">
+                        <TextBlock Text="日志" FontSize="17" FontWeight="SemiBold" />
+                    </Grid>
+                    <ScrollViewer x:Name="LogScroll" Grid.Row="1" Padding="18,0,14,16"
+                                  VerticalScrollBarVisibility="Auto" MaxHeight="420">
+                        <ItemsControl x:Name="LogList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="fakes:LogLine">
+                                    <StackPanel Margin="0,1" Spacing="3">
+                                        <TextBlock Text="{x:Bind Text, Mode=OneWay}" Foreground="{x:Bind Foreground}"
+                                                   FontFamily="Consolas" FontSize="13.5" LineHeight="21"
+                                                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                        <!-- 进度行才显示这根彩虹条（普通日志 BarVisibility=Collapsed，不占高度）-->
+                                        <ProgressBar Value="{x:Bind Pct, Mode=OneWay}" Maximum="100"
+                                                     Visibility="{x:Bind BarVisibility, Mode=OneWay}"
+                                                     Height="3" CornerRadius="1.5" Margin="0,0,2,4"
+                                                     Background="#1AFFFFFF"
+                                                     Foreground="{StaticResource RainbowBarBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StackPanel Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Spacing="10">
+            <TextBlock x:Name="QuietStatus" Text="就绪" FontSize="12.5" Opacity="0.6"
+                       HorizontalAlignment="Right" Margin="0,0,4,0" />
+            <Button x:Name="StartButton" Style="{StaticResource ActionButtonStyle}" Background="{ThemeResource ActionButtonBrush}" BorderBrush="{ThemeResource ActionButtonStroke}" Click="Start_Click">
+                <StackPanel Orientation="Horizontal" Spacing="11">
+                    <FontIcon Glyph="&#xE768;" FontSize="15" />
+                    <TextBlock x:Name="StartLabel" Text="开始翻译" FontSize="15" />
+                </StackPanel>
+            </Button>
+            <!-- 跑出成品之后才出现 -->
+            <Button x:Name="OpenOutButton" Visibility="Collapsed"
+                    Style="{StaticResource ActionButtonStyle}" Background="{ThemeResource ActionButtonBrush}" BorderBrush="{ThemeResource ActionButtonStroke}" Click="OpenOut_Click"
+                    ToolTipService.ToolTip="在资源管理器里打开成品">
+                <StackPanel Orientation="Horizontal" Spacing="11">
+                    <FontIcon Glyph="&#xE838;" FontSize="15" />
+                    <TextBlock Text="打开输出目录" FontSize="15" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" HorizontalAlignment="Center" FontSize="12.5" Opacity="0.55"
+                   Text="在线视频存在软件目录的 output 文件夹" />
+    </Grid>
+</Page>

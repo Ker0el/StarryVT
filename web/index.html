@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="icon.png" />
+  <title>星空AI视频翻译</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 背景层：星空（不透明度可在设置里调，见 #set-bgopacity） -->
+  <div class="bg-layer" id="bg-layer">
+    <div class="bg-nebula"></div>
+    <div class="bg-stars"></div>
+    <div class="bg-vignette"></div>
+  </div>
+
+  <div class="app">
+    <!-- 左侧图标导航（不展开，和模板一致） -->
+    <nav class="rail">
+      <div class="rail-brand" title="星空AI视频翻译"><img src="icon.png" alt="" /></div>
+
+      <button class="rail-btn active" id="nav-single" data-mode="single" title="视频翻译">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2.75" y="4.75" width="18.5" height="14.5" rx="3.2" />
+          <path d="M10.2 9.1v5.8l4.9-2.9z" class="fill" />
+        </svg>
+      </button>
+
+      <button class="rail-btn" id="nav-batch" data-mode="batch" title="批量翻译">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="4.4" cy="6.6" r="1.5" class="fill" />
+          <circle cx="4.4" cy="12" r="1.5" class="fill" />
+          <circle cx="4.4" cy="17.4" r="1.5" class="fill" />
+          <path d="M9 6.6h11.5M9 12h11.5M9 17.4h11.5" />
+        </svg>
+      </button>
+
+      <button class="rail-btn" id="btn-env" data-page="env" title="环境自检">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3.2 4.9 6v5.6c0 4.6 3 8.9 7.1 10.1 4.1-1.2 7.1-5.5 7.1-10.1V6z" />
+          <path d="M8.9 12.1l2.2 2.2 4-4.1" />
+        </svg>
+        <span class="rail-dot" id="env-dot"></span>
+      </button>
+
+      <div class="rail-spacer"></div>
+
+      <button class="rail-btn" id="btn-settings" data-page="settings" title="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2-1.58a.5.5 0 0 0 .12-.64l-1.9-3.3a.5.5 0 0 0-.6-.22l-2.36.95a7 7 0 0 0-1.63-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7 7 0 0 0-1.63.94L5.9 6.32a.5.5 0 0 0-.6.22l-1.9 3.3a.5.5 0 0 0 .12.64l2 1.58a7.07 7.07 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.64l1.9 3.3a.5.5 0 0 0 .6.22l2.36-.95a7 7 0 0 0 1.63.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7 7 0 0 0 1.63-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.3a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5z" />
+        </svg>
+      </button>
+    </nav>
+
+    <!-- 内容区 -->
+    <div class="stage">
+      <div class="stage-inner" id="stage-inner">
+        <header class="page-head">
+          <div class="page-head-main">
+            <h1 id="page-title">星空AI视频翻译</h1>
+            <div class="page-sub" id="page-sub-work">
+              <span class="ver-chip" id="brand-ver">v—</span>
+              <span class="engine-inline">
+                <span class="engine-dot" id="engine-dot"></span>
+                <span class="engine-text" id="engine-text">检测翻译引擎…</span>
+                <button id="btn-install-engine" class="mini hidden">一键安装</button>
+              </span>
+            </div>
+            <div class="page-sub hidden" id="page-sub-env">
+              <span class="env-summary" id="env-summary">检查中…</span>
+            </div>
+            <div class="page-sub hidden" id="page-sub-settings">
+              <span class="save-state" id="save-state">改动会自动保存</span>
+            </div>
+          </div>
+          <div class="head-btns">
+            <button id="btn-env-recheck" class="primary hidden">重新检测</button>
+            <button id="btn-env-diag" class="hidden">导出诊断报告</button>
+            <button id="btn-env-close" class="hidden">返回</button>
+            <button id="btn-close" class="hidden">返回</button>
+          </div>
+        </header>
+
+        <!-- 发现新版本 -->
+        <div class="update-bar hidden" id="update-bar">
+          <span>发现新版本 <b id="update-ver"></b></span>
+          <span class="update-notes" id="update-notes"></span>
+          <button id="btn-do-update" class="primary">立即更新</button>
+          <button id="btn-ignore-update">忽略</button>
+        </div>
+
+        <!-- 缺少运行组件（ffmpeg/ffprobe/yt-dlp） -->
+        <div class="tools-bar hidden" id="tools-bar">
+          <span id="tools-text"></span>
+          <button id="btn-check-tools">重新检测</button>
+        </div>
+
+        <!-- ============ 翻译 / 批量 ============ -->
+        <section class="page" id="page-work">
+          <div class="cols">
+            <div class="card">
+              <div class="card-head"><h2>输入</h2></div>
+              <div class="card-body">
+                <div id="panel-single">
+                  <div class="seg" id="seg-src">
+                    <span class="seg-thumb" id="seg-thumb"></span>
+                    <button type="button" class="seg-btn active" data-v="file">本地文件</button>
+                    <button type="button" class="seg-btn" data-v="url">视频链接</button>
+                  </div>
+
+                  <div class="row" id="row-file">
+                    <input type="text" id="in-file" placeholder="选择视频文件…" readonly />
+                    <button id="btn-pick">选择…</button>
+                  </div>
+
+                  <div class="row hidden" id="row-url">
+                    <input type="text" id="in-url" placeholder="粘贴 YouTube 等视频链接…" />
+                  </div>
+
+                  <div class="row two">
+                    <label>源语言
+                      <select id="sel-lang"></select>
+                    </label>
+                    <label>配音音色
+                      <div class="row inner">
+                        <select id="sel-voice"></select>
+                        <button id="btn-preview" title="合成一句样音试听">试听</button>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div class="row">
+                    <input type="text" id="in-extra" placeholder="背景信息（选填）：如「UE5 游戏开发教程」——帮助翻译更准确" />
+                  </div>
+                  <div class="hint-small" id="extra-hint"></div>
+
+                  <div class="field-label">原声音量</div>
+                  <div class="row slider-row">
+                    <input type="range" id="rng-orig" min="0" max="100" step="5" value="15" />
+                    <span class="slider-val" id="orig-val">15%</span>
+                  </div>
+                  <div class="hint-small">0% = 纯中文配音（原声全去掉）；数值越大背景原声越明显</div>
+
+                  <div class="row opts">
+                    <label class="check"><input type="checkbox" id="chk-dub" checked /><span>生成中文配音</span></label>
+                    <label class="check"><input type="checkbox" id="chk-burn" checked /><span>烧录字幕到成片</span></label>
+                  </div>
+                </div><!-- /panel-single -->
+
+                <div id="panel-batch" class="hidden">
+                  <div class="seg" id="seg-batch">
+                    <span class="seg-thumb"></span>
+                    <button type="button" class="seg-btn active" data-v="folder">文件夹</button>
+                    <button type="button" class="seg-btn" data-v="playlist">YouTube 合集</button>
+                  </div>
+
+                  <div class="row" id="row-bfolder">
+                    <input type="text" id="in-bfolder" placeholder="选择包含视频的文件夹…" readonly />
+                    <button id="btn-pick-folder">选择…</button>
+                  </div>
+                  <div class="row hidden" id="row-burl">
+                    <input type="text" id="in-burl" placeholder="粘贴 YouTube 合集 / 播放列表链接…" />
+                  </div>
+
+                  <div class="row two">
+                    <label>源语言
+                      <select id="sel-lang-b"></select>
+                    </label>
+                    <label>配音音色
+                      <select id="sel-voice-b"></select>
+                    </label>
+                  </div>
+
+                  <div class="row opts">
+                    <label class="check"><input type="checkbox" id="chk-dub-b" checked /><span>生成中文配音</span></label>
+                    <label class="check"><input type="checkbox" id="chk-burn-b" checked /><span>烧录字幕</span></label>
+                  </div>
+
+                  <div class="row">
+                    <input type="text" id="in-extra-b" placeholder="背景信息（选填）：如「UE5 游戏开发教程」——帮助翻译更准确" />
+                  </div>
+                  <div class="hint-small" id="extra-hint-b"></div>
+
+                  <div class="field-label">队列</div>
+                  <div class="queue" id="queue"></div>
+                </div><!-- /panel-batch -->
+
+                <div class="tip-inline">
+                  <span class="tip-text">觉得好用的话，<br />可以请我喝杯咖啡 ☕</span>
+                  <img src="zs.png" alt="赞赏码" class="tip-qr" id="tip-qr" title="点我放大" />
+                </div>
+                <div class="contact-row">
+                  <span>联系作者微信：<b id="wx-id">Star0xcc</b></span>
+                  <button id="btn-copy-wx" class="mini">复制</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h2>进度</h2></div>
+              <div class="card-body progress-body">
+                <div class="state-banner idle" id="state-banner">
+                  <span class="state-icon">●</span><span id="state-text">就绪</span>
+                </div>
+                <div class="bar"><div class="bar-fill" id="bar"></div></div>
+                <div class="status-line"><span id="stage-text">等待开始</span><span id="pct-text">0%</span></div>
+                <pre class="log" id="log"></pre>
+                <div class="row actions" id="result-actions" style="display:none">
+                  <button id="btn-open-final" class="primary">打开成片</button>
+                  <button id="btn-open-dir">打开输出目录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 主操作：右下角浮动（和模板一致） -->
+          <div class="fab-bar">
+            <button id="btn-scan" class="fab-btn hidden">扫描列表</button>
+            <button id="btn-start" class="fab-btn primary">开始翻译</button>
+            <button id="btn-start-batch" class="fab-btn primary hidden">开始批量翻译</button>
+            <button id="btn-cancel" class="fab-btn danger hidden">取消</button>
+            <button id="btn-cancel-b" class="fab-btn danger hidden">取消</button>
+          </div>
+        </section>
+
+        <!-- ============ 环境自检 ============ -->
+        <section class="page hidden" id="page-env">
+          <div class="env-list" id="env-list"></div>
+        </section>
+
+        <!-- ============ 设置 ============ -->
+        <section class="page hidden" id="page-settings">
+          <div class="group">
+            <div class="group-head">API Key</div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">MiMo API Key <em class="tag req">必填</em></div>
+                <div class="srow-sub">配音用；勾选「生成中文配音」时必需</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <input type="text" id="set-key-mimo" placeholder="粘贴你自己的 MiMo API Key" />
+                  <button type="button" class="mini" data-test="mimo">测试</button>
+                  <a href="#" class="apply" data-k="mimo">去申请 ↗</a>
+                </div>
+                <small id="hint-mimo"></small>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">DeepSeek API Key <em class="tag req">必填</em></div>
+                <div class="srow-sub">翻译用（主力引擎）</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <input type="text" id="set-key-deepseek" placeholder="粘贴你自己的 DeepSeek API Key" />
+                  <button type="button" class="mini" data-test="deepseek">测试</button>
+                  <a href="#" class="apply" data-k="deepseek">去申请 ↗</a>
+                </div>
+                <small id="hint-deepseek"></small>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">Gemini API Key <em class="tag opt">选填</em></div>
+                <div class="srow-sub">只给下面两个增强用；不填不影响正常翻译</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <input type="text" id="set-key-gemini" placeholder="可选：不填不影响翻译" />
+                  <button type="button" class="mini" data-test="gemini">测试</button>
+                  <a href="#" class="apply" data-k="gemini">去申请 ↗</a>
+                </div>
+                <small id="hint-gemini"></small>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-head">输出与界面</div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">输出目录 <em class="tag opt">选填</em></div>
+                <div class="srow-sub">留空 = 视频旁边的 output\（链接下载用软件目录）</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <input type="text" id="set-out" placeholder="" />
+                  <button id="btn-pick-out">选择…</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">背景亮度</div>
+                <div class="srow-sub">星空背景的强度；0% 就是纯深色底</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner slider-row">
+                  <input type="range" id="set-bgopacity" min="0" max="100" step="5" value="55" />
+                  <span class="slider-val" id="bgopacity-val">55%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">可选增强 <em class="tag opt">选填</em></div>
+                <div class="srow-sub">都关着也能正常翻译</div>
+              </div>
+              <div class="srow-ctl">
+                <label class="check"><input type="checkbox" id="set-vctx" />
+                  <span>视频语境纠错 —— 把画面发给 Gemini 理解上下文（需 Gemini Key，且<strong>需要能连上 Google，国内要开代理</strong>；更准但更慢）</span></label>
+                <label class="check"><input type="checkbox" id="set-wsearch" />
+                  <span>联网查证 —— 术语上网核实（需<strong>能访问 Google，国内要开代理</strong>；较慢）</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-head">配音</div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">配音怎么读 <em class="tag opt">选填</em></div>
+                <div class="srow-sub">一句风格指令交给配音模型，比如「语速偏快，像在赶时间但仍要清晰自然」。<strong>语速偏快能让中文更容易塞进原时间窗</strong>，少一点生硬的变速；留空用默认</div>
+              </div>
+              <div class="srow-ctl">
+                <input type="text" id="set-tts-style" placeholder="留空用默认（语速偏快、清晰自然）" />
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">保留原说话人音色 <em class="tag opt">需要配音</em></div>
+                <div class="srow-sub">从原视频的人声里取一段做音色复刻，用<strong>他本人的声音念中文</strong>（像外国人讲中文）。会盖过上面选的音色；请确认你有使用该声音的权利</div>
+              </div>
+              <div class="srow-ctl">
+                <label class="check"><input type="checkbox" id="set-tts-clone" />
+                  <span>开启</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-head">字幕来源</div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">YouTube 字幕 <em class="tag rec">推荐</em></div>
+                <div class="srow-sub">创作者上传的字幕比语音识别准得多——专有名词几乎不出错，还能跳过语音识别直接翻译（更快）。没有字幕的视频照常识别</div>
+              </div>
+              <div class="srow-ctl">
+                <select id="set-ytsubs">
+                  <option value="manual">优先用人工字幕（推荐）</option>
+                  <option value="auto">没有人工字幕就用自动字幕</option>
+                  <option value="off">不用，一律重新识别</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">按标题自动填背景信息</div>
+                <div class="srow-sub">填好链接或视频后，自动认出讲的是哪款软件（UE / Blender / Houdini…）填进「背景信息」帮翻译认准术语；填完还能自己改</div>
+              </div>
+              <div class="srow-ctl">
+                <label class="check"><input type="checkbox" id="set-ytauto" checked />
+                  <span>开启</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-head">高级（一般不用改）</div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">版本与更新</div>
+                <div class="srow-sub" id="ver-text">当前版本 —</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner"><button id="btn-check-update">检查更新</button></div>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">YouTube 下载器 <em class="tag opt">自动更新</em></div>
+                <div class="srow-sub">下载 YouTube 视频用的 yt-dlp；YouTube 的反爬规则常变，软件每次启动会自动把它更新到最新</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <span class="text-dim" id="dl-text">读取中…</span>
+                  <button id="btn-update-dl">立即更新</button>
+                </div>
+                <label class="check"><input type="checkbox" id="set-auto-dl" /><span>每次启动自动检查下载器更新</span></label>
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">网络代理 <em class="tag opt">选填</em></div>
+                <div class="srow-sub">下载 YouTube 视频、用 Gemini 增强时才需要；只翻译本地文件可留空</div>
+              </div>
+              <div class="srow-ctl">
+                <input type="text" id="set-proxy" placeholder="http://127.0.0.1:7897" />
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">GitHub 加速镜像 <em class="tag opt">一般不用改</em></div>
+                <div class="srow-sub">引擎有几种组件只放在 GitHub 上，没代理时靠它下载；auto = 自动挑一个能通的</div>
+              </div>
+              <div class="srow-ctl">
+                <input type="text" id="set-github-mirror" placeholder="auto" />
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">finesub 命令 <em class="tag opt">选填</em></div>
+                <div class="srow-sub">留空 = 到 PATH 里找 finesub</div>
+              </div>
+              <div class="srow-ctl">
+                <input type="text" id="set-exe" placeholder="finesub" />
+              </div>
+            </div>
+
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">FINESUB_HOME（引擎数据目录）<em class="tag opt">选填</em></div>
+                <div class="srow-sub">留空 = C:\Users\你\AppData\Local\FineSub；引擎和模型（约 5GB）都放这里</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner">
+                  <input type="text" id="set-home" placeholder="例如 E:\FineSub" />
+                  <button id="btn-pick-home">选择…</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-head">遇到问题</div>
+            <div class="srow">
+              <div class="srow-lbl">
+                <div class="srow-title">日志与诊断</div>
+                <div class="srow-sub">出了问题时把日志或诊断报告发我，报告里不含 API Key</div>
+              </div>
+              <div class="srow-ctl">
+                <div class="row inner wrap">
+                  <button id="btn-copy-log">复制日志</button>
+                  <button id="btn-open-logs">打开日志目录</button>
+                  <button id="btn-export-diag">导出诊断报告</button>
+                  <button id="btn-open-terms">用户协议</button>
+                  <button id="btn-open-licenses">开源许可</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- 赞赏码放大 -->
+  <div class="modal-mask hidden" id="qr-mask">
+    <div class="qr-pop">
+      <img src="zs.png" alt="赞赏码" />
+      <p>扫码请我喝杯咖啡，谢谢支持 ✦</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

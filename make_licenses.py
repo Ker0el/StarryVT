@@ -1,0 +1,421 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""生成第三方开源组件许可证清单（THIRD_PARTY_LICENSES.md）
+
+扫打包产物里**实际带上**的包，从构建环境的包元数据里取许可证。
+用法: python make_licenses.py
+
+两种后端布局都要认（见 build.py / build_nuitka.py 里的选择）：
+  · PyInstaller:  dist/StarryVT/_internal/     —— 纯 Python 模块压在 exe 里的 PYZ，这里只有二进制扩展
+  · Nuitka:       dist-nuitka/app.dist/        —— 平铺布局（bin/ web/ assets/ 和一堆 .pyd）
+                  dist-nuitka/app.build/       —— 每个被编译的模块都留一个 module.<点号名>.c
+
+⚠️ Nuitka 那份**必须**连 app.build 一起扫：纯 Python 模块是被编译进 exe 的，
+   产物目录里根本看不到它们 —— 只扫 app.dist 会漏掉一大半（实测 6 个 vs 14 个）。
+   反过来，PyInstaller 那份只扫 _internal 也会漏纯 Python 模块（它们在 PYZ 里），
+   不过那条线已经不用了，没再补。
+"""
+from __future__ import annotations
+
+import importlib.metadata as md
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+PYI_INTERNAL = ROOT / "dist" / "StarryVT" / "_internal"
+NUITKA_DIST = ROOT / "dist-nuitka" / "app.dist"
+NUITKA_BUILD = ROOT / "dist-nuitka" / "app.build"
+OUT = ROOT / "THIRD_PARTY_LICENSES.md"
+COMBINED = ROOT / "licenses" / "PYTHON-PACKAGES-LICENSES.txt"
+
+# 打进包里但不在 site-packages 元数据里的（解释器本体等）
+EXTRA = [
+    ("Python (CPython)", "3.12", "PSF License (Python Software Foundation License)"),
+    ("Microsoft Edge WebView2 Runtime", "系统组件", "Microsoft 软件许可条款（系统自带，非本软件分发）"),
+    ("Microsoft Visual C++ Runtime", "系统组件", "Microsoft 可再发行组件许可"),
+]
+
+# 随包分发的外部程序（由 fetch_tools.py 下载到 .tools/bin/，版本运行时读取，不写死）
+BUNDLED_BINARIES = [
+    {
+        "name": "FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll）",
+        "exe": "ffmpeg.exe",
+        "arg": "-version",
+        "license": "LGPL-3.0-or-later",
+        "note": ("**随本软件分发**。刻意选用 LGPL 构建（不含 GPL 的 libx264/libx265），"
+                 "以独立进程方式调用、未修改其代码，用户可自行替换。"
+                 "许可证原文见 `licenses/LGPL-3.0.txt` 与 `licenses/GPL-3.0.txt`；"
+                 "对应源码见 <https://ffmpeg.org/download.html>，"
+                 "本构建的打包脚本见 <https://github.com/BtbN/FFmpeg-Builds>。"),
+    },
+    {
+        "name": "yt-dlp（yt-dlp.exe）",
+        "exe": "yt-dlp.exe",
+        "arg": "--version",
+        "license": "Unlicense（公有领域）",
+        "note": "**随本软件分发**。许可证原文见 `licenses/yt-dlp-Unlicense.txt`；源码见 <https://github.com/yt-dlp/yt-dlp>。",
+    },
+]
+
+# 随包分发的 Python 包（wheelhouse/）：引擎装运行时要用、而只发布在 GitHub 上的那几个。
+# 没有代理的机器下不动它们，所以随安装包带一份原样副本（见 wheels.py）。
+BUNDLED_WHEELS = [
+    {
+        "name": "CTranslate2（翻译引擎用的推理库）",
+        "pattern": "ctranslate2-*.whl",
+        "license": "MIT",
+        "note": ("**随本软件分发**（位于程序目录的 `wheelhouse\\`）。上游为 OpenNMT 的 "
+                 "CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。"
+                 "这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；"
+                 "该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。"),
+    },
+]
+
+# 随包分发的字体（位于 assets/fonts/）
+BUNDLED_FONTS = [
+    {
+        "name": "思源黑体 Light（StarryHanSans-Light.ttf）",
+        "license": "SIL Open Font License 1.1",
+        "note": ("**随本软件分发**（位于程序目录的 `assets\\fonts\\`）。由 Noto Sans SC 可变字体抽取的 "
+                 "Light（wght=300）静态实例；按 OFL 1.1 的保留字体名条款，内部族名改为 "
+                 "`Starry Han Sans Light`，未使用 Reserved Font Name `Source`。"
+                 "许可证原文见 `assets\\fonts\\OFL.txt`；上游见 <https://github.com/notofonts/noto-cjk>。"),
+    },
+]
+
+# 随包分发的**界面侧**组件（.NET / WinUI 那一堆）——它们不在 Python 包里，扫不出来，得手写
+UI_STACK = [
+    {"name": "Windows App SDK（WinUI 3）", "license": "Microsoft 软件许可条款（允许随应用分发运行时）",
+     "file": "licenses/WindowsAppSDK-LICENSE.txt",
+     "note": "**随本软件分发**（程序根目录的 `Microsoft.ui.xaml.dll`、`Microsoft.WindowsAppRuntime.dll` 等）。"
+             "界面框架，未修改其代码。"},
+    {"name": ".NET 8 运行时（自包含发布）", "license": "MIT",
+     "file": "licenses/dotnet-LICENSE.txt",
+     "extra": "（另有第三方声明 `licenses/dotnet-ThirdPartyNotices.txt`）",
+     "note": "**随本软件分发**（`coreclr.dll`、`System.*.dll` 等）。界面程序的运行时，未修改其代码。"},
+    {"name": "Microsoft Visual C++ 运行库", "license": "Microsoft 可再发行组件许可",
+     "file": "",
+     "note": "**随本软件分发**（`MSVCP140.dll`、`VCRUNTIME140*.dll`）；微软允许随应用一起再发行。"},
+    {"name": "Microsoft Edge WebView2（加载器）", "license": "Microsoft 软件许可条款",
+     "file": "",
+     "note": "**只随包带加载器** `WebView2Loader.dll`；WebView2 运行时本身是系统组件（Windows 11 自带），本软件不分发。"},
+]
+
+# 运行时依赖但不由本软件分发（用户自行安装/获取）
+RUNTIME_NOTES = [
+    ("finesub（翻译引擎）", "GPL-3.0-or-later",
+     "**本软件不打包、不分发此组件**；首次使用时在用户自己的电脑上从上游渠道安装，本软件仅以独立进程方式调用。"),
+    ("faster-whisper / Whisper 模型", "MIT",
+     "由翻译引擎在首次使用时自动下载，本软件不分发。"),
+    ("Qwen3-ASR 模型", "Apache-2.0",
+     "由翻译引擎在首次使用时自动下载，本软件不分发。"),
+    ("uv（引擎运行时用，两个版本）", "Apache-2.0 / MIT",
+     "由翻译引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。"),
+    ("FFmpeg（引擎运行时用，GPL 构建）", "GPL-3.0",
+     "由翻译引擎从上游 GitHub（BtbN/FFmpeg-Builds）下载，本软件不镜像、不分发。"
+     "**与随包那个 LGPL 构建不是同一份文件**。"),
+    ("MinGit（引擎运行时用）", "GPL-2.0",
+     "由翻译引擎从上游 GitHub（git-for-windows/git）下载，本软件不镜像、不分发。"),
+    ("tokcount（引擎的本地分词器）", "随 finesub（GPL-3.0-or-later）",
+     "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"),
+    ("BS-Roformer 人声分离模型（权重与 .yaml）", "MIT（依 UVR 的模型声明）",
+     "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"
+     "模型作者为 Anjok07、aufr33、viperx；代码架构来自 lucidrains/BS-Roformer（MIT）。"),
+    ("IndexTTS-2.5（本地语音克隆，可选的备用音色）", "bilibili 模型使用许可",
+     "**本软件不打包、不分发此组件**：用户在设置里点「下载并启用」时，由本软件"
+     "从官方渠道（GitHub / HuggingFace）下载到本机数据目录，随附其原始许可协议；"
+     "免费使用、可商用：许可 §2.1 是 worldwide / royalty-free 的完整授权，没有非商业限制，"
+     "只有规模门槛：月活超过 1 亿**或**年收入超过 10 亿人民币才需要另行申请书面许可（§2.2）。"
+     "另外要求保留版权声明与许可原文（§3.4b）、不得用于训练或改进其它 AI 模型（§3.4c）、"
+     "不得用于医疗诊断等高风险场景（§4.2）。"),
+    ("MiMo / DeepSeek / Gemini API", "商业服务",
+     "由用户自行申请账号与 API Key，并遵守各服务商条款。"),
+    ("背景壁纸（t.alcy.cc 等第三方图源）", "第三方内容",
+     "设置里的动态/静态壁纸由本软件**在用户机器上实时从第三方图源获取**，本软件不分发、不转存这些图片；"
+     "图片版权归原作者所有，仅供个人本地使用。不想用时可在「设置 → 背景壁纸」切回内置的星空底图。"),
+]
+
+
+# ★★ 本软件**镜像托管**在对象存储上的文件（2026-10-17 起为空）
+#
+# 用户 2026-10-17 决定不再维护国内对象存储，全部改走 GitHub：
+# 引擎运行时所需的 uv / FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer
+# 由引擎从上游 GitHub 下载，本软件不镜像、不分发。
+MIRRORED: list[tuple[str, str, str]] = []
+
+# 元数据里没写许可证的，用已知信息补齐
+KNOWN_LICENSES = {"clr_loader": "MIT", "pythonnet": "MIT", "pywebview": "BSD-3-Clause"}
+
+
+def _license_of(dist_name: str) -> str:
+    if dist_name in KNOWN_LICENSES:
+        return KNOWN_LICENSES[dist_name]
+    try:
+        meta = md.metadata(dist_name)
+    except Exception:
+        return "（未在元数据中找到，见该项目主页）"
+    lic = (meta.get("License-Expression") or meta.get("License") or "").strip()
+    if not lic or len(lic) > 80:
+        lics = [c.split("::")[-1].strip() for c in meta.get_all("Classifier") or []
+                if c.startswith("License")]
+        lic = " / ".join(sorted(set(lics))) if lics else ""
+    return lic or "（见该项目主页）"
+
+
+def _binary_version(item: dict) -> str:
+    """版本号直接问程序本身——免得清单里写的和实际发出去的二进制对不上"""
+    exe = ROOT / ".tools" / "bin" / item["exe"]
+    if not exe.exists():
+        return "(未随包)"
+    try:
+        out = subprocess.run([str(exe), item["arg"]],
+                             capture_output=True, text=True, timeout=30).stdout
+    except Exception:  # noqa: BLE001
+        return "?"
+    first = (out.splitlines() or [""])[0]
+    m = re.search(r"version (\S+)", first)
+    return (m.group(1) if m else first.strip()) or "?"
+
+
+def _wheel_version(item: dict) -> str:
+    """版本从随包的文件名里读——免得清单写的和实际发出去的对不上"""
+    for f in sorted((ROOT / "wheelhouse").glob(item["pattern"])):
+        parts = f.name.split("-")
+        if len(parts) > 1:
+            return parts[1]
+    return "(未随包)"
+
+
+def _scan_flat_dir(root: Path) -> set[str]:
+    """扫一个平铺目录里的顶层包名（包目录 + .pyd），再反查成发行包名。"""
+    p2d = md.packages_distributions()
+    out: set[str] = set()
+    for it in root.iterdir():
+        if it.is_file() and it.suffix != ".pyd":
+            continue                       # .dll / .exe 之类不是 Python 包
+        top = it.stem if it.is_file() else it.name
+        dists = p2d.get(top) or []
+        for d in dists:
+            out.add(d)
+        if not dists and it.is_dir() and (it / "__init__.py").exists():
+            out.add(top)
+    return out
+
+
+def _scan_nuitka_modules(build: Path) -> set[str]:
+    """Nuitka 编过的每个模块在构建目录里都留一个 `module.<点号名>.c` —— 拿它反查发行包名。
+
+    这是唯一能拿到「纯 Python 模块」的途径：它们被编译进 exe 了，
+    app.dist 目录里一个文件都不对应。
+    """
+    p2d = md.packages_distributions()
+    out: set[str] = set()
+    for f in build.glob("module.*.c"):
+        top = f.name[len("module."):-len(".c")].split(".")[0]
+        for d in p2d.get(top) or []:
+            out.add(d)
+    return out
+
+
+def _license_files(dist_name: str) -> list[Path]:
+    """找出一个发行包元数据里带的 LICENSE / COPYING / NOTICE 文件。"""
+    try:
+        dist = md.distribution(dist_name)
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[Path] = []
+    seen: set[str] = set()
+    for f in dist.files or []:
+        s = str(f).replace("\\", "/")
+        low = s.lower()
+        leaf = low.rsplit("/", 1)[-1]
+        if not (leaf.startswith(("license", "copying", "notice", "copyright"))
+                or "/licenses/" in low):
+            continue
+        p = Path(dist.locate_file(f))
+        try:
+            if not p.is_file() or p.stat().st_size > 1_500_000:
+                continue
+        except OSError:
+            continue
+        key = str(p.resolve()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _write_package_license_texts(rows: list[tuple[str, str, str]]) -> None:
+    """把打包进来的 Python 包的许可证原文汇总到一个文件，随安装包分发。"""
+    COMBINED.parent.mkdir(parents=True, exist_ok=True)
+    chunks = [
+        "Python 打包组件的许可证原文汇总",
+        "由 make_licenses.py 从构建环境的包元数据中收集。",
+        "",
+    ]
+    missing: list[str] = []
+    for name, ver, lic in rows:
+        files = _license_files(name)
+        if not files:
+            missing.append(name)
+            continue
+        chunks.append(f"{'=' * 72}\n{name} {ver} | {lic}\n{'=' * 72}")
+        for p in files:
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                continue
+            if text:
+                chunks.append(f"--- {p.name} ---\n{text}\n")
+    if missing:
+        chunks.append("以下包未在本地元数据中找到许可证文件，请见各自项目主页：")
+        chunks.extend(f"- {n}" for n in missing)
+        chunks.append("")
+    COMBINED.write_text("\n".join(chunks), encoding="utf-8")
+    print(f"[OK] 已写 {COMBINED.name}（{len(rows) - len(missing)} 个包有原文，"
+          f"{len(missing)} 个缺文件）")
+
+
+def main() -> int:
+    if NUITKA_BUILD.is_dir() and NUITKA_DIST.is_dir():
+        bundled = _scan_nuitka_modules(NUITKA_BUILD) | _scan_flat_dir(NUITKA_DIST)
+        print(f"扫描 Nuitka 产物（{NUITKA_BUILD.name} 的模块清单 + {NUITKA_DIST.name} 的包目录）")
+    elif PYI_INTERNAL.is_dir():
+        bundled = _scan_flat_dir(PYI_INTERNAL)
+        print("扫描 PyInstaller 产物（_internal）")
+    else:
+        print("找不到打包产物，请先运行 python build.py")
+        return 1
+
+    rows = []
+    for dist in sorted(bundled, key=str.lower):
+        try:
+            ver = md.version(dist)
+        except Exception:
+            ver = "?"
+        rows.append((dist, ver, _license_of(dist)))
+
+    _write_package_license_texts(rows)
+
+    lines = [
+        "# 第三方开源组件许可证清单",
+        "",
+        "本软件（星译）以 GPL-3.0 开源，打包与运行过程中使用了以下第三方开源组件。",
+        "我们在此致谢并按各自许可证的要求列明其版权与许可信息。",
+        "",
+        "## 一、随本软件打包分发的组件",
+        "",
+        "| 组件 | 版本 | 许可证 |",
+        "| --- | --- | --- |",
+    ]
+    for name, ver, lic in rows:
+        lines.append(f"| {name} | {ver} | {lic} |")
+    # 只提真在包里的那几个 —— 别写一句「Pillow 为 HPND」，而我们根本没分发 Pillow
+    _notes = ["Python 本体采用 PSF 许可证（`licenses/Python-PSF.txt`）"]
+    _notes.append("Python 包（含 MCP 及其依赖）的许可证原文汇总见 "
+                  "`licenses/PYTHON-PACKAGES-LICENSES.txt`")
+    if "Pillow" in bundled:
+        _notes.append("Pillow 为 HPND（`licenses/Pillow-HPND.txt`）")
+    if "cryptography" in bundled:
+        _notes.append("cryptography 为 Apache-2.0 / BSD-3-Clause 双许可（两份原文都在 `licenses\\`）")
+    lines += [
+        "",
+        "> 完整许可证原文随包放在 `licenses\\` 目录里（安装目录下同名文件夹）；"
+        "各自的官方仓库也能查到（`python -m pip show <包名>` 可看本地元数据）。",
+        "> " + "；".join(_notes) + "。",
+        "",
+        "## 二、随本软件分发的外部程序",
+        "",
+        "这些程序不是 Python 库，以独立可执行文件随安装包一起分发（位于程序目录的 `bin\\`），",
+        "本软件通过命令行方式调用它们，不修改其代码：",
+        "",
+        "| 组件 | 版本 | 许可证 |",
+        "| --- | --- | --- |",
+    ]
+    for it in BUNDLED_BINARIES:
+        lines.append(f"| {it['name']} | {_binary_version(it)} | {it['license']} |")
+    for it in BUNDLED_BINARIES:
+        lines.append(f"- **{it['name']}**：{it['note']}")
+    if BUNDLED_WHEELS:
+        lines += [
+            "",
+            "另外，翻译引擎首次运行需要的一个 Python 包只发布在 GitHub 上（没有代理的机器",
+            "下不动，会导致引擎装不上），因此也随安装包分发一份原样副本（位于 `wheelhouse\\`）：",
+            "",
+            "| 组件 | 版本 | 许可证 |",
+            "| --- | --- | --- |",
+        ]
+        for it in BUNDLED_WHEELS:
+            lines.append(f"| {it['name']} | {_wheel_version(it)} | {it['license']} |")
+        for it in BUNDLED_WHEELS:
+            lines.append(f"- **{it['name']}**：{it['note']}")
+    if BUNDLED_FONTS:
+        lines += [
+            "",
+            "随包的字体（位于程序目录的 `assets\\fonts\\`）：",
+            "",
+            "| 组件 | 许可证 |",
+            "| --- | --- |",
+        ]
+        for it in BUNDLED_FONTS:
+            lines.append(f"| {it['name']} | {it['license']} |")
+        for it in BUNDLED_FONTS:
+            lines.append(f"- **{it['name']}**：{it['note']}")
+    lines += [
+        "",
+        "## 三、随本软件分发的界面侧组件",
+        "",
+        "3.0 起的界面是 WinUI 3（自包含发布），安装目录里带的这些微软组件同样是随包分发的：",
+        "",
+        "| 组件 | 许可证 |",
+        "| --- | --- |",
+    ]
+    for it in UI_STACK:
+        lines.append(f"| {it['name']} | {it['license']} |")
+    for it in UI_STACK:
+        tail = f" 许可证原文见 `{it['file']}`。{it.get('extra', '')}" if it.get("file") else ""
+        lines.append(f"- **{it['name']}**：{it['note']}{tail}")
+    lines += [
+        "",
+        "## 四、运行时依赖，但**不由本软件分发**",
+        "",
+        "| 组件 | 许可证 | 说明 |",
+        "| --- | --- | --- |",
+    ]
+    for name, lic, note in RUNTIME_NOTES:
+        lines.append(f"| {name} | {lic} | {note} |")
+    lines += [
+        "",
+        "## 五、本软件不再镜像托管第三方文件",
+        "",
+        "用户 2026-10-17 决定不再维护国内对象存储。翻译引擎首次运行时所需的 uv、"
+        "FFmpeg（GPL 构建）、MinGit、tokcount、BS-Roformer 模型由引擎从上游 GitHub 下载，"
+        "本软件不镜像、不分发。",
+        "",
+        "## 六、说明",
+        "",
+        "- **安装包内**不含任何 GPL 许可的代码、也不打包 GPL 组件；随包分发的 FFmpeg 为 **LGPL 构建**"
+        "（不含 libx264/libx265 等 GPL 部分），按 LGPL 的要求附上许可证原文并允许用户替换 `bin\\` 下的文件。",
+        "  翻译引擎（finesub，GPL-3.0-or-later）不随安装包分发，首次使用时在用户自己的电脑上从上游渠道",
+        "  安装，本软件仅以独立进程方式调用、不修改其源码（GPLv3 第 9 条：运行一份副本本身不需要接受该许可，也不产生义务）。",
+        "- 翻译引擎首次运行时所需的第三方文件（uv / FFmpeg GPL 构建 / MinGit / tokcount / BS-Roformer 模型）"
+        "由引擎从上游 GitHub 下载，本软件不镜像、不分发；版权与许可归各自作者所有。",
+        "- 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\\fonts\\OFL.txt`；"
+        "字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。",
+        "- 若你二次分发本软件，请一并保留本清单与 `licenses\\` 目录。",
+        "",
+        f"（本清单由 `make_licenses.py` 自动生成，共 {len(rows)} 个打包组件 + {len(BUNDLED_BINARIES)} 个随包外部程序 + {len(BUNDLED_FONTS)} 个随包字体）",
+        "",
+    ]
+    OUT.write_text("\n".join(lines), encoding="utf-8")
+    print(f"[OK] 已生成 {OUT.name}（{len(rows)} 个打包组件）")
+    for name, ver, lic in rows:
+        print(f"   - {name} {ver}: {lic[:60]}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

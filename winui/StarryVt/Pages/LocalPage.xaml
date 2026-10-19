@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Starry.Vt.App.Pages.LocalPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:fakes="using:Starry.Vt.App.Fakes"
+    xmlns:ctl="using:Starry.Vt.App.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style x:Key="ActionButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource GlassButtonStyle}">
+            <Setter Property="MinWidth" Value="196" />
+        </Style>
+        <Style x:Key="RowIconButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="11,9" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Padding="42,24,42,20" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 页头 -->
+        <StackPanel Grid.Row="0" Spacing="5">
+            <TextBlock Text="本地翻译" FontSize="38" FontWeight="SemiBold" />
+            <TextBlock Text="翻本机的视频：自动配音 + 字幕" FontSize="14" Opacity="0.78" />
+        </StackPanel>
+
+        <!-- 单个 / 批量：就在页面顶上切，不再往导航栏里塞两级。
+             右边顺手放「语言 / 音色 / 试听」—— 两种模式共用一套，不用切来切去 -->
+        <SelectorBar x:Name="ModeBar" Grid.Row="1" SelectionChanged="ModeBar_SelectionChanged">
+            <SelectorBarItem Text="单个视频" IsSelected="True" Tag="local-single" />
+            <SelectorBarItem Text="批量翻译" Tag="local-batch" />
+        </SelectorBar>
+
+        <Grid Grid.Row="2" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="720" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：列表（单个＝我的视频 / 批量＝待翻译队列） -->
+            <Border Grid.Column="0" VerticalAlignment="Top"
+                    CornerRadius="8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 默认源语言 / 音色 / 输出都在设置里配，工作页只负责选文件 -->
+
+                    <!-- 整个文件夹：待翻译队列 -->
+                    <Grid x:Name="BatchHeader" Grid.Row="1" Padding="18,15,14,13" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="待翻译队列 ★" FontSize="17" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button x:Name="ClearQueueButton" Padding="14,7" CornerRadius="6"
+                                    Background="{ThemeResource PanelSubtleBrush}" BorderThickness="0"
+                                    IsEnabled="False" Click="ClearQueue_Click"
+                                    ToolTipService.ToolTip="把队列清空">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="13" />
+                                    <TextBlock Text="清空" FontSize="14" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <!-- 读文件夹时 / 读出来是空的时候在这儿说话 -->
+                        <TextBlock x:Name="QueueHint" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                                   FontSize="12.5" Opacity="0.7" TextWrapping="Wrap" Visibility="Collapsed" />
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+                        <!-- 单个视频：就一个文件，不做列表 —— 拖进来，或者点一下选一个
+                             （虚线框这个样式照 PMX2FBX 那个投放区来的） -->
+                        <Grid x:Name="DropZone" Margin="18,16,18,18" MinHeight="228"
+                              Background="Transparent" Tapped="PickVideo_Click"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="DropScale" ScaleX="1" ScaleY="1" />
+                            </Grid.RenderTransform>
+
+                            <!-- 拖进来时铺的一层渐变（照 AI-image2 那个投放区的动效） -->
+                            <Border x:Name="DropGlow" CornerRadius="8" Opacity="0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop x:Name="GlowA" Color="#2E7C3AED" Offset="0" />
+                                        <GradientStop x:Name="GlowB" Color="#24EC4899" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+
+                            <Rectangle x:Name="DropRect"
+                                       Stroke="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                       StrokeThickness="1.4" StrokeDashArray="4,3"
+                                       RadiusX="10" RadiusY="10" />
+                            <StackPanel x:Name="DropHint" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False">
+                                <FontIcon x:Name="DropIcon" Glyph="&#xE898;" FontSize="46" Opacity="0.7"
+                                          RenderTransformOrigin="0.5,0.5">
+                                    <FontIcon.RenderTransform>
+                                        <ScaleTransform x:Name="DropIconScale" ScaleX="1" ScaleY="1" />
+                                    </FontIcon.RenderTransform>
+                                </FontIcon>
+                                <TextBlock Text="把视频拖到这里" FontSize="17" HorizontalAlignment="Center" />
+                                <TextBlock Text="也可以点这里选文件" FontSize="13" Opacity="0.55"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+
+                            <Grid x:Name="PickedInfo" Visibility="Collapsed" Padding="16" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="86" Height="61" CornerRadius="4">
+                                    <Grid>
+                                        <!-- 封面（抽帧）；抽出来之前看底下的占位图 -->
+                                        <Border CornerRadius="4">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#FF3D6FB8" Offset="0" />
+                                                    <GradientStop Color="#FF6E5AB0" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <FontIcon Glyph="&#xE8B5;" FontSize="20" Opacity="0.85" />
+                                        </Border>
+                                        <Rectangle RadiusX="4" RadiusY="4">
+                                            <Rectangle.Fill>
+                                                <ImageBrush x:Name="PickedShot" Stretch="UniformToFill" />
+                                            </Rectangle.Fill>
+                                        </Rectangle>
+                                    </Grid>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="5" VerticalAlignment="Center">
+                                    <TextBlock x:Name="PickedName" FontSize="15" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="PickedPath" FontSize="12.5" Opacity="0.62"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="点一下可以换一个" FontSize="12.5" Opacity="0.45" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 批量：顶上一条「把文件夹拖进来」的投放条，下面是队列 -->
+                        <Grid x:Name="BatchPane" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid x:Name="BatchDrop" Grid.Row="0" Margin="18,16,18,18" MinHeight="228"
+                                    Background="Transparent" Tapped="PickFolder_Click"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <!-- 和单个视频那个投放区**同尺寸同样式**（用户 2026-10-14：两边的框要一样大） -->
+                                <Border x:Name="BatchGlow" CornerRadius="8" Opacity="0">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#2E7C3AED" Offset="0" />
+                                            <GradientStop Color="#24EC4899" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+
+                                <Rectangle x:Name="BatchDropRect"
+                                           Stroke="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                           StrokeThickness="1.4" StrokeDashArray="4,3"
+                                           RadiusX="10" RadiusY="10" />
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Spacing="8" IsHitTestVisible="False">
+                                    <FontIcon x:Name="BatchDropIcon" Glyph="&#xE8B7;" FontSize="46"
+                                              Opacity="0.7" HorizontalAlignment="Center" />
+                                    <TextBlock x:Name="BatchDropText" Text="把文件夹拖到这里" FontSize="17"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock x:Name="BatchDropSub" Text="也可以点这里选文件夹" FontSize="13"
+                                               Opacity="0.55" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+
+                            <ListView x:Name="QueueList" Grid.Row="1" SelectionMode="None"
+                                      IsItemClickEnabled="False" Padding="12,0,12,12" MaxHeight="368">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0,0,0,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="fakes:QueueItem">
+                                    <Grid ColumnSpacing="12" Padding="11,10" CornerRadius="6" Background="{ThemeResource PanelSubtleBrush}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Width="86" Height="61" CornerRadius="4">
+                                            <Grid>
+                                                <!-- 缩略图还没抽出来（或抽不出来）时看底下的占位图 -->
+                                                <Border CornerRadius="4">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                            <GradientStop Color="#FF3D6FB8" Offset="0" />
+                                                            <GradientStop Color="#FF6E5AB0" Offset="1" />
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                    <FontIcon Glyph="&#xE8B5;" FontSize="20" Opacity="0.85" />
+                                                </Border>
+                                                <!-- WinUI 的 Image 没有 CornerRadius，用 Rectangle + ImageBrush 才有圆角 -->
+                                                <Rectangle RadiusX="4" RadiusY="4">
+                                                    <Rectangle.Fill>
+                                                        <ImageBrush ImageSource="{x:Bind Thumb, Mode=OneWay}"
+                                                                    Stretch="UniformToFill" />
+                                                    </Rectangle.Fill>
+                                                </Rectangle>
+                                            </Grid>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" FontSize="15"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind Detail}" FontSize="12.5" Opacity="0.62"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <FontIcon Grid.Column="2" Glyph="{x:Bind Glyph}" FontSize="16"
+                                                  Foreground="{x:Bind IconBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,7,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Grid>
+
+                    <!-- 任务状态：跑起来才出现 -->
+                    <Border x:Name="StateBar" Grid.Row="3" Visibility="Collapsed"
+                            Padding="18,14" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource PanelStrokeBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                    <ProgressRing x:Name="BusyRing" Width="16" Height="16" IsActive="False"
+                                                  Visibility="Collapsed" />
+                                    <TextBlock x:Name="StateText" Text="正在翻译…" FontSize="14" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock x:Name="PctText" Text="0%" FontSize="13.5" HorizontalAlignment="Right"
+                                           Opacity="0.75" />
+                            </Grid>
+                            <ProgressBar x:Name="Bar" Minimum="0" Maximum="100" Value="0" />
+                            <Grid>
+                                <TextBlock x:Name="StageText" Text="准备中" FontSize="12.5" Opacity="0.6"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Button x:Name="CancelButton" Content="取消" FontSize="12.5" Padding="12,5"
+                                        HorizontalAlignment="Right" Background="{ThemeResource PanelSubtleBrush}" BorderThickness="0"
+                                        Click="Cancel_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 右：日志（跑起来才出现；空闲时右边留空，别塞东西） -->
+            <Border x:Name="TaskPanel" Grid.Column="1" Visibility="Collapsed"
+                    VerticalAlignment="Top"
+                    CornerRadius="8" Background="{ThemeResource PanelBrush}"
+                    BorderBrush="{ThemeResource PanelStrokeBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Padding="18,15,18,13">
+                        <TextBlock Text="日志" FontSize="17" FontWeight="SemiBold" />
+                    </Grid>
+                    <ScrollViewer x:Name="LogScroll" Grid.Row="1" Padding="18,0,14,16"
+                                  VerticalScrollBarVisibility="Auto" MaxHeight="420">
+                        <ItemsControl x:Name="LogList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="fakes:LogLine">
+                                    <StackPanel Margin="0,1" Spacing="3">
+                                        <TextBlock Text="{x:Bind Text, Mode=OneWay}" Foreground="{x:Bind Foreground}"
+                                                   FontFamily="Consolas" FontSize="13.5" LineHeight="21"
+                                                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                        <!-- 进度行才显示这根彩虹条（普通日志 BarVisibility=Collapsed，不占高度）-->
+                                        <ProgressBar Value="{x:Bind Pct, Mode=OneWay}" Maximum="100"
+                                                     Visibility="{x:Bind BarVisibility, Mode=OneWay}"
+                                                     Height="3" CornerRadius="1.5" Margin="0,0,2,4"
+                                                     Background="#1AFFFFFF"
+                                                     Foreground="{StaticResource RainbowBarBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 右下角：竖排动作按钮（DUM 同款） -->
+        <StackPanel Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Spacing="10">
+            <TextBlock x:Name="QuietStatus" Text="就绪" FontSize="12.5" Opacity="0.6"
+                       HorizontalAlignment="Right" Margin="0,0,4,0" />
+            <Button x:Name="StartButton" Style="{StaticResource ActionButtonStyle}" Background="{ThemeResource ActionButtonBrush}" BorderBrush="{ThemeResource ActionButtonStroke}" Click="Start_Click">
+                <StackPanel Orientation="Horizontal" Spacing="11">
+                    <FontIcon Glyph="&#xE768;" FontSize="15" />
+                    <TextBlock x:Name="StartLabel" Text="开始翻译" FontSize="15" />
+                </StackPanel>
+            </Button>
+            <!-- 跑出成品之后才出现：没东西可打开的时候摆个按钮只会误导 -->
+            <Button x:Name="OpenOutButton" Visibility="Collapsed"
+                    Style="{StaticResource ActionButtonStyle}" Background="{ThemeResource ActionButtonBrush}" BorderBrush="{ThemeResource ActionButtonStroke}" Click="OpenOut_Click"
+                    ToolTipService.ToolTip="在资源管理器里打开成品">
+                <StackPanel Orientation="Horizontal" Spacing="11">
+                    <FontIcon Glyph="&#xE838;" FontSize="15" />
+                    <TextBlock Text="打开输出目录" FontSize="15" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" HorizontalAlignment="Center" FontSize="12.5" Opacity="0.55"
+                   Text="成品存在原视频旁边的 output 文件夹" />
+    </Grid>
+</Page>

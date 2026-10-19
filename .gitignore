@@ -1,0 +1,72 @@
+# ---- 密钥与个人配置（绝不可提交）----
+CLAUDE.md
+.claude/
+*.key
+*.pem
+*.pfx
+.backup/
+*.env
+finesub.env
+settings.json
+
+# ---- 构建产物 ----
+build/
+dist/
+# ⚠️ Nuitka 的产物目录**不叫 dist/**，得单独写 —— 少这一行 `git add -A` 会把
+#    整棵 app.dist（含 49 MB 的 exe 和一堆 .pyd）扫进仓库（2026-10-15 踩过一次）
+dist-nuitka/
+nuitka-crash-report.xml
+# 安装包目录：只放产物（exe）和生成出来的 rtf，说明/验收脚本要进库
+installer/*.exe
+installer/说明.rtf
+# 打包工作目录（publish 产物 + 组装 + 验收沙箱）、本地截图
+_stage/
+_shots/
+*.spec
+.tools/
+wheelhouse/
+
+# ---- 只留本地、不进库也不随包的素材（授权待定的东西放这儿）----
+# 现在里面是 _private/星雨/ —— 那条默认视频壁纸，等原作者授权（见它的说明.txt）
+_private/
+
+# ---- WinUI 样机的编译产物（源码要进库，bin/obj 不进）----
+winui/**/bin/
+winui/**/obj/
+
+# ---- 用户数据 / 输出 ----
+output/
+tmp_*
+*.log
+
+# ---- 配音调试的一次性产物（_dubtest.py 等脚本本身要进库，产物不进）----
+_dubtest_cache/
+_dubtest_out.mp4
+
+# ---- 生成物（由脚本生成，不入库）----
+web/preview.html
+web/voice_*.wav
+assets/banner_base.png
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- 系统 ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 样机开发时的截图（本地看，不进库）----
+winui/*.png
+winui/batch/
+winui/fix/
+winui/run/
+
+# 改动前的物理快照（2026-10-17 起）
+_backup/
+
+# 本地排查/测试的临时目录（可能含第三方源码副本、Key、截图，绝不入库）
+_scratch/
