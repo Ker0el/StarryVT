@@ -16,14 +16,29 @@ EN_LINK 的 rich edit 控件）。
     python mkrtf.py
 """
 import io
+import os
+import re
 import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
 SRC = r'说明.txt'
 DST = r'说明.rtf'
+ISSPATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'installer.iss')
 
 URL = 'https://space.bilibili.com/177308205'
+
+
+def installer_version():
+    """从 installer.iss 读 AppVersion —— 说明页第一行别再手写版本号（会忘）"""
+    try:
+        for line in io.open(ISSPATH, encoding='utf-8'):
+            m = re.match(r'\s*#define\s+AppVersion\s+"([^"]+)"', line)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    return ''
 
 
 def esc(s):
@@ -55,6 +70,9 @@ def link(url, text):
 
 def main():
     lines = io.open(SRC, encoding='utf-8').read().split('\n')
+    ver = installer_version()
+    if ver and lines and lines[0].lstrip('﻿').startswith('星译'):
+        lines[0] = '星译 ' + ver
     body = []
     for ln in lines:
         s = ln.rstrip('\r')
