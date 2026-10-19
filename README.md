@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.10-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.11-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -365,6 +365,16 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 | [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk) | AI Agent 接入（MCP） |
 | [思源黑体 / Noto Sans SC](https://github.com/notofonts/noto-cjk) | 随包的字幕字体（OFL-1.1，Light 静态实例） |
 | [Windows App SDK](https://github.com/microsoft/WindowsAppSDK) / [.NET](https://github.com/dotnet/runtime) | 界面 |
+
+翻译、配音和语音识别实际用到的模型与渠道：
+
+| 环节 | 模型 | 渠道 |
+|:--|:--|:--|
+| 翻译 | deepseek-flash（失败时自动切 deepseek-v4-pro） | DeepSeek 官方 API |
+| 配音 | mimo-v2.5-tts / mimo-v2.5-tts-voiceclone | 小米 MiMo 官方 API |
+| 本地语音克隆 | IndexTTS-2.5 | 在本机运行 |
+| 语音识别 | faster-whisper large-v3-turbo | 在本机运行 |
+| 第二模型复核 | Qwen3-ASR 0.6B | 在本机运行 |
 
 配音的音色来自 [小米 MiMo](https://github.com/XiaomiMiMo)。\
 随包那条默认视频背景来自 B 站 [**星雨布丁**](https://www.bilibili.com/video/BV1PaQHBaEsg)（已获授权）。\

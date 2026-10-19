@@ -39,22 +39,23 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 import urllib.request
 from pathlib import Path
 
-from job import Job
+from job import Job, Cancelled
 import wheels
 
 #: 一次默认运行会下到的权重（照引擎的 PIPELINE_MODEL_IDS 抄，别自己加）
 PIPELINE_MODEL_IDS = ("separator", "whisper", "qwen-referee")
 
-#: 给用户看的名字（进度行里用）
+#: 给用户看的名字（进度行里用）—— 直接写模型名，不藏
 _LABEL = {
-    "separator": "人声分离模型",
-    "whisper": "语音识别模型",
-    "qwen-referee": "第二模型校验权重",
+    "separator": "人声分离模型（BS-Roformer）",
+    "whisper": "语音识别模型（faster-whisper large-v3-turbo）",
+    "qwen-referee": "第二模型校验权重（Qwen3-ASR 0.6B）",
 }
 
 #: 单个模型最多下到多大（清单万一被改坏，不至于把装机拖死）
@@ -65,6 +66,22 @@ _PROGRESS_STEP = 8 << 20
 
 _HF_HUB = Path("models") / "huggingface" / "hub"
 _SEP_DIR = Path("models") / "audio-separator"
+
+#: 我们在 HF 缓存目录里留的一份“这次到底下了哪些文件”的清单。
+#: 有了它，`ready()` 只用 stat 就能判断齐不齐，不必每次翻译都去问一遍 API。
+_SIDECAR = ".starryvt-files.json"
+
+#: 加载器真正会打开的小文件（HF 仓库里有、但引擎清单为了省事没列的那些）。
+#: 旧版预取只下了清单里的 model.bin，于是造出一个“看着完整”的 snapshot：
+#: 引擎的完整性判据只认清单文件，会给 faster-whisper 传 local_files_only=True，
+#: CTranslate2 随即报 `Cannot load the vocabulary from the model directory`。
+#: 这里列的是**缺了必然加载不了**的几个；其余文件由 API 清单补齐。
+_REQUIRED = {
+    "whisper": ("config.json", "tokenizer.json", "vocabulary.json",
+                "preprocessor_config.json"),
+    "qwen-referee": ("config.json", "tokenizer_config.json", "processor_config.json",
+                     "chat_template.jinja"),
+}
 
 
 # ---------- 清单 / 路径 ----------
@@ -95,13 +112,60 @@ def _endpoints(params: dict) -> list[str]:
     return out
 
 
-def _plan(spec: dict, home: Path, params: dict) -> tuple[list, list]:
+def _hf_repo_files(repo: str, rev: str, params: dict) -> list[dict]:
+    """问 HF API：这个仓库在钉住的版本上到底有哪些文件。
+
+    ★ 这一步**不能省**。引擎的 model-manifest.json 只为每个模型钉了大权重
+      （whisper 只有 model.bin），但加载器还要同目录的小文件：faster-whisper 要
+      vocabulary.json / config.json / tokenizer.json，transformers 要 config.json /
+      tokenizer_config.json / processor_config.json。只下大权重会造出一个
+      “引擎认为完整、加载器打不开”的 snapshot（2026-10-19 客户报障）。
+
+    API 的 `?blobs=true` 会给出 size 和 blobId / lfs.sha256 —— HF 缓存里
+    普通文件的 blob 名是 git blob sha1（blobId），LFS 文件是 sha256。
+    拿不到清单时返回空列表，调用方要**放弃预取**，别造残缺快照。
+    """
+    for ep in _endpoints(params):
+        url = f"{ep}/api/models/{repo}/revision/{rev}?blobs=true"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "StarryVT"})
+            with _opener(params).open(req, timeout=30) as r:
+                data = json.load(r)
+        except Exception:  # noqa: BLE001 - 换下一个源
+            continue
+        out = []
+        for s in data.get("siblings") or []:
+            name = s.get("rfilename")
+            if not name:
+                continue
+            lfs = s.get("lfs") or {}
+            out.append({
+                "name": name,
+                "size": int(s.get("size") or lfs.get("size") or 0),
+                "lfs_sha256": (lfs.get("sha256") or "").lower(),
+                "blob": (s.get("blobId") or "").lower(),
+            })
+        if out:
+            return out
+    return []
+
+
+def _listed_only(spec: dict) -> bool:
+    """引擎清单里的 `listedOnly`：只下清单里那几个文件（其余文件加载时自己会拿）"""
+    return bool(spec.get("listedOnly") or spec.get("listed_only"))
+
+
+def _plan(spec: dict, home: Path, params: dict,
+          repo_files: list[dict] | None = None) -> tuple[list, list]:
     """算出这个模型要下哪些文件、下完还要建哪些硬链。
 
     返回 (files, links)：
       files = [(文件名, 落盘路径, 大小, sha256, [候选 URL…])]
       links = [(blob 路径, snapshot 路径)]   —— HF 类才有；引擎只认 snapshot 那儿
     清单不全就返回空。
+
+    `repo_files` 给了就按 **仓库完整清单** 来（HF 类、且清单不是 listedOnly）——
+    这是修复“只有 model.bin”的关键；不给就只排引擎清单里的那几个（ready() 用）。
     """
     files = spec.get("files") or []
     if not files:
@@ -110,11 +174,25 @@ def _plan(spec: dict, home: Path, params: dict) -> tuple[list, list]:
     if repo and rev:                                   # HF 类（whisper / qwen-referee）
         base = home / _HF_HUB / ("models--" + repo.replace("/", "--"))
         blob_dir, snap_dir = base / "blobs", base / "snapshots" / rev
-        out, links = [], []
-        for f in files:
+        out, links, seen = [], [], set()
+        manifest = {str(f.get("name")): f for f in files if f.get("name")}
+        # 先按仓库清单排：大权重在前在后都无所谓，但小文件必须一个不缺
+        for f in repo_files or []:
             name = f.get("name")
-            if not name:
+            if not name or name in seen:
                 continue
+            seen.add(name)
+            m = manifest.get(name) or {}
+            blob = f.get("lfs_sha256") or f.get("blob") or name
+            sha = f.get("lfs_sha256") or (m.get("sha256") or "")
+            out.append((name, blob_dir / blob, int(f.get("size") or 0), sha,
+                        [f"{e}/{repo}/resolve/{rev}/{name}" for e in _endpoints(params)]))
+            links.append((blob_dir / blob, snap_dir / name))
+        for f in files:                                # 清单里漏在 API 结果外的，补上
+            name = f.get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
             sha = (f.get("sha256") or "").lower()
             blob = blob_dir / (sha or name)            # HF 的 blob 名就是 sha256
             out.append((name, blob, int(f.get("size") or 0), sha,
@@ -132,13 +210,42 @@ def _plan(spec: dict, home: Path, params: dict) -> tuple[list, list]:
     return out, []
 
 
+def _sidecar_ok(base: Path, snap_dir: Path) -> bool:
+    """我们自己留的完整文件清单：每个文件都在 snapshot 里、大小对。
+
+    没有这份清单 = 缓存是引擎（完整）或旧版（可能残缺）留下的，交给 `_REQUIRED` 兜。
+    """
+    p = base / _SIDECAR
+    if not p.is_file():
+        return True
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        for it in data.get("files") or []:
+            name = it.get("name")
+            if not name:
+                return False
+            f = snap_dir / name
+            if not f.is_file():
+                return False
+            want = int(it.get("size") or 0)
+            if want and f.stat().st_size != want:
+                return False
+    except (OSError, ValueError, TypeError):
+        return False
+    return True
+
+
 def ready(params: dict, model_id: str) -> bool:
     """这个模型的权重现在齐不齐（给诊断/界面用，不联网）。
 
     判据和引擎一致：文件在、大小对；HF 类还要 snapshot 里那几个链接也在。
+    再补两条：加载器**必须**的小文件（`_REQUIRED`）在不在，以及我们自己的
+    完整清单（`_SIDECAR`）能不能全部对上 —— 这两条专门用来识别旧版预取
+    留下的“只有 model.bin、加载不了”的残废缓存。
     """
     home = _home(params)
-    files, links = _plan(_models().get(model_id) or {}, home, params)
+    spec = _models().get(model_id) or {}
+    files, links = _plan(spec, home, params)
     if not files:
         return False
     try:
@@ -147,6 +254,15 @@ def ready(params: dict, model_id: str) -> bool:
                 return False
         for _blob, snap in links:
             if not snap.is_file():
+                return False
+        repo, rev = spec.get("repo"), spec.get("revision")
+        if repo and rev:
+            base = home / _HF_HUB / ("models--" + repo.replace("/", "--"))
+            snap_dir = base / "snapshots" / rev
+            for name in _REQUIRED.get(model_id, ()):   # 加载器要读的小文件
+                if not (snap_dir / name).is_file():
+                    return False
+            if not _sidecar_ok(base, snap_dir):
                 return False
     except OSError:
         return False
@@ -184,6 +300,9 @@ def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
         pass
     started, got, last = time.time(), 0, 0
     h = hashlib.sha256()
+    # 非 LFS 文件在 HF 缓存里的 blob 名 = git blob 的 sha1（清单里只有大权重的 sha256）。
+    # git blob 哈希 = sha1("blob <字节数>\0" + 内容)，字节数就是清单里的大小。
+    hb = hashlib.sha1(b"blob %d\0" % want) if want else None
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "StarryVT"})
         with _opener(params).open(req, timeout=60) as r, open(part, "wb") as f:
@@ -194,6 +313,8 @@ def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
                     break
                 f.write(chunk)
                 h.update(chunk)
+                if hb is not None:
+                    hb.update(chunk)
                 got += len(chunk)
                 if got - last >= _PROGRESS_STEP:
                     last = got
@@ -211,7 +332,11 @@ def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
         except OSError:
             pass
         return False
-    if sha and h.hexdigest().lower() != sha.lower():
+    bad = bool(sha and h.hexdigest().lower() != sha.lower())
+    if (not bad and hb is not None and re.fullmatch(r"[0-9a-f]{40}", dest.name)
+            and hb.hexdigest().lower() != dest.name):
+        bad = True
+    if bad:
         report("engine", None, f"（{label} 校验不通过，已丢弃——稍后引擎会自己重下）")
         try:
             part.unlink()
@@ -242,19 +367,57 @@ def _link(blob: Path, snap: Path) -> None:
         pass
 
 
+def _write_sidecar(base: Path, rev: str, links: list) -> None:
+    """记下这次到底下齐了哪些文件；`ready()` 之后只靠它 + stat 判断，不再联网。"""
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        items = []
+        for blob, snap in links:
+            try:
+                size = blob.stat().st_size
+            except OSError:
+                size = 0
+            items.append({"name": snap.name, "blob": blob.name, "size": size})
+        (base / _SIDECAR).write_text(
+            json.dumps({"revision": rev, "files": items}, ensure_ascii=False),
+            encoding="utf-8")
+    except OSError:
+        pass
+
+
 # ---------- 入口 ----------
 
 def prefetch_one(model_id: str, params: dict, job: Job, report,
                  announce: bool = True) -> bool:
     """把一个模型的权重下齐。已经齐了就直接返回（真返回时只是一次 stat）。"""
     home = _home(params)
-    files, links = _plan(_models().get(model_id) or {}, home, params)
+    spec = _models().get(model_id) or {}
+    files, links = _plan(spec, home, params)
     total = sum(f[2] for f in files)
     if not files or not total or total > _MAX_BYTES:
         return False
     label = _LABEL.get(model_id, model_id)
     if ready(params, model_id):
         return True
+
+    repo, rev = spec.get("repo"), spec.get("revision")
+    if repo and rev and not _listed_only(spec):
+        # ★ 必须按**仓库完整清单**下：引擎的清单只钉了大权重，缺了小文件
+        #   （vocabulary.json / config.json …）加载器就打不开，而引擎还会
+        #   因为这个 snapshot“看起来完整”而开 local_files_only。见 _REQUIRED。
+        repo_files = _hf_repo_files(repo, rev, params)
+        if not repo_files:
+            # 拿不到完整清单就**什么都不下、也不建 snapshot**：让引擎自己按
+            # 老路子（snapshot_download 全仓库）去拿。造一个残缺快照比不预取更糟。
+            if announce:
+                report("engine", None,
+                       f"（{label}跳过预取：没拿到完整文件清单，交给引擎自己下载）")
+            return False
+        files, links = _plan(spec, home, params, repo_files=repo_files)
+        total = sum(f[2] for f in files)
+        if not files or not total or total > _MAX_BYTES:
+            return False
+
     if announce:
         report("engine", None, f"预取{label}（约 {total // 1048576} MB）…")
 
@@ -270,9 +433,32 @@ def prefetch_one(model_id: str, params: dict, job: Job, report,
             return False
     for blob, snap in links:          # HF 类：blob 链进 snapshots/<rev>/（引擎只看那儿）
         _link(blob, snap)
+    if repo and rev:
+        _write_sidecar(home / _HF_HUB / ("models--" + repo.replace("/", "--")), rev, links)
     if announce:
         report("engine", None, f"✅ {label}已就绪")
     return True
+
+
+def repair_pipeline(params: dict, job: Job, report) -> None:
+    """开跑前补一次模型缓存（齐了就是几次 stat，不联网）。
+
+    专门收拾**旧版预取留下的残废快照**：2026-10-19 客户报障的
+    `Cannot load the vocabulary from the model directory`，就是旧版只下了
+    model.bin、没下 vocabulary.json 造成的。用户不用清缓存重下几个 GB，
+    这里把缺的小文件补进去就行。
+    """
+    for mid in PIPELINE_MODEL_IDS:
+        job.check()
+        try:
+            if ready(params, mid):
+                continue
+            report("translate", None, f"检查并补全{_LABEL.get(mid, mid)}缓存…")
+            prefetch_one(mid, params, job, report, announce=False)
+        except Cancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 - 补不齐也让引擎自己去试，别拦任务
+            report("translate", None, f"（{_LABEL.get(mid, mid)}缓存补全跳过：{e}）")
 
 
 def prefetch_all(params: dict, job: Job, report) -> dict:

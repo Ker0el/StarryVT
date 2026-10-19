@@ -129,6 +129,18 @@ def _proxy_env(params: dict) -> dict:
     return env
 
 
+def uv_env(params: dict) -> dict:
+    """给 uv 子进程用的环境：代理 + GitHub 加速前缀 + Python 下载镜像 + UTF-8 输出。
+
+    本地语音克隆（localclone.py）也走 uv，别再各自拼一份 —— 2026-10-19 那边
+    调了一个不存在的 `_uv_env`，把「下载本地语音克隆」整个卡死在第一步。
+    """
+    env = _proxy_env(params)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def install_uv(params: dict, job: Job, report) -> str:
     """下载 uv 独立版并解压到 %APPDATA%\\StarryVT\\bin，返回 uv.exe 路径"""
     existing = find_uv()

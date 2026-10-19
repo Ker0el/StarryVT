@@ -934,33 +934,62 @@ public sealed partial class SettingsPage : Page
         CloneInstallBtn.Content = "正在下载…";
         CloneInstallBtn.IsEnabled = false;
         Backend.StatusReceived += OnCloneStatus;
-        try
+        SetHint(CloneHint, "正在准备下载…", null);
+
+        var r = await Backend.CallAsync("clone_install", null, 60_000);
+        bool started = r is not null
+            && (!r.Value.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.False);
+        if (!started)
         {
-            var r = await Backend.CallAsync("clone_install", null, 60_000);
-            if (r is null)
-                SetHint(CloneHint, "没能开始：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应"), false);
-        }
-        finally
-        {
+            var err = r is null
+                ? (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应")
+                : Str(r.Value, "error");
+            SetHint(CloneHint, "没能开始：" + (err.Length > 0 ? err : "后端没有响应"), false);
             Backend.StatusReceived -= OnCloneStatus;
             _cloneBusy = false;
             await RefreshCloneAsync();
         }
+        // 启动成功时**不能在这里退订**：clone_install 是立即返回的后台任务，
+        // 进度和完成/失败都靠后面的 status 事件推过来。退订早了就什么都看不到
+        // （用户反馈过「点下载没反应、看不到进度」）。
     }
 
-    /// <summary>下载中把进度和最新一行刷到提示上（回调在读取线程，得回主线程）</summary>
+    /// <summary>下载中把进度和最新一行刷到提示上；完成/失败时收尾。
+    /// 回调在读取线程，得回主线程。</summary>
     void OnCloneStatus(JsonElement st)
     {
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueue(() => HandleCloneStatus(st));
+    }
+
+    async void HandleCloneStatus(JsonElement st)
+    {
+        if (!_cloneBusy) return;
+        bool running = st.TryGetProperty("running", out var run) && run.ValueKind == JsonValueKind.True;
+        string stage = Str(st, "stage");
+        if (!running)
         {
-            if (!st.TryGetProperty("running", out var run) || run.ValueKind != JsonValueKind.True) return;
-            if (Str(st, "stage") != "clone") return;
-            int pct = st.TryGetProperty("percent", out var p) && p.TryGetInt32(out var n) ? n : 0;
-            var line = "";
-            if (st.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.Array && log.GetArrayLength() > 0)
-                line = log[log.GetArrayLength() - 1].GetString() ?? "";
-            SetHint(CloneHint, $"下载中… {pct}%" + (line.Length > 0 ? "\n" + line : ""), null);
-        });
+            // 只认本地克隆自己的终态，别被别的任务的 status 误收尾
+            if (stage != "done" && stage != "error" && stage != "cancelled") return;
+            if (stage == "done")
+                SetHint(CloneHint, "本地语音克隆已装好", true);
+            else if (stage == "error")
+            {
+                string err = Str(st, "error");
+                SetHint(CloneHint, "下载失败：" + (err.Length > 0 ? err : "看日志目录里的详细错误"), false);
+            }
+            else if (stage == "cancelled")
+                SetHint(CloneHint, "已取消", false);
+            Backend.StatusReceived -= OnCloneStatus;
+            _cloneBusy = false;
+            await RefreshCloneAsync();
+            return;
+        }
+        if (stage != "clone") return;
+        int pct = st.TryGetProperty("percent", out var p) && p.TryGetInt32(out var n) ? n : 0;
+        var line = "";
+        if (st.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.Array && log.GetArrayLength() > 0)
+            line = log[log.GetArrayLength() - 1].GetString() ?? "";
+        SetHint(CloneHint, $"下载中… {pct}%" + (line.Length > 0 ? "\n" + line : ""), null);
     }
 
     async void CloneRemove_Click(object sender, RoutedEventArgs e)

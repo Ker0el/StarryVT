@@ -1291,9 +1291,12 @@ def _stash_youtube_subs(tmp_dl: Path, out_dir: Path, stem: str, report) -> int:
 #: 引擎以后加了模型这里不认识也没关系——照样会报「已下载多少 MB」，
 #: 只是算不出百分比。
 _HF_REPOS = {
-    "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo": ("语音识别模型", 1_617_884_929),
-    "models--Qwen--Qwen3-ASR-0.6B-hf": ("语音校验模型", 1_564_928_088),
-    "models--TransWithAI--whisper-ja-1.5B-ct2": ("日语识别模型", 3_087_284_237),
+    "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo":
+        ("语音识别模型（faster-whisper large-v3-turbo）", 1_617_884_929),
+    "models--Qwen--Qwen3-ASR-0.6B-hf":
+        ("语音校验模型（Qwen3-ASR 0.6B）", 1_564_928_088),
+    "models--TransWithAI--whisper-ja-1.5B-ct2":
+        ("日语识别模型（whisper-ja 1.5B）", 3_087_284_237),
 }
 
 #: 多久没有新字节就提醒一次（镜像断流时用户能立刻知道，不用干等）
@@ -1468,6 +1471,12 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
     # 「翻译用哪个大模型」由我们指定：引擎打包的路由表只有 Gemini，国内直连必失败。
     # 这里把 DeepSeek 那条链写进引擎的模型目录/预设并指给它。见 llmroute.py
     env.update(llmroute.env(params))
+    # 用了哪个模型、走哪家渠道，直接说出来 —— 不再藏在 ds-flash 这种内部别名后面。
+    if not stage and not getattr(job, "_model_reported", False):
+        job._model_reported = True
+        detail = llmroute.chain_text(params)
+        if detail:
+            report("translate", None, f"🤖 翻译模型：{detail}")
     # 引擎的 _read_dotenv 会读它自己的 .env（里面可能留着旧 key/keyring），但
     # _get_key_entries 先看进程环境变量。把当前设置里的 key 直接交给子进程，
     # 免得用户在设置里换了 key、引擎还在用旧的那把（实测 401）。
@@ -1484,6 +1493,18 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
     if not finesub:
         raise RuntimeError("找不到翻译引擎 finesub——请点界面上的「一键安装引擎」重新安装；"
                            "如果装过，检查杀毒软件是否把它隔离了。")
+    # 模型缓存先补一遍：旧版预取只下了清单里的 model.bin，留下过一个
+    # “看着完整、其实缺 vocabulary.json / config.json”的快照，引擎会给
+    # faster-whisper 开 local_files_only，加载时报
+    # `Cannot load the vocabulary from the model directory`（2026-10-19 客户报障）。
+    # 齐了就是几次 stat，不联网；残缺时只补那几个小文件，不用清缓存重下几个 GB。
+    try:
+        import modelfetch
+        modelfetch.repair_pipeline(params, job, report)
+    except Cancelled:
+        raise
+    except Exception as e:  # noqa: BLE001 - 补不齐也让引擎自己去试
+        report("translate", None, f"（模型缓存检查跳过：{e}）")
     # 0.5.x 的旧任务缓存里 annotated.csv 少一列（0.6.0 加了 spk），
     # 引擎复用旧目录时知识更新会崩；开跑前把它补成新格式。
     _upgrade_old_annotated_csv(video, params, report)

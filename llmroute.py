@@ -72,6 +72,46 @@ _DEEPSEEK_ROWS = (
 _GEMINI_TAIL = ("gemini-free-3_7-flash", "gemini-free-3_8-flash",
                 "gemini-free-3_6-flash", "gemini-free-3_5-flash")
 
+#: fact_id → (引擎里的显示名, 实际 API 模型 ID, 渠道)
+#: 用户问起「到底用的哪个模型、走哪家」时直接报这一份，不藏在别名后面。
+_MODELS = {
+    "ds-flash": ("DeepSeek Flash", "deepseek-flash", "DeepSeek 官方 API"),
+    "ds-pro": ("DeepSeek V4 Pro", "deepseek-v4-pro", "DeepSeek 官方 API"),
+}
+
+
+def _model_of(fid: str) -> tuple[str, str, str]:
+    """一个候选的（显示名、模型 ID、渠道）；Gemini 免费池按 fact_id 拆开。"""
+    if fid in _MODELS:
+        return _MODELS[fid]
+    if fid.startswith("gemini-"):
+        name = fid[len("gemini-free-"):] if fid.startswith("gemini-free-") else fid
+        return (f"Gemini {name}", fid, "Google Gemini 官方 API（需要代理）")
+    return (fid, fid, "引擎内置渠道")
+
+
+def chain_text(params: dict) -> str:
+    """候选链的人话：真实模型 ID + 渠道，例如
+    `deepseek-flash（主）→ deepseek-v4-pro（备）· DeepSeek 官方 API`。"""
+    chain = targets(params)
+    if not chain:
+        return ""
+    ds = [f for f in chain if f.startswith("ds-")]
+    gm = [f for f in chain if not f.startswith("ds-")]
+    if ds:
+        parts = []
+        for i, fid in enumerate(ds):
+            _name, mid, _channel = _model_of(fid)
+            parts.append(mid + ("（主）" if i == 0 else "（备）"))
+        text = " → ".join(parts) + " · DeepSeek 官方 API"
+        if gm:
+            text += f"，再失败退 {len(gm)} 个 Gemini 免费档（需要代理）"
+        return text
+    names = [fid.replace("gemini-free-", "") for fid in gm]
+    return (f"Gemini {names[0]}（主）"
+            + (" → " + "、".join(names[1:]) + "（备）" if len(names) > 1 else "")
+            + " · Google Gemini 官方 API（需要代理）")
+
 
 def _on(params: dict, name: str) -> bool:
     """设置项既可能是字符串（key/代理）也可能是布尔（开关），统一判"有没有" """
@@ -174,8 +214,10 @@ def describe(params: dict) -> list[str]:
     if not chain:
         lines.append("没有可用的翻译模型：DeepSeek / Gemini 两个 Key 都没填")
         return lines
-    who = "DeepSeek" if chain[0].startswith("ds-") else "Gemini"
-    lines.append(f"翻译走: {who}（候选链 {' → '.join(chain)}）")
+    _name, _mid, channel = _model_of(chain[0])
+    lines.append(f"翻译走: {channel}")
+    lines.append(f"实际模型: {chain_text(params)}")
+    lines.append(f"候选链（引擎内部 id）: {' → '.join(chain)}")
     for p in (CATALOG, CONFIG):
         lines.append(f"{p.name}: {'已生成' if p.is_file() else '未生成'}（{p}）")
     lines.append("(引擎打包的默认路由只有 Gemini，国内直连不可用；这里是我们覆盖后的结果)")
@@ -188,9 +230,11 @@ def status(params: dict) -> tuple[str, str]:
     if not chain:
         return "bad", ("没填 DeepSeek Key——翻译用它，必填。"
                        "到「设置」里填上就能翻译（翻译本地文件不需要代理）。")
+    _name, mid, _channel = _model_of(chain[0])
     if chain[0].startswith("ds-"):
-        return "ok", "翻译走 DeepSeek（国内直连，不需要代理）"
+        return "ok", (f"翻译走 DeepSeek 官方 API（{mid}，失败自动切备用；"
+                      f"国内直连，不需要代理）")
     if _on(params, "proxy"):
-        return "ok", "翻译走 Gemini（已配代理）"
+        return "ok", f"翻译走 Google Gemini 官方 API（{mid}，已配代理）"
     return "warn", ("只填了 Gemini Key、又没配代理：国内直连 Google 一定会超时，翻译出不来。"
                     "把「设置」里的 DeepSeek Key 填上就不用代理了。")

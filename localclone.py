@@ -165,7 +165,8 @@ def install(params: dict, job: Job, report) -> dict:
     # 2) 运行环境：uv sync（torch cu128 那一套，约 2.5 GB）
     uv = engine.find_uv() or engine.install_uv(params, job, report)
     report("clone", 6, "准备运行环境（torch 等，约 2.5 GB，第一次会久一点）…")
-    _run_streamed(job, [uv, "sync"], cwd=SRC, env=engine._uv_env(params),
+    # uv 自己要从 GitHub 拿 Python、从 PyPI 拿依赖：代理 / 加速前缀 / 镜像都交给 engine 那份
+    _run_streamed(job, [uv, "sync"], cwd=SRC, env=engine.uv_env(params),
                   report=report, stage="clone", tag="环境")
     if not python_exe().is_file():
         raise RuntimeError("运行环境装完了但没找到 python.exe，看看日志")

@@ -89,7 +89,7 @@ public sealed partial class AboutPage : Page
         try
         {
             var ver = Backend.Version;
-            BVersion.Text = ver.Length > 0 ? $"当前版本 v{ver}" : "当前版本 v6.10";
+            BVersion.Text = ver.Length > 0 ? $"当前版本 v{ver}" : "当前版本 v6.11";
         }
         catch { }
     }

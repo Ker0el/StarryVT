@@ -65,7 +65,8 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="MiMo API Key" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="配音用 · 目前限时免费" Style="{StaticResource RowDescStyle}" />
+                                <TextBlock Text="配音用 · 小米 MiMo 官方 API（mimo-v2.5-tts）· 目前限时免费"
+                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
                                 <TextBlock x:Name="MimoHint" FontSize="12.5" Margin="0,4,0,0"
                                            TextWrapping="Wrap"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -98,7 +99,8 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="DeepSeek API Key" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="翻译用 · 按量计费" Style="{StaticResource RowDescStyle}" />
+                                <TextBlock Text="翻译用 · DeepSeek 官方 API（deepseek-flash，备用 deepseek-v4-pro）· 按量计费"
+                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
                                 <TextBlock x:Name="DeepHint" FontSize="12.5" Margin="0,4,0,0"
                                            TextWrapping="Wrap"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
