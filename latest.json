@@ -1,7 +1,7 @@
 {
-  "version": "6.8",
-  "sha256": "b59d58cfe84aeadae21c0b39703704417ed5aa2eb6791d34a36341f7d5417e4b",
-  "notes": "修复配音把 CLI、CD 一类简称读成数字的问题",
+  "version": "6.9",
+  "sha256": "20df8ff60026d93b00dc090d6fad37e70c0d4eddebd08fbb0f592b993e542026",
+  "notes": "下载视频模式下，按钮显示为「下载视频」",
   "published": "2026-10-19",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
