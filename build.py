@@ -152,7 +152,7 @@ def main() -> int:
     # （两种布局都行：界面找 exe 只看这一个路径，工具目录的差异在 Ffmpeg.cs 里兼容掉了）
     shutil.rmtree(STAGE / "backend", ignore_errors=True)
     shutil.copytree(BACKEND_DIST, STAGE / "backend")
-    for doc in ("TERMS.md", "THIRD_PARTY_LICENSES.md"):
+    for doc in ("TERMS.md", "THIRD_PARTY_LICENSES.md", "LICENSE", "COPYRIGHT.md"):
         if (ROOT / doc).exists():
             shutil.copy2(ROOT / doc, STAGE / doc)
     if (ROOT / "licenses").is_dir():
