@@ -50,7 +50,9 @@
         <Grid x:Name="AppTitleBar" Grid.Row="0" Height="40" Margin="0,0,140,0">
             <StackPanel Orientation="Horizontal" Spacing="9" Margin="16,0,0,0" VerticalAlignment="Center">
                 <TextBlock Text="星译" FontSize="13.5" VerticalAlignment="Center" />
-                <TextBlock x:Name="TitleVersion" Text="v6.10" FontSize="13.5" Opacity="0.55" VerticalAlignment="Center" />
+                <!-- 版本号不写死：后端 ready 后由 MainWindow 用 Backend.Version 填
+                     （以前这里硬编码 v6.10，更新到 6.12 后标题栏还显示 6.10） -->
+                <TextBlock x:Name="TitleVersion" Text="" FontSize="13.5" Opacity="0.55" VerticalAlignment="Center" />
                 <TextBlock x:Name="TitleSlogan" Text="翻译，从未如此简单" FontSize="12.5" Opacity="0.4"
                            VerticalAlignment="Center" Margin="6,1,0,0" />
             </StackPanel>

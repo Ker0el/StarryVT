@@ -105,6 +105,8 @@ public sealed partial class MainWindow : Window
         Services.Backend.UpdateReceived += OnUpdateInfo;
         Services.Backend.StatusReceived += OnUpdateProgress;   // 更新包下载中的进度（stage=update）
         Services.Backend.StatusReceived += OnReviewStatus;     // 字幕检查暂停点：自动切到字幕页
+        Services.Backend.ReadyReceived += OnBackendReady;
+        if (Services.Backend.Ready) UpdateTitleVersion();
         _ = PullUpdateStateAsync();                            // 光订阅不够，见那个方法的注释
 
         // 关窗口时把后端一起收掉（Windows 不会替我们杀子进程）——
@@ -1279,6 +1281,16 @@ public sealed partial class MainWindow : Window
     // 启动时是后端自己去查新版本的（`winui_backend._auto_update`），查完把结果推过来。
     // 后端的下载 / 校验 / 静默安装 / 自动重启那一整套本来就有（`updater.py`），
     // 只是老网页界面接上了、切到 WinUI 之后一直没人调 —— 2026-10-15 补上。
+
+    /// <summary>后端启动完成（后台线程回调）→ 回 UI 线程填标题栏版本号</summary>
+    void OnBackendReady() => DispatcherQueue.TryEnqueue(UpdateTitleVersion);
+
+    /// <summary>标题栏版本号只从后端拿，别再在 XAML 里写死（曾经写死 v6.10，更新后一直显示旧版）</summary>
+    void UpdateTitleVersion()
+    {
+        var v = Services.Backend.Version;
+        TitleVersion.Text = string.IsNullOrWhiteSpace(v) ? "" : "v" + v;
+    }
 
     /// <summary>后端查到的更新信息（点「立即更新」要用里面的 pkg_url / sha256）</summary>
     JsonElement _updateInfo;

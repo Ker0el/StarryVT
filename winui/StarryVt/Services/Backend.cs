@@ -30,6 +30,9 @@ public static class Backend
     /// <summary>后端主动推的任务状态（{"event":"status","status":{...}} 里的 status）</summary>
     public static event Action<JsonElement>? StatusReceived;
 
+    /// <summary>后端启动完成（收到 {"event":"ready"}）；这时 Version 才可靠。</summary>
+    public static event Action? ReadyReceived;
+
     /// <summary>
     /// 启动时自动检查更新的结果（{"event":"update","info":{...}} 里的 info）。
     /// 后端在后台线程里查，查完主动推过来 —— 界面不用轮询。
@@ -170,6 +173,7 @@ public static class Backend
             {
                 Ready = true;
                 if (msg.TryGetProperty("version", out var v)) Version = v.GetString() ?? "";
+                ReadyReceived?.Invoke();
             }
             else if (name == "status" && msg.TryGetProperty("status", out var st))
             {
