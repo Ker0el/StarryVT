@@ -1,7 +1,7 @@
 {
-  "version": "6.6",
-  "sha256": "047b98277cef3e97e98c0d40c4ab73d4f222736019542980344de3c6bff1f4e4",
-  "notes": "修复本地语音克隆配音报错 · 包含 DeepSeek 额度显示",
+  "version": "6.7",
+  "sha256": "3c3663aea5233097df911f0ef17d4d94e165fd30b3a1469e743cdb0926807dbd",
+  "notes": "默认使用本机语音克隆 · 免费、不联网、速度快",
   "published": "2026-10-19",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
