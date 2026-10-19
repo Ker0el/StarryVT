@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -139,7 +140,6 @@ def _unzip_into(zip_path: Path, dest: Path) -> None:
     top = dest / root
     if top.is_dir() and top != SRC:
         if SRC.exists():
-            import shutil
             shutil.rmtree(SRC, ignore_errors=True)
         top.rename(SRC)
 
@@ -147,6 +147,16 @@ def _unzip_into(zip_path: Path, dest: Path) -> None:
 def install(params: dict, job: Job, report) -> dict:
     """装本地语音克隆：源码 → 运行环境（uv sync）→ 模型权重。可取消，断了能接着装。"""
     HOME.mkdir(parents=True, exist_ok=True)
+    # 运行环境约 8 GB + 模型约 7 GB。空间不够就别开始下，不然下到一半把盘写满，
+    # 用户看到的只是一句莫名其妙的写入失败（2026-10-19 全面检查时补的）。
+    try:
+        free_gb = shutil.disk_usage(HOME.anchor or str(HOME)).free / 1024 ** 3
+    except OSError:
+        free_gb = None
+    if free_gb is not None and free_gb < 16:
+        raise RuntimeError(
+            f"本地语音克隆需要约 15 GB，{HOME.anchor} 只剩 {free_gb:.1f} GB。"
+            f"请先清理磁盘，或在设置里改用云端配音。")
     report("clone", 0, "准备本地语音克隆（IndexTTS-2.5）…")
 
     # 1) 源码（20 多 MB，走 GitHub 加速镜像 —— 和引擎组件同一条路）

@@ -1322,12 +1322,21 @@ def _hf_hub_dir(params: dict) -> Path:
 
 
 def _hf_whisper_ready(params: dict) -> bool:
-    """语音识别要用的权重是不是已经在本地了（在的话就不必开 verbose）"""
+    """语音识别要用的权重是不是已经在本地了（在的话就不必开 verbose）
+
+    ★ 不能只看 model.bin：加载器还要同目录的 config.json / tokenizer.json /
+      vocabulary.json / preprocessor_config.json。旧版预取只下 model.bin，
+      这四项缺一个，faster-whisper 就会报
+      `Cannot load the vocabulary from the model directory`（2026-10-19 客户报障）。
+    """
     repo = _hf_hub_dir(params) / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+    need = ("config.json", "tokenizer.json", "vocabulary.json", "preprocessor_config.json")
     try:
-        if any((repo / "snapshots").glob("*/model.bin")):
-            return True
-        # 快照名可能和我们猜的不一样，退一步看 blob 里有没有那个 1.6GB 的大件
+        for snap in (repo / "snapshots").glob("*/model.bin"):
+            if all((snap.parent / n).is_file() for n in need):
+                return True
+        # 快照名可能和我们猜的不一样，退一步看 blob 里有没有那个 1.6GB 的大件；
+        # 但这时小文件是否齐没法确认，交给开跑前的 modelfetch.repair_pipeline 补。
         return any(p.stat().st_size > 1_000_000_000
                    for p in (repo / "blobs").glob("*") if p.is_file())
     except OSError:

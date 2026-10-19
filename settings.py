@@ -105,7 +105,28 @@ def save(patch: dict) -> dict:
     data = load()
     data.update({k: v for k, v in patch.items() if k in DEFAULTS or k in ("mimo_key", "deepseek_key", "gemini_key")})
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # ★ 原子写：先写同目录临时文件，再 os.replace 换过去。
+    #   以前直接 write_text，装引擎/换数据目录时正好断电或被杀进程，settings.json
+    #   会只剩半截 JSON；load() 读坏就回退默认值，用户的 API Key 和所有设置一起没了。
+    #   （2026-10-19 全面检查时补的；同目录替换在 Windows 上也是原子的。）
+    tmp = SETTINGS_PATH.with_name(SETTINGS_PATH.name + ".tmp")
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp.write_text(text, encoding="utf-8")
+    for i in range(3):
+        try:
+            os.replace(tmp, SETTINGS_PATH)
+            return data
+        except OSError:
+            if i == 2:
+                break
+            import time
+            time.sleep(0.05)
+    # 极少数情况下目标正被别的进程短暂打开，replace 会让步；退回直写，至少这次能存上
+    SETTINGS_PATH.write_text(text, encoding="utf-8")
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
     return data
 
 

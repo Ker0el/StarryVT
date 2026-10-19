@@ -69,6 +69,7 @@ BUNDLED_WHEELS = [
         "note": ("**随本软件分发**（位于程序目录的 `wheelhouse\\`）。上游为 OpenNMT 的 "
                  "CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。"
                  "这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；"
+                 "同时带 0.4.0 与 0.6.0 两个引擎版本对应的构建，运行时按引擎实际需要选用。"
                  "该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。"
                  "该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等"
                  "上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。"),
@@ -253,12 +254,17 @@ def _binary_version(item: dict) -> str:
 
 
 def _wheel_version(item: dict) -> str:
-    """版本从随包的文件名里读——免得清单写的和实际发出去的对不上"""
+    """版本从随包的文件名里读——免得清单写的和实际发出去的对不上
+
+    同一个包可能带多个引擎版本对应的构建（例如 ctranslate2 的 0.4.0 / 0.6.0），
+    全部列出来，别只报第一份。
+    """
+    versions: list[str] = []
     for f in sorted((ROOT / "wheelhouse").glob(item["pattern"])):
         parts = f.name.split("-")
-        if len(parts) > 1:
-            return parts[1]
-    return "(未随包)"
+        if len(parts) > 1 and parts[1] not in versions:
+            versions.append(parts[1])
+    return " / ".join(versions) or "(未随包)"
 
 
 def _scan_flat_dir(root: Path) -> set[str]:

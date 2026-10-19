@@ -88,8 +88,8 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
-| CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.4.0.cu128 | MIT |
-- **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。
+| CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.4.0.cu128 / 4.8.1+finesub0.6.0.cu128 | MIT |
+- **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；同时带 0.4.0 与 0.6.0 两个引擎版本对应的构建，运行时按引擎实际需要选用。该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。
 
 随包的字体（位于程序目录的 `assets\fonts\`）：
 

@@ -46,6 +46,7 @@ import urllib.request
 from pathlib import Path
 
 from job import Job, Cancelled
+import mirrors
 import wheels
 
 #: 一次默认运行会下到的权重（照引擎的 PIPELINE_MODEL_IDS 抄，别自己加）
@@ -232,8 +233,11 @@ def _plan(spec: dict, home: Path, params: dict,
         name, url = f.get("name"), f.get("url")
         if not (name and url):
             continue
+        # 镜像优先，但**保留官方地址兜底**（镜像返回错误页 / 断流时还能退回 GitHub）
+        mirrored = mirrors.prefixed(url, params)
+        urls = [mirrored] if mirrored == url else [mirrored, url]
         out.append((name, home / _SEP_DIR / name, int(f.get("size") or 0),
-                    (f.get("sha256") or "").lower(), [url]))
+                    (f.get("sha256") or "").lower(), urls))
     return out, []
 
 
@@ -300,7 +304,9 @@ def ready(params: dict, model_id: str) -> bool:
 
 def _opener(params: dict):
     proxy = (params or {}).get("proxy") or ""
-    if proxy:
+    # ★ 必须过 mirrors.proxy_ok：端口开着不等于代理真能出网。只按「填没填」判断的话，
+    #   一个死代理会把所有模型下载一起拖死，而引擎那边（看 proxy_ok）反而能正常走镜像。
+    if proxy and mirrors.proxy_ok(params):
         return urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
     return urllib.request.build_opener()

@@ -96,6 +96,13 @@ def find_finesub(exe_hint: str = "") -> str | None:
     p = shutil.which(exe_hint or "finesub")
     if p:
         return p
+    # uv 允许把工具的可执行文件放到自定义目录（UV_TOOL_BIN_DIR）；用户设了它、
+    # 又没加进 PATH 时，刚装好的引擎会找不到。先看这里，再看两个默认位置。
+    tool_bin = os.environ.get("UV_TOOL_BIN_DIR", "").strip()
+    if tool_bin:
+        c = Path(tool_bin) / "finesub.exe"
+        if c.exists():
+            return str(c)
     for c in (Path.home() / ".local" / "bin" / "finesub.exe",
               BIN_DIR / "finesub.exe"):
         if c.exists():
@@ -143,6 +150,12 @@ def uv_env(params: dict) -> dict:
 
 def install_uv(params: dict, job: Job, report) -> str:
     """下载 uv 独立版并解压到 %APPDATA%\\StarryVT\\bin，返回 uv.exe 路径"""
+    # 先认我们自己那份：PATH 上可能有用户装的老 uv，不一定支持
+    # `uv tool install "finesub>=0.6,<0.7"` 这种写法。随包这份是测过的 0.13.1。
+    bundled = BIN_DIR / "uv.exe"
+    if bundled.is_file() and uv_works(str(bundled)):
+        report("engine", None, "运行环境已就绪")
+        return str(bundled)
     existing = find_uv()
     if existing:
         report("engine", None, f"运行环境已就绪")
@@ -317,6 +330,13 @@ def has_nvidia() -> bool:
 
 def install_finesub(params: dict, job: Job, report) -> str:
     """一键安装：uv → finesub 引擎本体（运行时不在此步，首次跑任务时自动下载）"""
+    # 上一次没退干净 / 另一个实例还在翻译时，uv 覆盖引擎目录会撞文件锁，
+    # 用户看到的只是一句权限错误。先讲清楚，别让人白等。
+    busy = busy_processes()
+    if busy:
+        raise EngineError(
+            "还有翻译引擎进程在运行：" + "、".join(busy)
+            + "。请先结束正在翻译的窗口（或在任务管理器里结束它），再重新安装。")
     uv = install_uv(params, job, report)
 
     # 顺手把引擎数据目录挑好：有些机器上系统默认目录建不了目录链接（os error 448），
@@ -333,11 +353,19 @@ def install_finesub(params: dict, job: Job, report) -> str:
                "（没检测到 NVIDIA 显卡：引擎会用 CPU 跑，速度会明显慢 —— 但能用，不影响装）")
 
     report("engine", None, "正在安装翻译引擎…")
-    base = [uv, "tool", "install", "finesub", "--force"]
+    # ★ 钉住 0.6.x：我们的 pylock / 路由配置 / 知识库都按 0.6 写死，
+    #   上游一旦发 0.7 而不改这里，全新安装的机器会拿到一个没测过的引擎。
+    #   0.6.x 的补丁版仍然能装上（上游修 bug 不受影响）。
+    base = [uv, "tool", "install", "finesub>=0.6,<0.7", "--force"]
     # 直连上游源容易超时：先走清华镜像，失败再退回官方源。
     # 走不走镜像看的是那个地址**真的通不通**，不是「填没填」。
+    # ⚠️ 有代理时也把清华源垫在官方源后面：用户填的代理可能只是端口开着、
+    #    实际出不去（2026-10-19 全面检查时补的），官方源失败后还能靠镜像装上。
     tuna = not mirrors.proxy_ok(params)
-    tries = [base + ["--index-url", TUNA_INDEX], base] if tuna else [base]
+    if tuna:
+        tries = [base + ["--index-url", TUNA_INDEX], base]
+    else:
+        tries = [base, base + ["--index-url", TUNA_INDEX]]
     out = ""
     r = None
     for i, cmd in enumerate(tries):
