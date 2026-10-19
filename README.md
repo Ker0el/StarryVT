@@ -105,7 +105,7 @@ WinUI 3 深色界面，截图和界面说明见[使用文档](https://docs.qq.co
 ## 🚀 快速开始
 
 **① 下载安装**
-到 [Releases](../../releases/latest) 下载 `StarryVT-Setup.exe` 双击安装。
+到 [Releases](../../releases/latest) 下载最新的 `StarryVT-Setup_v*.exe` 双击安装。
 **免管理员权限**，装哪个盘自己选。
 
 **② 一键初始化**

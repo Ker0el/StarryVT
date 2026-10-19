@@ -27,7 +27,27 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-SETUP = ROOT / "installer" / "StarryVT-Setup.exe"
+
+
+def _find_setup() -> Path:
+    """当前版本的安装包（文件名带版本号；老构建没带版本号时退回旧名）"""
+    ver = ""
+    try:
+        for line in (ROOT / "installer.iss").read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("#define AppVersion"):
+                ver = line.split('"')[1]
+                break
+    except (OSError, IndexError):
+        pass
+    if ver:
+        p = ROOT / "installer" / f"StarryVT-Setup_v{ver}.exe"
+        if p.is_file():
+            return p
+    return ROOT / "installer" / "StarryVT-Setup.exe"
+
+
+SETUP = _find_setup()
 SANDBOX = ROOT / "_stage" / "testinstall"
 REAL_DIR = Path(r"D:\Other\StarryVT")          # 真机装的那一份（只读它，绝不碰）
 APP_ID = "{7E3B9C2A-5D41-4A6E-9F2B-1C8E4A6D2B91}_is1"

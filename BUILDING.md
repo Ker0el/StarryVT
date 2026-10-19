@@ -23,7 +23,7 @@ python build.py
 产物：
 
 - `_stage\app\`：完整程序目录
-- `installer\StarryVT-Setup.exe`：安装包
+- `installer\StarryVT-Setup_v<版本>.exe`：安装包
 
 只想改界面时，可以不重编后端：
 

@@ -3,7 +3,7 @@
 """一键打包：后端 → 界面（dotnet publish）→ 组装 _stage/app → Inno 安装包
 
 用法: python build.py [--pyinstaller]
-产物: _stage/app/（整包）、installer/StarryVT-Setup.exe
+产物: _stage/app/（整包）、installer/StarryVT-Setup_v<版本>.exe
 
 后端默认走 **Nuitka**（Python 编成本机码，不随包发 .pyc）—— 见 build_nuitka.py，
 产物在 `dist-nuitka/app.dist/`。
