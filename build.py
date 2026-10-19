@@ -41,6 +41,18 @@ BACKEND_DIST = PYI_DIST if USE_PYINSTALLER else NUITKA_DIST
 # 随包分发的外部程序（ffmpeg 另外还需要同目录的 av*.dll 共享库）
 BUNDLED = ("ffmpeg.exe", "ffprobe.exe", "yt-dlp.exe")
 
+
+def _app_version() -> str:
+    """安装包版本号（唯一来源：installer.iss 的 AppVersion）"""
+    try:
+        for line in (ROOT / "installer.iss").read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("#define AppVersion"):
+                return line.split('"')[1]
+    except (OSError, IndexError):
+        pass
+    return ""
+
 # 明确排除的模块：
 #  - PyQt/PySide：pywebview 的可选后端，本应用不用（且 PyQt 是 GPL/商业双许可，商用不能误打包）
 #  - tkinter/matplotlib/科学计算栈：应用完全不依赖，打进去只会变胖
@@ -182,7 +194,9 @@ def main() -> int:
     print("\n[OK] 完成：")
     print(f"   后端:   {BACKEND_DIST}")
     print(f"   整包:   {STAGE}")
-    print(f"   安装包: {ROOT / 'installer' / 'StarryVT-Setup.exe'}")
+    ver = _app_version()
+    setup = ROOT / "installer" / (f"StarryVT-Setup_v{ver}.exe" if ver else "StarryVT-Setup.exe")
+    print(f"   安装包: {setup}")
     return 0
 
 

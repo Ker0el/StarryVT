@@ -33,8 +33,9 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=installer
 ; 文件名保持 ASCII：GitHub Release 的资产名只允许 [A-Za-z0-9._-]，
-; 中文会被静默删掉；更新器的地址也按这个名字写死（见 updater.DEFAULT_UPDATE_URL）
-OutputBaseFilename=StarryVT-Setup
+; 中文会被静默删掉。带版本号，下载下来一眼能认出是哪一版；
+; 更新器读的是 latest.json 里的 url，不依赖这个文件名。
+OutputBaseFilename=StarryVT-Setup_v{#AppVersion}
 ; 说明页：纯文本不认 Markdown，.rtf 才能让 B 站链接可点（改 说明.txt 后跑 mkrtf.py 重新生成）
 InfoBeforeFile=installer\说明.rtf
 ; 安装包穿软件自己的图标（那颗星星）——用户 2026-10-14 定
