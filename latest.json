@@ -1,7 +1,7 @@
 {
-  "version": "6.7",
-  "sha256": "3c3663aea5233097df911f0ef17d4d94e165fd30b3a1469e743cdb0926807dbd",
-  "notes": "默认使用本机语音克隆 · 免费、不联网、速度快",
+  "version": "6.8",
+  "sha256": "b59d58cfe84aeadae21c0b39703704417ed5aa2eb6791d34a36341f7d5417e4b",
+  "notes": "修复配音把 CLI、CD 一类简称读成数字的问题",
   "published": "2026-10-19",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup.exe"
 }
