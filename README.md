@@ -27,7 +27,7 @@
 
 ## 📖 这是什么
 
-星译是一款**免费、功能完整的 Windows 视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
+星译（StarryVT，全称 Starry Video Translation）是一款**免费、功能完整的 Windows 视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
 
 不用手动整理字幕，也不用在几个软件之间来回倒。
 
@@ -396,7 +396,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 ## English
 
-**StarryVT (星译)** is a free, fully functional **video translation tool for Windows**.
+**StarryVT (星译)**, short for **Starry Video Translation**, is a free, fully functional **video translation tool for Windows**.
 Give it a video file, a folder, or a YouTube / Bilibili link, and one click produces
 **translated Chinese subtitles and a Chinese dub**, all the way to a finished MP4:
 **speech recognition → AI translation into Chinese → Chinese AI dubbing →
