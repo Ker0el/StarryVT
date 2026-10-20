@@ -29,13 +29,11 @@
 
 星译（StarryVT，全称 Starry Video Translation）是一款**免费、功能完整的 Windows 视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
 
-不用手动整理字幕，也不用在几个软件之间来回倒。
-
 **视频不上传。** 人声分离、语音识别、字幕压制、成片合成都在本机完成；翻译和配音会联网，用你自己申请的 API Key 直接调用 DeepSeek 和小米 MiMo，发出去的是字幕文字，不是视频（开启云端音色复刻时会额外上传一小段参考音）。全程不经过作者的服务器，作者看不到你的视频，也看不到你的成品。
 
 ## ✨ 核心功能
 
-- **🎬 一键生成翻译和字幕**：自动完成语音识别、AI 翻译、中文字幕生成、中文配音与字幕压制，一次完成。
+- **🎬 一键生成翻译和字幕**：自动完成语音识别、AI 翻译、中文字幕生成、中文配音与字幕压制。
 - **🎨 字幕样式可调**：字体、字号、字间距、描边、颜色、底部距离都能改，设置页里实时预览，点预览图可放大。
 - **🔒 隐私保护**：视频文件不上传，识别与压制都在本机完成。翻译和配音只把字幕文字发给 DeepSeek 和小米 MiMo，用你自己的 API Key，不经过作者服务器。
 - **🎙️ AI 配音与音色替换**：为外语视频生成中文配音，也可为中文视频重新合成配音。
@@ -43,7 +41,7 @@
 - **🌏 多语言支持**：支持英语、日语、韩语、俄语、德语等语言的视频翻译。
 - **📦 批量处理**：支持整个文件夹及子文件夹批量处理，单个任务失败不影响其他任务。
 - **🔗 链接直接导入**：支持 YouTube / B 站视频链接，自动获取视频信息并进行处理。
-- **🤖 AI Agent 接入**：通过 MCP 让 Claude Code / DeepSeek Harness / Codex / WorkBuddy / Cursor / Trae / 豆包工作 直接启动翻译、查询进度、取消任务（安装包 6.0 起内置）。
+- **🤖 AI Agent 接入**：通过 MCP 让 AI Agent 直接启动翻译、查询进度、取消任务（安装包 6.0 起内置，详见下文）。
 
 <details>
 <summary><b>还有一些在设置里</b></summary>
@@ -58,7 +56,6 @@
 
 **字幕样式**
 - 字体固定为随包的思源黑体 Light，不用自己装；字号、字间距、描边、颜色、底部距离都能调
-- 字号、字间距、描边、颜色、底部距离都能调，设置页实时预览
 - 长行自动缩小字号，尽量保持一行
 - 可选**本地语音克隆**：用原视频里的人声念中文，不联网、不要 Key
 - 原声音量滑杆，0% 是纯中文，默认保留一点背景音，音乐和音效不丢
@@ -74,33 +71,6 @@
 
 </details>
 
-## ⭐ 为什么选星译
-
-**自动化流程，简单易用，一键部署。**
-
-| 你关心的 | 星译的做法 |
-|:--|:--|
-| 一键部署 | 一个安装包，点一次【一键初始化】，运行环境和模型自动下齐，不用自己装 Python、CUDA 或 FFmpeg |
-| 自动化流程 | 视频进，语音识别、AI 翻译、中文配音、字幕压制自动跑完，输出带中文字幕和中文配音的 MP4 成片 |
-| 简单易用 | 文件拖进窗口、文件夹批量、粘贴 YouTube / B 站链接都能开始，翻译、配音、音量、输出都有调好的默认值 |
-| 界面清爽 | 现代 WinUI 3 界面，默认深色主题；没有广告、没有推广弹窗，也不捆绑其他软件 |
-| 字幕更准 | 视频自带创作者字幕时直接拿来翻译，没有才走语音识别；专有名词还会记进本机术语库 |
-| 字幕检查 | 翻译完成后暂停，双语对照检查译文，改完再继续配音和压制（默认关闭，可在设置里开启） |
-| 批量处理 | 多条任务排队跑，单条失败不影响其他任务 |
-| 出了问题 | 内置更新从 GitHub 下载，一键导出诊断报告，报告不含你的 API Key |
-
-翻译和配音只消耗你自己的 API 用量。
-
-## 🔄 工作流程
-
-**语音识别 → AI 翻译 → 配音合成 → 字幕压制 → 输出视频**
-
-最终拿到的是**包含中文字幕与配音的 MP4 成片**，而不只是一份字幕文件。
-
-## 🖥️ 界面
-
-WinUI 3 深色界面，截图和界面说明见[使用文档](https://docs.qq.com/doc/DUmpxWE1kVUFXVHpG)。
-
 ## 🚀 快速开始
 
 **① 下载安装**
@@ -115,7 +85,7 @@ WinUI 3 深色界面，截图和界面说明见[使用文档](https://docs.qq.co
 左侧【设置】里每栏都有「去申请」和「测试」按钮，点一下就知道通没通。
 [DeepSeek](https://platform.deepseek.com/api_keys) 是翻译主力，必填；
 [小米 MiMo](https://platform.xiaomimimo.com/console/api-keys) 配音用（目前限时免费）。
-两个都按量计费，**直接跟服务商结算，不经过作者**。
+费用**直接跟服务商结算，不经过作者**。
 
 **④ 开始翻译**
 选视频或贴链接，点【开始翻译】。第一次翻译不会再下模型（初始化时已经下齐）。
@@ -275,7 +245,7 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 - **本地语音克隆**（可选，约 15 GB）：在设置里手动点，不用就永远不用下。
 
 **初始化时一次下齐，是为了避免「第一次翻译时才悄悄下载」**：那个过程没有进度、
-下断了也不报错，以前的用户就是在这儿卡住的。
+下断了也不报错。
 </details>
 
 <details>
@@ -379,8 +349,6 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 「关于」页的版式与入场动效参考自 [DreamTranslatePO](https://github.com/TypeDreamMoon/DreamTranslatePO)。
 
-随包分发的组件与各自的许可证原文，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
-
 ## 👥 贡献者
 
 - **星空（Ker0el）**：作者、维护者
@@ -404,7 +372,7 @@ cloning.
 
 - Language directions: English / Japanese / Korean / Russian / German → **Chinese**, and **Chinese → English** (Chinese ASR + DeepSeek translation + English TTS)
 - One-click setup: the runtime and models are downloaded automatically, no Python / CUDA / FFmpeg setup
-- Modern WinUI 3 interface, dark by default: no ads, no promotional pop-ups, no bundled software
+- Modern WinUI 3 interface, dark by default
 - Input: single files, whole folders, YouTube / Bilibili links, batch queues
 - MCP server for AI agents (Claude Code / DeepSeek Harness / Codex / Cursor / Trae / WorkBuddy / Doubao Work): start translations, check progress, cancel jobs
 - Requires: Windows 10/11 x64, ~20 GB disk, an NVIDIA GPU recommended (CPU works, slower)
