@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.png" alt="星译 StarryVT，本地视频翻译工具：AI 字幕 + 中文配音" width="100%">
+  <img src="assets/banner.png" alt="星译 StarryVT，Windows 视频翻译工具：AI 字幕 + 中文配音" width="100%">
 </div>
 
 <h1 align="center">星译 · StarryVT</h1>
@@ -8,7 +8,7 @@
 
 <p align="center">
   <b>一键部署，自动生成翻译和字幕</b><br>
-  视频 → 中文字幕 → 中文配音 → 成片，全程在本机完成，<b>视频不上传</b>
+  视频 → 中文字幕 → 中文配音 → 成片，<b>视频不上传</b>，只有文字会发往翻译和配音服务
 </p>
 
 <p align="center">
@@ -27,17 +27,17 @@
 
 ## 📖 这是什么
 
-星译是一款**免费、功能完整的 Windows 本地视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
+星译是一款**免费、功能完整的 Windows 视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
 
 不用手动整理字幕，也不用在几个软件之间来回倒。
 
-**视频不上传。** 识别、翻译、配音、压制全部在你本机完成；翻译和配音只调用你自己申请的 API Key，不经过作者的服务器，作者看不到你的视频，也看不到你的成品。
+**视频不上传。** 人声分离、语音识别、字幕压制、成片合成都在本机完成；翻译和配音会联网，用你自己申请的 API Key 直接调用 DeepSeek 和小米 MiMo，发出去的是字幕文字，不是视频（开启云端音色复刻时会额外上传一小段参考音）。全程不经过作者的服务器，作者看不到你的视频，也看不到你的成品。
 
 ## ✨ 核心功能
 
 - **🎬 一键生成翻译和字幕**：自动完成语音识别、AI 翻译、中文字幕生成、中文配音与字幕压制，一次完成。
 - **🎨 字幕样式可调**：字体、字号、字间距、描边、颜色、底部距离都能改，设置页里实时预览，点预览图可放大。
-- **🔒 本地运行，保护隐私**：视频处理在本机完成，不上传至作者服务器。翻译与配音通过你自己的 API Key 调用服务。
+- **🔒 隐私保护**：视频文件不上传，识别与压制都在本机完成。翻译和配音只把字幕文字发给 DeepSeek 和小米 MiMo，用你自己的 API Key，不经过作者服务器。
 - **🎙️ AI 配音与音色替换**：为外语视频生成中文配音，也可为中文视频重新合成配音。
 - **📝 字幕检查与编辑**：翻译完成后暂停，双语对照检查译文，改完再继续配音和压制（默认关闭，可在设置里开启）。
 - **🌏 多语言支持**：支持英语、日语、韩语、俄语、德语等语言的视频翻译。
@@ -125,7 +125,7 @@ WinUI 3 深色界面，截图和界面说明见[使用文档](https://docs.qq.co
 
 ## 🤖 MCP 接入（AI Agent 调用）
 
-星译可以把本机翻译能力通过 MCP 暴露给 AI Agent，让它直接启动翻译、查看进度、取消任务、查询术语库。MCP 服务和界面共用同一套设置、API Key、引擎与输出目录。
+星译可以把翻译能力通过 MCP 暴露给 AI Agent，让它直接启动翻译、查看进度、取消任务、查询术语库。MCP 服务和界面共用同一套设置、API Key、引擎与输出目录。
 
 > 当前状态：MCP 服务已内置在 6.0 及更高版本的安装包里，安装版用户不需要安装 Python 或 mcp SDK，只需要配置 MCP 客户端。
 
@@ -396,14 +396,16 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 ## English
 
-**StarryVT (星译)** is a free, fully functional **local video translation tool for Windows**.
+**StarryVT (星译)** is a free, fully functional **video translation tool for Windows**.
 Give it a video file, a folder, or a YouTube / Bilibili link, and one click produces
 **translated Chinese subtitles and a Chinese dub**, all the way to a finished MP4:
 **speech recognition → AI translation into Chinese → Chinese AI dubbing →
 burned-in subtitles → final MP4**.
 
-Your video is **never uploaded**. Recognition, translation, dubbing and muxing all run on
-your own machine, and translation / TTS use *your own* API keys (DeepSeek, Xiaomi MiMo).
+Your video is **never uploaded**. Speech recognition, subtitle burning and muxing run on
+your own machine; translation and TTS call DeepSeek / Xiaomi MiMo with *your own* API keys.
+Only subtitle text leaves your computer, plus a short voice sample if you enable cloud voice
+cloning.
 
 - Language directions: English / Japanese / Korean / Russian / German → **Chinese**, and **Chinese → English** (Chinese ASR + DeepSeek translation + English TTS)
 - One-click setup: the runtime and models are downloaded automatically, no Python / CUDA / FFmpeg setup
