@@ -27,7 +27,7 @@
 
 ## 📖 这是什么
 
-星译（StarryVT，全称 Starry Video Translation）是一款**免费、功能完整的 Windows 视频翻译工具**。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
+星译（StarryVT，全称 Starry Video Translation）是一款**免费**的 Windows 视频翻译工具。导入一个视频文件、选择整个文件夹，或粘贴一条 YouTube / B 站链接，它会自动完成**语音识别、AI 翻译、中文字幕生成、配音合成与字幕压制**，一键生成可以直接发布的视频成片。
 
 **视频不上传。** 人声分离、语音识别、字幕压制、成片合成都在本机完成；翻译和配音会联网，用你自己申请的 API Key 直接调用 DeepSeek 和小米 MiMo，发出去的是字幕文字，不是视频（开启云端音色复刻时会额外上传一小段参考音）。全程不经过作者的服务器，作者看不到你的视频，也看不到你的成品。
 
@@ -196,7 +196,6 @@ Agent 会调用 `starryvt_translate` 启动任务，拿到 `job_id` 后用 `star
 - 外语教程、技术课程与知识视频翻译
 - 中文教程翻译成英文，给海外观众学习，受众更多
 - YouTube / B 站视频本地化
-- 外语视频的中文字幕与中文配音制作
 - 中文视频的音色替换与配音重制
 - 大批量视频翻译与处理
 
@@ -349,17 +348,13 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 
 「关于」页的版式与入场动效参考自 [DreamTranslatePO](https://github.com/TypeDreamMoon/DreamTranslatePO)。
 
-## 👥 贡献者
-
-- **星空（Ker0el）**：作者、维护者
-
 ## 💬 联系作者
 
 反馈问题、提建议、定制需求都欢迎，微信：**Star0xcc**
 
 ## English
 
-**StarryVT (星译)**, short for **Starry Video Translation**, is a free, fully functional **video translation tool for Windows**.
+**StarryVT (星译)**, short for **Starry Video Translation**, is a free **video translation tool for Windows**.
 Give it a video file, a folder, or a YouTube / Bilibili link, and one click produces
 **translated Chinese subtitles and a Chinese dub**, all the way to a finished MP4:
 **speech recognition → AI translation into Chinese → Chinese AI dubbing →
@@ -378,9 +373,3 @@ cloning.
 - Requires: Windows 10/11 x64, ~20 GB disk, an NVIDIA GPU recommended (CPU works, slower)
 - The app's UI is in Chinese
 - Source code: [github.com/Ker0el/StarryVT](https://github.com/Ker0el/StarryVT), licensed under **GPL-3.0**
-
-**Contributors:** Ker0el (author and maintainer).
-
----
-
-<p align="center"><sub>Made with ❤️ by Ker0el · Powered by <a href="https://github.com/caca2331/finesub">finesub</a> & 小米 MiMo</sub></p>
