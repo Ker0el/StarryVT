@@ -44,7 +44,6 @@
 - **📦 批量处理**：支持整个文件夹及子文件夹批量处理，单个任务失败不影响其他任务。
 - **🔗 链接直接导入**：支持 YouTube / B 站视频链接，自动获取视频信息并进行处理。
 - **🤖 AI Agent 接入**：通过 MCP 让 Claude Code / DeepSeek Harness / Codex / WorkBuddy / Cursor / Trae / 豆包工作 直接启动翻译、查询进度、取消任务（安装包 6.0 起内置）。
-- **🆓 免费且功能完整**：不锁定功能、不添加水印、不限制处理次数。
 
 <details>
 <summary><b>还有一些在设置里</b></summary>
@@ -90,7 +89,7 @@
 | 批量处理 | 多条任务排队跑，单条失败不影响其他任务 |
 | 出了问题 | 内置更新从 GitHub 下载，一键导出诊断报告，报告不含你的 API Key |
 
-以上功能都包含在内：不加水印、不限次数，翻译和配音只消耗你自己的 API 用量。
+翻译和配音只消耗你自己的 API 用量。
 
 ## 🔄 工作流程
 
@@ -324,10 +323,6 @@ AI 配音的逐句音频缓存。重跑同一个视频会秒级复用，不用�
 **不含你的 API Key**。
 </details>
 
-## 🆓 免费使用
-
-星译**完全免费**，功能完整可用，不加水印、无广告、不限次数。
-
 ## 📦 源码
 
 源码在本仓库：[Ker0el/StarryVT](https://github.com/Ker0el/StarryVT)，以 **GPL-3.0** 开源。
@@ -413,7 +408,7 @@ cloning.
 - Input: single files, whole folders, YouTube / Bilibili links, batch queues
 - MCP server for AI agents (Claude Code / DeepSeek Harness / Codex / Cursor / Trae / WorkBuddy / Doubao Work): start translations, check progress, cancel jobs
 - Requires: Windows 10/11 x64, ~20 GB disk, an NVIDIA GPU recommended (CPU works, slower)
-- Free and fully functional; the app's UI is in Chinese
+- The app's UI is in Chinese
 - Source code: [github.com/Ker0el/StarryVT](https://github.com/Ker0el/StarryVT), licensed under **GPL-3.0**
 
 **Contributors:** Ker0el (author and maintainer).
