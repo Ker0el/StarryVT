@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.12"
+#define AppVersion "6.13"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
@@ -99,4 +99,5 @@ end;
 
 [UninstallDelete]
 ; 卸载时清掉整个安装目录（含运行时产生的 output\、缩略图缓存等不在安装清单里的文件）
+; 新布局的数据目录默认在 {app}\data，这里会一起删掉（里面都是可重下的语音克隆和缓存）
 Type: filesandordirs; Name: "{app}"

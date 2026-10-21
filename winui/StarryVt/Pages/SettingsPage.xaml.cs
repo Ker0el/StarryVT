@@ -28,6 +28,8 @@ public sealed partial class SettingsPage : Page
     bool _filling;                 // 回填配置期间别把「程序填进去的值」又存一遍
     bool _lastPointerWasBlank;     // 这次鼠标点击是不是落在 ScrollView 的空白处
     string _homeSaved = "";        // 当前生效的「引擎数据目录」，改之前拿它比
+    string _homeDefault = "";      // 引擎数据目录的默认位置（后端算好的，给提示用）
+    string _dataDefault = "";      // 「数据目录」的默认位置（后端算好的，给提示用）
     Flyout? _paletteFlyout;
     ColorPicker? _picker;
     DateTime _lastAccentAt = DateTime.MinValue;   // 调色板拖动时的节流（见 ColorChanged）
@@ -44,9 +46,20 @@ public sealed partial class SettingsPage : Page
     readonly Dictionary<string, string> _keyTested = new();
     readonly Dictionary<string, string> _links = [];
 
+    /// <summary>设置内容最多 1120 宽，靠左；窗口更窄时跟着缩（不要居中）</summary>
+    void FitContentWidth()
+    {
+        double w = PageScroll.ActualWidth;
+        if (w <= 0) return;
+        SettingsContent.Width = Math.Min(1120, Math.Max(320, w - 8));
+    }
+
     public SettingsPage()
     {
         InitializeComponent();
+        // 设置内容固定 1120 宽、**靠左**：窗口更宽时不要把整页居中（用户 2026-10-21 定）
+        PageScroll.SizeChanged += (_, _) => FitContentWidth();
+        FitContentWidth();
         // 点空白时别让 WinUI 把焦点丢给 ScrollView 里第一个可聚焦控件（会把页面拽回顶部）。
         // 在 PageScroll 上监听（handledEventsToo），空白处就聚焦旁边的 FocusSink。
         PageScroll.AddHandler(UIElement.PointerPressedEvent,
@@ -197,6 +210,16 @@ public sealed partial class SettingsPage : Page
         FinesubBox.Text = Str(s, "finesub_exe");
         HomeBox.Text = Str(s, "finesub_home");
         _homeSaved = HomeBox.Text;          // 记着当前生效的那个 —— 改之前要拿它比（见 ConfirmHomeChangeAsync）
+        _homeDefault = Str(s, "finesub_home_default");
+        var homeActual = Str(s, "finesub_home_actual");
+        if (homeActual.Length > 0)
+            HomeHint.Text = "当前：" + homeActual
+                          + (HomeBox.Text.Trim().Length > 0 ? "" : "（默认）");
+        DataHomeBox.Text = Str(s, "data_home");
+        _dataDefault = Str(s, "data_default_root");
+        var dataRootNow = Str(s, "data_root");
+        if (dataRootNow.Length > 0)
+            DataHomeHint.Text = "当前：" + dataRootNow + (DataHomeBox.Text.Trim().Length > 0 ? "" : "（默认）");
         _filling = false;
 
         if (r.Value.TryGetProperty("links", out var links))
@@ -840,7 +863,7 @@ public sealed partial class SettingsPage : Page
         UpdateVoiceEnabled();
         await SaveAsync(new Dictionary<string, object?> { ["tts_clone"] = on });
         if (on && CloneEngineBox.SelectedIndex == 1 && !_cloneReady)
-            SetHint(CloneHint, "要先装本机那套：点右边的「下载并启用」（约 6.6 GB，装好了才能用）", false);
+            SetHint(CloneHint, "要先装本机那套：点右边的「下载并启用」（约 15 GB，装好了才能用）", false);
     }
 
     /// <summary>中文 → 英语时提示可用的英文音色。</summary>
@@ -891,7 +914,7 @@ public sealed partial class SettingsPage : Page
         var eng = CloneEngineBox.SelectedTag is { Length: > 0 } t ? t : "local";
         await SaveAsync(new Dictionary<string, object?> { ["clone_engine"] = eng });
         if (eng == "local" && !_cloneReady)
-            SetHint(CloneHint, "本机那套还没装：点右边的「下载并启用」（约 6.6 GB）", false);
+            SetHint(CloneHint, "本机那套还没装：点右边的「下载并启用」（约 15 GB）", false);
         else
             await RefreshCloneAsync();
     }
@@ -1088,7 +1111,13 @@ public sealed partial class SettingsPage : Page
         var r = await Backend.CallAsync("save_settings", new { patch }, 30_000);
         // 存上了才更新「当前生效值」—— 没存上还留着旧的当基准
         if (r is not null && patch.TryGetValue("finesub_home", out var hv))
+        {
             _homeSaved = (hv as string ?? "").Trim();
+            var nowHome = _homeSaved.Length > 0 ? _homeSaved : _homeDefault;
+            if (nowHome.Length > 0)
+                HomeHint.Text = "当前：" + nowHome
+                              + (_homeSaved.Length > 0 ? "" : "（默认）");
+        }
         if (r is null)
         {
             SaveState.Text = "没保存上：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应");
@@ -1288,6 +1317,43 @@ public sealed partial class SettingsPage : Page
         }
         HomeBox.Text = p;
         await SaveAsync(new Dictionary<string, object?> { ["finesub_home"] = p }, skipHomeConfirm: true);
+    }
+
+    /// <summary>换「数据目录」：语音克隆 + 配音缓存 + 缩略图 + wheel 缓存一起搬。
+    /// 和引擎那项一样是**先搬**；搬不成原处一个字不动，数据一切照旧。</summary>
+    async void PickDataHome_Click(object sender, RoutedEventArgs e)
+    {
+        var p = await PickFolderAsync();
+        if (p is null) return;
+
+        SaveState.Text = "正在搬数据（同盘瞬时；跨盘要复制几分钟，别关软件）…";
+        var r = await Backend.CallAsync("move_data_home", new { new_dir = p }, 60 * 60_000);
+        bool ok = r is { } rr && rr.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.True;
+        if (ok)
+        {
+            // 后端会把「等于默认位置」存成空串，界面跟着它显示
+            var saved = r is { } r3 && r3.TryGetProperty("saved", out var sv) && sv.ValueKind == JsonValueKind.String
+                ? sv.GetString() ?? "" : p;
+            DataHomeBox.Text = saved;
+            var now = saved.Length > 0 ? saved : _dataDefault;
+            if (now.Length > 0)
+                DataHomeHint.Text = "当前：" + now + (saved.Length > 0 ? "" : "（默认）");
+            SaveState.Text = saved.Length > 0 ? "已把数据搬过去 ✓" : "已改回默认位置 ✓";
+            await RefreshCloneAsync();          // 克隆那行的「位置」跟着刷新
+            return;
+        }
+
+        var why = r is { } r2 && r2.TryGetProperty("reason", out var rs) && rs.ValueKind == JsonValueKind.String
+            ? rs.GetString() ?? "搬不过去" : "搬不过去";
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "这次没能搬过去",
+            Content = why + "\n\n数据还在原来的位置，一切照旧。",
+            CloseButtonText = "知道了",
+        };
+        await dlg.ShowAsync();
+        SaveState.Text = "没有改动";
     }
 
     async Task<string?> PickFolderAsync()

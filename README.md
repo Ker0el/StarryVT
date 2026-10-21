@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.12-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.13-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -210,6 +210,8 @@ Agent 会调用 `starryvt_translate` 启动任务，拿到 `job_id` 后用 `star
 | 小米 MiMo API Key | 配音用（限时免费） |
 | MCP 客户端（可选） | Claude Code / DeepSeek Harness / Codex / Cursor / Trae / WorkBuddy / 豆包工作 等；支持本地 stdio 或本地 HTTP MCP 即可，只在用 AI Agent 调用时需要 |
 | 网络代理 | **下载 YouTube 和从 GitHub 检查更新时可能需要**，填本机代理地址如 `http://127.0.0.1:7897`；B 站、翻译、配音不需要 |
+
+语音克隆和各种缓存默认跟软件放在一起（`<安装目录>\data`）；老版本升级会继续用原来的 `%LOCALAPPDATA%\StarryVT`。想换到别的盘：设置 → 输出 → 数据目录，选好之后会先把已经下好的数据搬过去。
 
 ## 🌏 支持的语言
 

@@ -11,7 +11,11 @@ deep=True 时额外做联网检查（翻译服务通不通），只在用户主�
 """
 from __future__ import annotations
 
+import platform
 import shutil
+import subprocess
+import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -210,6 +214,103 @@ def _llm_route(c: dict) -> dict:
                  "settings" if state != OK else "", "去设置")
 
 
+_GPU_CACHE: dict = {"at": 0.0, "value": None}
+
+
+def _gpu_info() -> dict:
+    """查 NVIDIA 显卡和显存（nvidia-smi，8 秒超时，结果缓存 60 秒）。
+
+    ⚠️ 别用 WMI 的 AdapterRAM：它是 32 位字段，超过 4 GB 的卡会读成 4 GB 以下。
+    nvidia-smi 是唯一稳的取法；没有它本身就说明「没有 NVIDIA 驱动」。
+    """
+    now = time.time()
+    if _GPU_CACHE["value"] is not None and now - _GPU_CACHE["at"] < 60:
+        return _GPU_CACHE["value"]
+    info = {"name": "", "vram_gb": 0.0, "error": ""}
+    exe = shutil.which("nvidia-smi") or r"C:\Windows\System32\nvidia-smi.exe"
+    try:
+        r = subprocess.run(
+            [exe, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=8, creationflags=0x08000000)          # CREATE_NO_WINDOW
+        lines = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+        if r.returncode == 0 and lines:
+            best_mb, best_name = 0.0, ""
+            for line in lines:
+                parts = [p.strip() for p in line.split(",")]
+                name = parts[0] if parts else ""
+                try:
+                    mb = float(parts[1]) if len(parts) > 1 else 0.0
+                except ValueError:
+                    mb = 0.0
+                if mb >= best_mb:
+                    best_mb, best_name = mb, name
+            info.update(name=best_name, vram_gb=round(best_mb / 1024, 1))
+        else:
+            info["error"] = "nvidia-smi 没有返回显卡信息"
+    except Exception as e:  # noqa: BLE001 - 没有显卡/驱动是最常见的情况，不是错误
+        info["error"] = type(e).__name__
+    _GPU_CACHE.update(at=now, value=info)
+    return info
+
+
+def _hardware(c: dict) -> dict:
+    """电脑配置：系统 / 位数 / 显卡（用户 2026-10-21 要求初始化时顺带查）。
+
+    推荐配置（不满足只提示，不拦）：
+      · Windows 10 / 11 x64
+      · NVIDIA RTX 20 系以上，显存 ≥ 4 GB（没有也能跑，走 CPU，慢很多）
+      · 磁盘 ≥ 20 GB（这一项在「磁盘空间」里单独报）
+    """
+    # ---- 系统 ----
+    os_ok = platform.system() == "Windows"
+    is64 = sys.maxsize > 2 ** 32
+    if os_ok:
+        try:
+            v = sys.getwindowsversion()
+            # Windows 11 的 major/minor 仍然是 10.0，只能靠 build 号区分（22000 起是 11）
+            if v.major == 10 and v.build >= 22000:
+                os_name = f"Windows 11（build {v.build}）"
+            elif v.major == 10:
+                os_name = f"Windows 10（build {v.build}）"
+            else:
+                os_name = f"Windows {v.major}.{v.minor}（build {v.build}）"
+            if v.major < 10:
+                os_ok = False
+        except Exception:  # noqa: BLE001
+            os_name = platform.platform()
+    else:
+        os_name = f"{platform.system()} {platform.release()}"
+
+    if not os_ok:
+        return _item("hardware", "电脑配置", BAD,
+                     f"系统是 {os_name}。本软件需要 Windows 10 / 11 x64。")
+    if not is64:
+        return _item("hardware", "电脑配置", BAD,
+                     f"{os_name}，但当前是 32 位环境。本软件需要 64 位 Windows。")
+
+    # ---- 显卡 ----
+    g = _gpu_info()
+    name = g["name"]
+    vram = g["vram_gb"]
+    if not name:
+        return _item("hardware", "电脑配置", WARN,
+                     f"{os_name} x64；没检测到 NVIDIA 显卡或驱动。能跑，但会走 CPU，"
+                     f"语音识别会慢很多。推荐 NVIDIA RTX 20 系以上、显存 4 GB 以上。")
+    upper = name.upper()
+    if "RTX" not in upper:
+        return _item("hardware", "电脑配置", WARN,
+                     f"{os_name} x64；显卡是 {name}。能跑，但推荐 NVIDIA RTX 20 系以上"
+                     f"（老卡/专业卡可能更慢，部分新特性用不了）。")
+    if vram and vram < 4:
+        return _item("hardware", "电脑配置", WARN,
+                     f"{os_name} x64；显卡是 {name}，显存 {vram:g} GB。"
+                     f"推荐显存 4 GB 以上（显存不够时引擎可能退回 CPU，会明显变慢）。")
+    vram_txt = f"，显存 {vram:g} GB" if vram else "（显存读不到）"
+    return _item("hardware", "电脑配置", OK,
+                 f"{os_name} x64；显卡 {name}{vram_txt}，符合推荐配置。")
+
+
 def _disk(c: dict) -> dict:
     """磁盘空间：引擎运行环境 + 模型首次要下 5GB 以上
 
@@ -230,14 +331,15 @@ def _disk(c: dict) -> dict:
         return _item("disk", "磁盘空间", BAD,
                      f"{anchor} 只剩 {gb:.1f} GB，装引擎至少要 {engine.MIN_FREE_GB:.0f} GB —— "
                      f"点「一键初始化」会被拦下来（盘写满会连带整台机器出问题，所以不硬着头皮下）。"
-                     f"先腾出空间，或在设置里把「引擎数据目录」换到别的盘。",
+                     f"先腾出空间，或在设置里把「引擎数据目录」换到别的盘。建议至少留 20 GB。",
                      "settings", "去设置")
     if gb < engine.COMFY_FREE_GB:
         return _item("disk", "磁盘空间", WARN,
                      f"{anchor} 只剩 {gb:.1f} GB。装引擎（约 5 GB）够用，"
-                     f"但第一次翻译还要再下约 6 GB 的语音模型，建议留出余量。",
+                     f"但第一次翻译还要再下约 6 GB 的语音模型，建议至少留 20 GB。"
+                     f"想换盘可以在设置里改「引擎数据目录」。",
                      "settings", "去设置")
-    return _item("disk", "磁盘空间", OK, f"{anchor} 剩余 {gb:.1f} GB")
+    return _item("disk", "磁盘空间", OK, f"{anchor} 剩余 {gb:.1f} GB（建议 ≥ 20 GB）")
 
 
 def _output(c: dict) -> dict:
@@ -344,9 +446,9 @@ def check(params: dict | None = None, deep: bool = False) -> dict:
     c = dict(cfg.load())
     c.update(params or {})
 
-    items = [_data_dir(c), _install_dir(), _tools(), _downloader(c, deep), _engine(c),
-             _models(c), _keys(c), _llm_route(c), _disk(c), _output(c), _proxy(c),
-             _github(c, deep)]
+    items = [_hardware(c), _data_dir(c), _install_dir(), _tools(), _downloader(c, deep),
+             _engine(c), _models(c), _keys(c), _llm_route(c), _disk(c), _output(c),
+             _proxy(c), _github(c, deep)]
     if deep:
         items.append(_net(c))
 

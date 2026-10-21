@@ -50,10 +50,30 @@ def looks_blocked(blob: str) -> bool:
 
 # ---------- 候选目录 ----------
 
-def default_home() -> Path:
-    """引擎自己的默认数据目录"""
+def engine_default_home() -> Path:
+    """引擎自己内置的默认数据目录（finesub 不认环境变量时用的那个）"""
     base = os.environ.get("LOCALAPPDATA") or str(Path.home())
     return Path(base) / "FineSub"
+
+
+def default_home() -> Path:
+    """我们给引擎选的数据目录。
+
+    · 已经有引擎装在 `%LOCALAPPDATA%\\FineSub` → **继续用它**，别把用户的引擎抛下
+    · 还没装过 → 跟「数据目录」走：`<数据目录>\\engine`
+      （新用户的数据目录是 `<软件目录>\\data`，所以引擎也会落在软件目录里）
+    """
+    legacy = engine_default_home()
+    try:
+        if runtime_ready(legacy):
+            return legacy
+    except Exception:  # noqa: BLE001 - 探测失败就按没装处理
+        pass
+    try:
+        import paths
+        return paths.root() / "engine"
+    except Exception:  # noqa: BLE001
+        return legacy
 
 
 def _app_dir() -> Path:
@@ -88,10 +108,11 @@ def candidates(current: str = "") -> list[Path]:
     out: list[Path] = []
     if current:
         out.append(Path(current))
-    out.append(default_home())
+    out.append(default_home())                        # 数据目录\engine（新装）或老位置
+    out.append(engine_default_home())                 # 引擎自己的默认（可能已经装在这儿）
     out.extend(_other_drives())                      # 换块盘，绕开 C 盘上的重解析点
     out.append(_app_dir() / "FineSub")               # 跟着程序走
-    out.append(default_home().parent / "StarryVT" / "FineSub")
+    out.append(engine_default_home().parent / "StarryVT" / "FineSub")
     seen: set[str] = set()
     uniq: list[Path] = []
     for p in out:
@@ -130,14 +151,25 @@ def reparse_points(directory: Path) -> list[Path]:
 
 
 def _is_app_dir(directory: Path) -> bool:
-    """是不是程序目录（或它的上层）——卸载会连 {app} 一起删，运行时放这儿会被误删"""
+    """是不是程序目录或它的子目录 —— 卸载会连 {app} 一起删，运行时放这儿会被误删
+
+    ⚠️ 例外：`paths.root()` 那个「数据目录」是**故意**放进软件目录的
+    （新布局 `<app>\\data`），它里面的东西卸载时一起删是预期行为。
+    """
     app = _app_dir()
     try:
         d = Path(os.path.normcase(str(directory)))
         a = Path(os.path.normcase(str(app)))
+        try:
+            import paths
+            data = Path(os.path.normcase(str(paths.root())))
+            if d == data or data in d.parents:
+                return False
+        except Exception:  # noqa: BLE001 - 读不到数据目录就按老规则来
+            pass
     except (OSError, ValueError):
         return False
-    return d == a or d in a.parents
+    return d == a or a in d.parents
 
 
 def unusable_reason(directory: Path) -> str:
@@ -248,15 +280,18 @@ def pick(params: dict, *, exclude=(), force: bool = False) -> str:
     if not force:
         if current and runtime_ready(Path(current)):
             return current
-        if not current and runtime_ready(default_home()):
-            return ""
+        if not current:
+            picked = default_home()
+            if runtime_ready(picked):
+                # 只有引擎**自己的**默认目录才用空串表示，否则必须显式传路径
+                return "" if picked == engine_default_home() else str(picked)
 
-    default = default_home()
     for cand in candidates(current):
         if os.path.normcase(str(cand)) in skip:
             continue
         if not unusable_reason(cand):
-            return "" if cand == default else str(cand)
+            # 同上：`""` 只代表「引擎自己的默认 %LOCALAPPDATA%\FineSub」
+            return "" if cand == engine_default_home() else str(cand)
     return current          # 一个都不行：维持现状，让 448 的中文提示去兜底
 
 

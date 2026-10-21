@@ -62,6 +62,8 @@ cmd = [
     # MCP 服务（app.py --mcp / --mcp-http）
     "--collect-submodules", "mcp",
     "--hidden-import", "mcp_server",
+    # 统一数据目录（语音克隆 / 缓存跟着 data_home 走）
+    "--hidden-import", "paths",
     *[f"--exclude-module={m}" for m in EXCLUDES],
     str(ROOT / "app.py"),
 ]

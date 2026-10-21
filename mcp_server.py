@@ -12,7 +12,8 @@ Claude Code 添加（把路径换成自己的仓库位置）：
     claude mcp add --transport stdio starryvt -- python D:\\AI-Project\\StarryVT\\mcp_server.py
 
 设计上只做**薄封装**：实际流水线仍走 app.Api，和 WinUI 用的是同一套设置、API Key、
-引擎与输出目录。所有处理都在本机完成，视频不上传。
+引擎与输出目录。视频不上传，识别和压制在用户本机完成；翻译和配音用用户自己的
+API Key 调用第三方服务。
 
 ⚠️ 任务句柄只在**当前 MCP 服务器进程**内有效。MCP 客户端要在这个进程存活期间轮询
 starryvt_status；进程退出后，未完成的任务也会随之结束。这是 v1 的已知边界。
@@ -51,7 +52,8 @@ api = vt_app.Api()
 
 _instructions = (
     "星译（StarryVT）是本机的视频翻译工具，可以把视频或 YouTube / B 站链接翻成中文，"
-    "生成字幕、中文配音和成片。所有处理都在用户本机完成，视频不上传。\n"
+    "生成字幕、中文配音和成片。视频不上传，识别和压制在用户本机完成；"
+    "翻译和配音用用户自己的 API Key 调用第三方服务。\n"
     "开始任务前先确认输入和输出位置；任务会使用用户自己的 API Key，可能产生费用。"
     "用 starryvt_translate 启动，拿到 job_id 后用 starryvt_status 轮询，"
     "或者用 starryvt_wait 等待到完成。一次只跑一个任务。"

@@ -12,7 +12,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import settings
 import srt2ass
 import subtitle_fonts
 import tools
@@ -42,7 +41,8 @@ def render(style: dict, large: bool = False) -> Path:
     color = str(style.get("color") or "#FFFFFF").strip() or "#FFFFFF"
     font_file = subtitle_fonts.file_for(font, style.get("font_file") or "")
 
-    root = settings.APP_DIR / "subtitle_preview"
+    import paths
+    root = paths.resolve("subtitle_preview")
     root.mkdir(parents=True, exist_ok=True)
     tag = hashlib.sha1(
         f"{font}\x00{size}\x00{outline}\x00{margin_v}\x00{spacing}\x00{color}\x00{font_file}\x00{bool(large)}".encode("utf-8")

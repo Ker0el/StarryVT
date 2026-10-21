@@ -110,6 +110,9 @@ def main() -> int:
         # 只收 stdio 的客户端不需要，但打包时一起带上，避免两条路只有一条能用。
         "--include-package=mcp",
         "--include-module=mcp_server",
+        # 统一数据目录（语音克隆 / 缓存都跟着 data_home 走）。显式列出，
+        # 免得哪天改成只在函数里 import 被静态分析漏掉。
+        "--include-module=paths",
         *[f"--nofollow-import-to={m}" for m in EXCLUDES],
         "app.py",
     ]

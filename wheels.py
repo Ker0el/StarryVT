@@ -53,9 +53,9 @@ _verified: dict[str, str] = {}          # 文件名 → 已校验过的 sha256�
 # ---------- 位置 ----------
 
 def cache_dir() -> Path:
-    """wheel 的落地目录（持久，重装软件也不用重下）"""
-    base = Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT" / "wheels"
-    return base
+    """wheel 的落地目录（持久，重装软件也不用重下；跟着「数据目录」走）"""
+    import paths
+    return paths.resolve("wheels")
 
 
 def bundle_dir() -> Path:

@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.12"
+APP_VERSION = "6.13"
 
 
 def _base_dir() -> Path:
@@ -101,6 +101,15 @@ class Api:
     def boot(self) -> dict:
         """前端启动时拉初始状态"""
         c = cfg.load()
+        # 老版本的 dub_cache / wheels / subtitle_preview 散在 %APPDATA% 下，
+        # 启动时顺手并进「数据目录」（同盘是改名，瞬时；搬不动就留在原处）。
+        try:
+            import paths
+            moved = paths.migrate_legacy()
+            if moved:
+                diag.write("[data] 已归并旧缓存：" + "；".join(moved), "app")
+        except Exception as e:  # noqa: BLE001 - 归并失败不影响启动
+            diag.write(f"[data] 归并旧缓存失败: {type(e).__name__}: {e}", "app")
 
         def keyinfo(name: str) -> dict:
             v = c.get(name) or ""
@@ -114,6 +123,22 @@ class Api:
         pub["keys_plain"] = {"mimo": c.get("mimo_key", ""),
                              "deepseek": c.get("deepseek_key", ""),
                              "gemini": c.get("gemini_key", "")}
+        # 实际数据目录（给设置页显示「现在装在哪 / 默认装在哪」）
+        try:
+            import paths
+            pub["data_root"] = str(paths.root())
+            pub["data_default_root"] = str(paths.default_root())
+        except Exception:  # noqa: BLE001 - 读不到就不显示，不影响启动
+            pass
+        # 引擎数据目录同理：空设置时实际会用哪个位置
+        try:
+            import datadir
+            default_engine = datadir.default_home()
+            pub["finesub_home_default"] = str(default_engine)
+            pub["finesub_home_actual"] = ((c.get("finesub_home") or "").strip()
+                                          or str(default_engine))
+        except Exception:  # noqa: BLE001
+            pass
         from pipeline import _default_output_dir
         pub["default_output_dir"] = str(_default_output_dir())
         return {"settings": pub, "voices": cfg.VOICES, "langs": cfg.LANGS,
@@ -511,6 +536,9 @@ class Api:
         """写入设置（界面每次改动都会调，写不进去要能原样告诉用户）"""
         try:
             cfg.save(patch or {})
+            if patch and "data_home" in patch:
+                import paths
+                paths.reset_default()
         except Exception as e:  # noqa: BLE001
             diag.write_exception(e, "保存设置")
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -530,6 +558,25 @@ class Api:
         except Exception as e:  # noqa: BLE001
             diag.write_exception(e, "搬引擎数据目录")
             return {"ok": False, "reason": f"{type(e).__name__}: {e}", "fallback": True}
+
+    def move_data_home(self, new_dir: str) -> dict:
+        """把「数据目录」整个搬到 new_dir：语音克隆 + 配音缓存 + 缩略图 + wheel 缓存。
+
+        和 move_home 一样是**先搬**（同盘瞬时、跨盘复制几分钟），搬完才改设置；
+        返回 {ok, moved_to, moved, reason}，ok=False 时原处一个字没动。
+        """
+        try:
+            import paths
+            with self._lock:
+                if self._status.get("running") or self._installing:
+                    return {"ok": False, "reason": "有任务正在运行，等它完成后再换目录",
+                            "moved_to": "", "moved": []}
+            job = Job()
+            return paths.move_root(str(new_dir), job, self._report)
+        except Exception as e:  # noqa: BLE001
+            diag.write_exception(e, "搬数据目录")
+            return {"ok": False, "reason": f"{type(e).__name__}: {e}",
+                    "moved_to": "", "moved": []}
 
     # ---------------- 术语库（本机词条，界面「查看术语库」那个窗口用）----------------
 
@@ -654,7 +701,7 @@ class Api:
             if self._status["running"]:
                 return {"ok": False, "error": "有任务在跑，先等它完成"}
         try:
-            shutil.rmtree(localclone.HOME, ignore_errors=True)
+            shutil.rmtree(localclone.home(), ignore_errors=True)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
         # 删了就别再指着它干活

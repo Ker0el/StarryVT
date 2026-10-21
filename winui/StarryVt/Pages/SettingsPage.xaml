@@ -44,9 +44,11 @@
              ⚠️ 点编辑框再点空白时，WinUI 会把焦点丢给 ScrollView 里第一个可聚焦控件
              （顶部 API Key），页面就被拽回顶部。用 FocusSink + PointerPressed 接住空白点击。 -->
         <ScrollView x:Name="PageScroll" Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                    HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Hidden"
                     VerticalAnchorRatio="0.5"
                     AutomationProperties.AutomationId="PageScroll">
-            <StackPanel Spacing="12" MaxWidth="1120" HorizontalAlignment="Left" Padding="0,0,4,0">
+            <StackPanel x:Name="SettingsContent" Spacing="12" MaxWidth="1120"
+                        HorizontalAlignment="Left" Padding="0,0,4,0">
 
                 <!-- ================= API Key ================= -->
                 <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
@@ -561,6 +563,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="OutDirBox" Grid.Column="0" PlaceholderText="留空 = 视频旁边的 output 文件夹"
+                                         MinHeight="44" VerticalContentAlignment="Center"
                                          LostFocus="Field_LostFocus" Tag="output_dir" />
                                 <Button Grid.Column="1" Content="选择…" Click="PickOutDir_Click" />
                             </Grid>
@@ -577,16 +580,66 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="引擎数据目录" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB<LineBreak />留空 = 系统默认位置（在 C 盘）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB（不含语音克隆，那一项在下面「数据目录」）<LineBreak />留空 = 默认位置（新装会跟「数据目录」放在一起；已经装过的继续用原来的位置）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载</TextBlock>
                             </StackPanel>
-                            <Grid Grid.Column="1" ColumnSpacing="8">
+                            <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="HomeBox" Grid.Column="0" PlaceholderText="留空 = 系统默认位置"
-                                         LostFocus="Field_LostFocus" Tag="finesub_home" />
-                                <Button Grid.Column="1" Content="选择…" Click="PickHome_Click" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Grid.Column="0" ColumnSpacing="8"
+                                      HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="HomeBox" Grid.Column="0" PlaceholderText="留空 = 默认位置"
+                                             MinHeight="44" VerticalContentAlignment="Center"
+                                             LostFocus="Field_LostFocus" Tag="finesub_home" />
+                                    <Button Grid.Column="1" Content="选择…" Click="PickHome_Click" />
+                                </Grid>
+                                <TextBlock x:Name="HomeHint" Grid.Row="1" Grid.Column="0" FontSize="12.5" Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
+                        <!-- 数据目录：语音克隆和各种缓存的统一根目录（2026-10-21 加）。
+                             注意它和上面「引擎数据目录」是两回事：那一项只管翻译引擎，
+                             这一项管星译自己的数据（语音克隆、配音缓存、缩略图、wheel）。 -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="数据目录" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">语音克隆、配音缓存、缩略图都放这里<LineBreak />留空 = 默认位置（新装跟软件放在一起；老用户保持原来的位置）。点「选择…」可以换盘</TextBlock>
+                            </StackPanel>
+                            <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Grid.Column="0" ColumnSpacing="8"
+                                      HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="DataHomeBox" Grid.Column="0" IsReadOnly="True"
+                                             MinHeight="44" VerticalContentAlignment="Center"
+                                             PlaceholderText="留空 = 跟软件放在一起" />
+                                    <Button Grid.Column="1" Content="选择…" Click="PickDataHome_Click" />
+                                </Grid>
+                                <TextBlock x:Name="DataHomeHint" Grid.Row="1" Grid.Column="0" FontSize="12.5" Opacity="0.6"
+                                           TextWrapping="Wrap" />
                             </Grid>
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />

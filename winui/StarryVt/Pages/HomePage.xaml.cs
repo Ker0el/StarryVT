@@ -22,12 +22,13 @@ public sealed partial class HomePage : Page
     bool _showAll;      // true = 显示完整报告（查状态），false = 首次初始化（只列要办的）
 
     /// <summary>
-    /// 首次初始化**只办这几件**（顺序就是处理的顺序）。其余都是"看一眼"的信息
-    /// （程序装在哪、磁盘剩多少、输出目录…），放进「重新检测」的完整报告里看 ——
-    /// 第一次打开就铺十三行，用户只会一脸懵（用户 2026-10-14 定）。
+    /// 首次初始化要过一遍的几项（顺序就是处理的顺序）。其余都是"看一眼"的信息
+    /// （程序装在哪、输出目录…），放进「重新检测」的完整报告里看 ——
+    /// 第一次打开就铺十几行，用户只会一脸懵（用户 2026-10-14 定）。
+    /// 2026-10-21 加了「电脑配置」和「磁盘空间」：初始化前先把系统/显卡/磁盘说清楚。
     /// 另有：报告里任何**不正常**的项也都会列出来，不管它叫什么。
     /// </summary>
-    static readonly string[] SetupKeys = ["tools", "engine", "models", "downloader", "keys"];
+    static readonly string[] SetupKeys = ["hardware", "disk", "tools", "engine", "models", "downloader", "keys"];
 
     public HomePage()
     {
@@ -150,7 +151,13 @@ public sealed partial class HomePage : Page
         if (rep is null || !rep.Value.TryGetProperty("items", out var arr)) return;
 
         _all.Clear();
-        foreach (var it in arr.EnumerateArray()) _all.Add(MapItem(it));
+        foreach (var it in arr.EnumerateArray())
+        {
+            var step = MapItem(it);
+            // 输出目录正常时不占一行（用户 2026-10-21 定）；不正常才显示出来
+            if (step.Key == "output" && step.WasOk) continue;
+            _all.Add(step);
+        }
 
         // 引擎那一条真的过了 → 记下来并解禁导航栏。
         // ⚠️ **必须放在下面那两个分支之外**：老用户（initialized.txt 已存在）走的是上面那个 if，

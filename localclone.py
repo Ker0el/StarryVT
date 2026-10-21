@@ -14,8 +14,9 @@
   - 许可：bilibili 模型使用许可（见仓库 LICENSE / LICENSE_ZH.txt）—— 免费、
     可商用（月活不过亿、年收入不过亿即可），副本要保留许可声明
 
-**装在哪**：`%LOCALAPPDATA%\\StarryVT\\voiceclone\\`（自己的目录，**绝不碰引擎那套环境**，
-引擎的依赖是钉死的，混在一起早晚炸）
+**装在哪**：跟着「数据目录」走 —— 默认 `%LOCALAPPDATA%\\StarryVT\\voiceclone\\`，
+在设置 → 输出 → 数据目录里可以整体换到别的盘（见 paths.py）。**绝不碰引擎那套环境**，
+引擎的依赖是钉死的，混在一起早晚炸
 
 **默认不装**：设置里点「下载并启用」才动手（环境约 2.5 GB + 模型约 4 GB）。
 权重从 HuggingFace 拉，走设置里的 hf_endpoint 镜像和代理；断了再点一次会接着下。
@@ -33,12 +34,24 @@ from pathlib import Path
 import diag
 import engine
 import mirrors
+import paths
 import tools
 from job import Job
 
-HOME = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "StarryVT" / "voiceclone"
-SRC = HOME / "index-tts"                 # 源码 + .venv 都在这儿
-CKPT = SRC / "checkpoints"               # 模型权重
+
+def home() -> Path:
+    """克隆自己的根目录（跟着设置里的数据目录走，可换盘）"""
+    return paths.resolve("voiceclone")
+
+
+def src() -> Path:
+    """源码 + .venv 都在这儿"""
+    return home() / "index-tts"
+
+
+def ckpt() -> Path:
+    """模型权重"""
+    return src() / "checkpoints"
 # 两个辅助脚本跟主程序一起走（build_nuitka.py 的 --include-data-file 和
 # _rebuild_backend.py 的 --add-data 里都列了它们；那份 StarryVT.spec 早就没人用了）。
 APP_DIR = (Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
@@ -60,7 +73,7 @@ SKIP = ("qwen0.6bemo4-merge/*",)
 
 def python_exe() -> Path:
     """克隆环境自己的 python（跟主程序那套是两个世界）"""
-    return SRC / ".venv" / "Scripts" / "python.exe"
+    return src() / ".venv" / "Scripts" / "python.exe"
 
 
 def _dir_size(path: Path) -> int:
@@ -76,23 +89,24 @@ def _dir_size(path: Path) -> int:
 
 def status() -> dict:
     """装到哪一步了：{ready, installed, model_ready, dir, model_gb, detail}"""
+    h, s, c = home(), src(), ckpt()
     env_ok = python_exe().is_file()
-    model_ok = (CKPT / "config.yaml").is_file() and (CKPT / "gpt.pth").is_file()
-    gb = round(_dir_size(CKPT) / 1024 ** 3, 1) if CKPT.is_dir() else 0.0
+    model_ok = (c / "config.yaml").is_file() and (c / "gpt.pth").is_file()
+    gb = round(_dir_size(c) / 1024 ** 3, 1) if c.is_dir() else 0.0
 
     if env_ok and model_ok:
-        detail = f"已装好（模型 {gb} GB），随时可用" if gb else "已装好，随时可用"
+        detail = (f"已装好（模型 {gb} GB），随时可用\n位置：{h}" if gb
+                  else f"已装好，随时可用\n位置：{h}")
     elif env_ok:
-        detail = "运行环境装好了，模型还没下完"
-    elif SRC.is_dir():
-        detail = "上次没装完，点右边的按钮接着装"
+        detail = f"运行环境装好了，模型还没下完\n位置：{h}"
+    elif s.is_dir():
+        detail = f"上次没装完，点右边的按钮接着装\n位置：{h}"
     else:
         # 实测：运行环境 8.2 GB（torch+CUDA 那一套）+ 模型 ~6.8 GB
-        detail = ("没装（约 15 GB：运行环境 8 G + 模型 7 G；"
-                  "装在软件自己的数据目录里，不影响别的东西）")
+        detail = (f"没装（约 15 GB：运行环境 8 G + 模型 7 G）\n将装在：{h}")
 
     return {"ready": env_ok and model_ok, "installed": env_ok, "model_ready": model_ok,
-            "dir": str(HOME), "model_gb": gb, "detail": detail}
+            "dir": str(h), "model_gb": gb, "detail": detail}
 
 
 def _sub_env(params: dict) -> dict:
@@ -138,37 +152,39 @@ def _unzip_into(zip_path: Path, dest: Path) -> None:
         root = names[0].split("/")[0] if names else ""
         z.extractall(dest)
     top = dest / root
-    if top.is_dir() and top != SRC:
-        if SRC.exists():
-            shutil.rmtree(SRC, ignore_errors=True)
-        top.rename(SRC)
+    target = dest / "index-tts"
+    if top.is_dir() and top != target:
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        top.rename(target)
 
 
 def install(params: dict, job: Job, report) -> dict:
     """装本地语音克隆：源码 → 运行环境（uv sync）→ 模型权重。可取消，断了能接着装。"""
-    HOME.mkdir(parents=True, exist_ok=True)
+    h, s, c = home(), src(), ckpt()
+    h.mkdir(parents=True, exist_ok=True)
     # 运行环境约 8 GB + 模型约 7 GB。空间不够就别开始下，不然下到一半把盘写满，
     # 用户看到的只是一句莫名其妙的写入失败（2026-10-19 全面检查时补的）。
     try:
-        free_gb = shutil.disk_usage(HOME.anchor or str(HOME)).free / 1024 ** 3
+        free_gb = shutil.disk_usage(h.anchor or str(h)).free / 1024 ** 3
     except OSError:
         free_gb = None
     if free_gb is not None and free_gb < 16:
         raise RuntimeError(
-            f"本地语音克隆需要约 15 GB，{HOME.anchor} 只剩 {free_gb:.1f} GB。"
-            f"请先清理磁盘，或在设置里改用云端配音。")
+            f"本地语音克隆需要约 15 GB，{h.anchor} 只剩 {free_gb:.1f} GB。"
+            f"请换一个空间足够的「数据目录」（设置 → 输出 → 数据目录），或改用云端配音。")
     report("clone", 0, "准备本地语音克隆（IndexTTS-2.5）…")
 
     # 1) 源码（20 多 MB，走 GitHub 加速镜像 —— 和引擎组件同一条路）
-    if not (SRC / "pyproject.toml").is_file():
-        zip_path = HOME / "index-tts.zip"
+    if not (s / "pyproject.toml").is_file():
+        zip_path = h / "index-tts.zip"
         report("clone", 2, "下载安装包…")
         # validate：镜像可能用 200 回一个 HTML 错误页，不验就会拿网页去解压
         mirrors.fetch(SRC_ZIP, zip_path, params, report, stage="clone",
                       validate=zipfile.is_zipfile)
-        _unzip_into(zip_path, HOME)
+        _unzip_into(zip_path, h)
         zip_path.unlink(missing_ok=True)
-        if not (SRC / "pyproject.toml").is_file():
+        if not (s / "pyproject.toml").is_file():
             raise RuntimeError("解压后没找到 index-tts 的源码，看看日志")
     report("clone", 4, "安装包就位")
 
@@ -176,27 +192,27 @@ def install(params: dict, job: Job, report) -> dict:
     uv = engine.find_uv() or engine.install_uv(params, job, report)
     report("clone", 6, "准备运行环境（torch 等，约 2.5 GB，第一次会久一点）…")
     # uv 自己要从 GitHub 拿 Python、从 PyPI 拿依赖：代理 / 加速前缀 / 镜像都交给 engine 那份
-    _run_streamed(job, [uv, "sync"], cwd=SRC, env=engine.uv_env(params),
+    _run_streamed(job, [uv, "sync"], cwd=s, env=engine.uv_env(params),
                   report=report, stage="clone", tag="环境")
     if not python_exe().is_file():
         raise RuntimeError("运行环境装完了但没找到 python.exe，看看日志")
 
     # 3) 模型权重（约 4 GB）
-    spec = HOME / "download.json"
-    spec.write_text(json.dumps({"repo": MODEL_REPO, "local_dir": str(CKPT),
+    spec = h / "download.json"
+    spec.write_text(json.dumps({"repo": MODEL_REPO, "local_dir": str(c),
                                 "skip": list(SKIP)}, ensure_ascii=False), encoding="utf-8")
     report("clone", 70, "下载模型权重（约 4 GB，断了再点一次会接着下）…")
     env = _sub_env(params)
     cmd = [str(python_exe()), str(SCRIPT_DIR / "clone_download.py"), str(spec)]
     try:
-        _run_streamed(job, cmd, cwd=SRC, env=env, report=report, stage="clone", tag="模型")
+        _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="模型")
     except RuntimeError:
         # 镜像（hf_endpoint）上不一定有这个模型，直连官方源再试一次。
         # 已有下载进度会接着用（snapshot_download 认 local_dir 里的半成品）。
         job.check()
         report("clone", 70, "镜像上没找到，改直连官方源再试一次…")
         env.pop("HF_ENDPOINT", None)
-        _run_streamed(job, cmd, cwd=SRC, env=env, report=report, stage="clone", tag="模型")
+        _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="模型")
 
     st = status()
     if not st["ready"]:
@@ -205,12 +221,12 @@ def install(params: dict, job: Job, report) -> dict:
     # 4) 真加载一次：装完就是「能用的状态」，别等用户真跑任务时才发现缺东西
     #    （w2v-bert / campplus / bigvgan 这几个小模型是**加载时**才补下的）
     report("clone", 92, "试跑一下，确认能加载…")
-    check = HOME / "selftest.json"
-    check.write_text(json.dumps({"clone_dir": str(SRC), "lang": "ZH", "bf16": True,
+    check = h / "selftest.json"
+    check.write_text(json.dumps({"clone_dir": str(s), "lang": "ZH", "bf16": True,
                                  "ref": "", "jobs": []}, ensure_ascii=False), encoding="utf-8")
     cmd = [str(python_exe()), str(SCRIPT_DIR / "clone_synth.py"), str(check)]
     try:
-        _run_streamed(job, cmd, cwd=SRC, env=env, report=report, stage="clone", tag="自检")
+        _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="自检")
     except RuntimeError:
         # 镜像上不一定有那几个小模型 —— 去掉镜像直连再试一次；
         # 还不行就只提示、不算安装失败（真跑的时候还会再兜一次同样的底）
@@ -218,7 +234,7 @@ def install(params: dict, job: Job, report) -> dict:
         report("clone", 92, "镜像上没找到补下的小模型，改直连再试一次…")
         env.pop("HF_ENDPOINT", None)
         try:
-            _run_streamed(job, cmd, cwd=SRC, env=env, report=report, stage="clone", tag="自检")
+            _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="自检")
         except RuntimeError:
             report("clone", 96, "⚠ 试加载没成功（多半是网络），先装上；真跑的时候会自动再试一次")
 
@@ -241,8 +257,9 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
         return {"ok": 0, "fail": 0, "errors": []}
 
     spec_path = Path(work) / "clone_jobs.json"
+    s = src()
     spec_path.write_text(json.dumps({
-        "clone_dir": str(SRC),
+        "clone_dir": str(s),
         "lang": "ZH",
         "bf16": True,
         "ref": str(ref),
@@ -254,7 +271,7 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
     diag.write(f"[clone] synth: {len(items)} 句，参考音 {Path(ref).name}", "run")
 
     def _run(env: dict) -> tuple[int, int, list[str]]:
-        p = job.spawn(cmd, cwd=str(SRC), env=env, stdout=subprocess.PIPE,
+        p = job.spawn(cmd, cwd=str(s), env=env, stdout=subprocess.PIPE,
                       stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                       errors="replace", bufsize=1)
         done = ok = fail = 0

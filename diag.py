@@ -239,6 +239,24 @@ def environment_info(deep: bool = False) -> str:
     except Exception as e:  # noqa: BLE001
         lines.append(f"(读磁盘失败: {e})")
     try:
+        lines.append("----- 数据目录 -----")
+        import paths
+        info = paths.info(with_sizes=deep)
+        lines.append(f"根目录: {info['root']}"
+                     + ("（自定义）" if info["custom"] else "（系统默认）"))
+        for name, gb in info["items_gb"].items():
+            p = Path(info["root"]) / name
+            if gb is None:
+                if p.is_dir():
+                    lines.append(f"  {name}: {p}")
+            elif gb:
+                lines.append(f"  {name}: {gb} GB")
+        for name, p in info["legacy"].items():
+            if Path(p).is_dir():
+                lines.append(f"  ⚠ 旧位置还有 {name}: {p}")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(读数据目录失败: {e})")
+    try:
         lines.append("----- 引擎模型缓存 -----")
         lines += _hf_cache_report()
     except Exception as e:  # noqa: BLE001

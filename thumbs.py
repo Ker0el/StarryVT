@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -19,7 +18,10 @@ import diag
 import tools
 from job import no_window_kwargs
 
-CACHE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "StarryVT" / "thumbs"
+def cache_dir() -> Path:
+    """缩略图缓存目录（跟着「数据目录」走，见 paths.py）"""
+    import paths
+    return paths.resolve("thumbs")
 
 WIDTH = 176          # 列表里那一格就这么大，别抽原尺寸（几百 KB 一张没必要）
 
@@ -43,16 +45,17 @@ def fetch_many(urls, params: dict | None = None, workers: int = 6) -> dict[str, 
     if not items:
         return {}
     proxy = ((params or {}).get("proxy") or "").strip()
-    CACHE.mkdir(parents=True, exist_ok=True)
+    cache = cache_dir()
+    cache.mkdir(parents=True, exist_ok=True)
     handlers = []
     if proxy:
         handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
     opener = urllib.request.build_opener(*handlers)
 
     def one(url: str) -> tuple[str, str]:
-        dest = CACHE / f"{_url_key(url)}.jpg"
+        dest = cache / f"{_url_key(url)}.jpg"
         try:
-            if dest.is_file() and dest.stat().st_size > 500:
+            if dest.is_file() and dest.stat().st_size > 0:
                 return url, str(dest)
             req = urllib.request.Request(url, headers={"User-Agent": UA})
             with opener.open(req, timeout=15) as r:
@@ -89,11 +92,12 @@ def get(video: Path | str, at: float = 3.0) -> Path | None:
     video = Path(video)
     if not video.is_file():
         return None
-    dest = CACHE / f"{_key(video)}.jpg"
-    if dest.is_file() and dest.stat().st_size > 500:
+    cache = cache_dir()
+    dest = cache / f"{_key(video)}.jpg"
+    if dest.is_file() and dest.stat().st_size > 0:
         return dest
 
-    CACHE.mkdir(parents=True, exist_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp.jpg")
     ff = tools.path("ffmpeg")
 
@@ -111,7 +115,10 @@ def get(video: Path | str, at: float = 3.0) -> Path | None:
                 capture_output=True, text=True, timeout=40, **no_window_kwargs())
         except Exception:  # noqa: BLE001 - 超时/找不到 ffmpeg 都只是"没有缩略图"
             continue
-        if r.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 500:
+        # ★ 判据是 ffmpeg 的退出码，不是文件大小：画面单一的那一帧
+        #   （淡入 / 纯色 / 暗场）压出来可能只有 300 多字节，按 >500 判会把
+        #   一张**合法**的缩略图丢掉（2026-10-15 实测踩过，见项目记忆）。
+        if r.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
             tmp.replace(dest)
             return dest
     diag.write(f"[thumb] 抽不出缩略图: {video.name}", "run")

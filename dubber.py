@@ -162,7 +162,8 @@ def default_cache_dir() -> Path:
     子目录按合成模型名打散：哪天换了模型，新目录开工，旧缓存不会拿旧念法顶上。
     """
     tag = hashlib.sha1(f"{MIMO_MODEL}\x00{VOICECLONE_MODEL}".encode("utf-8")).hexdigest()[:8]
-    return Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT" / "dub_cache" / tag
+    import paths
+    return paths.resolve("dub_cache") / tag
 
 
 def _prune_cache(root: Path) -> None:

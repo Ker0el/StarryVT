@@ -23,6 +23,9 @@ DEFAULTS: dict = {
     "yt_auto_extra": True,               # 粘上链接后按标题自动填「背景信息」
     "finesub_exe": "finesub",            # 空/PATH 名 = PATH 查找
     "finesub_home": "",                  # 空 = 用引擎自己的默认数据目录（推荐）
+    # 星译自己的数据根目录：语音克隆、配音缓存、缩略图、wheel 缓存都放这里。
+    # 空 = %LOCALAPPDATA%\StarryVT（C 盘）。换盘见 paths.py / 设置 → 输出 → 数据目录。
+    "data_home": "",
     "finesub_bad_homes": [],             # 建过链接失败的目录（os error 448），自动记录、不再挑它
     "hf_endpoint": "https://hf-mirror.com",
     "github_mirror": "auto",             # GitHub 加速镜像：auto=自动挑 / off=不用 / 或填镜像地址
