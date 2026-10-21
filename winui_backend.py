@@ -76,8 +76,13 @@ def _status_pusher() -> None:
             #    一个都推不出去（老界面是每秒轮询 get_status，所以没暴露）。2026-10-14 修。
             q = st.get("queue") or []
             qsig = tuple((it.get("status"), it.get("detail")) for it in q)
+            # ⚠️ 日志只比 len 不够：get_status 只回**最后 300 行**，窗口填满之后 len 永远是
+            #    300 —— 纯日志变化就不会触发推送，界面看着又是「卡住」（2026-10-21）。
+            #    所以带上 log_index（窗口起点的绝对行号）和最后一行。
+            log = st.get("log") or []
             sig = (st.get("running"), st.get("stage"), st.get("percent"),
-                   len(st.get("log") or []), bool(st.get("error")), qsig,
+                   len(log), st.get("log_index"), log[-1] if log else "",
+                   bool(st.get("error")), qsig,
                    st.get("out_dir"), st.get("subtitle_raw"),
                    st.get("subtitle_final"),
                    st.get("awaiting_review"), st.get("review_kind"))

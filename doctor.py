@@ -197,7 +197,11 @@ def _keys(c: dict) -> dict:
     if miss:
         return _item("keys", "API Key", BAD if not ds else WARN,
                      "还没配置：" + "；".join(miss), "settings", "去设置")
-    extra = "" if (c.get("gemini_key") or "").strip() else "；Gemini 未配置（只影响可选增强）"
+    # 2026-10-21 起 Gemini 不再是翻译兜底（界面里也没有这一项了），平时不用提它；
+    # 只有打开着那两个走引擎原生 Gemini 搜索的老开关（视频语境 / 联网查证）时才提示。
+    extra = ""
+    if (c.get("video_context") or c.get("web_search")) and not (c.get("gemini_key") or "").strip():
+        extra = "；Gemini 未配置（视频语境纠错 / 联网查证需要它）"
     return _item("keys", "API Key", OK, f"DeepSeek、MiMo 都已配置{extra}")
 
 

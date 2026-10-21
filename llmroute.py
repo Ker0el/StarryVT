@@ -67,8 +67,10 @@ _DEEPSEEK_ROWS = (
     "-1|-1|-1|-1|false|80|false|false||",
 )
 
-# Gemini 免费池（引擎打包声明里那四个 free 档）。只有配了代理才排进候选链：
-# 没代理时它是一条**必然超时**的尾巴，DeepSeek 偶发失败就会去撞六次 10060。
+# Gemini 免费池（引擎打包声明里那四个 free 档）。
+# ⚠️ 2026-10-21 用户定：**DeepSeek 失败后不再退 Gemini**。界面里早就没有 Gemini
+#    这一项了，留着那条尾巴只会让偶尔一次 DeepSeek 抖动变成一串 Google 超时。
+#    现在它只服务一种老配置：**只填了 Gemini key、没有 DeepSeek key** 的机器。
 _GEMINI_TAIL = ("gemini-free-3_7-flash", "gemini-free-3_8-flash",
                 "gemini-free-3_6-flash", "gemini-free-3_5-flash")
 
@@ -97,17 +99,13 @@ def chain_text(params: dict) -> str:
     if not chain:
         return ""
     ds = [f for f in chain if f.startswith("ds-")]
-    gm = [f for f in chain if not f.startswith("ds-")]
     if ds:
         parts = []
         for i, fid in enumerate(ds):
             _name, mid, _channel = _model_of(fid)
             parts.append(mid + ("（主）" if i == 0 else "（备）"))
-        text = " → ".join(parts) + " · DeepSeek 官方 API"
-        if gm:
-            text += f"，再失败退 {len(gm)} 个 Gemini 免费档（需要代理）"
-        return text
-    names = [fid.replace("gemini-free-", "") for fid in gm]
+        return " → ".join(parts) + " · DeepSeek 官方 API"
+    names = [fid.replace("gemini-free-", "") for fid in chain]
     return (f"Gemini {names[0]}（主）"
             + (" → " + "、".join(names[1:]) + "（备）" if len(names) > 1 else "")
             + " · Google Gemini 官方 API（需要代理）")
@@ -120,13 +118,16 @@ def _on(params: dict, name: str) -> bool:
 
 
 def targets(params: dict) -> list[str]:
-    """本次要用的模型链（顺序即优先级，前面的失败才轮到后面的）"""
+    """本次要用的模型链（顺序即优先级，前面的失败才轮到后面的）
+
+    ⚠️ DeepSeek 和 Gemini 互斥：有 DeepSeek 就只用 DeepSeek，**不再拿 Gemini 兜底**
+    （2026-10-21 用户定）。Gemini 只留给「只填了 Gemini key」的老配置。
+    """
     deepseek, gemini = _on(params, "deepseek_key"), _on(params, "gemini_key")
-    proxy = _on(params, "proxy")
     chain: list[str] = []
     if deepseek:
         chain += ["ds-flash", "ds-pro"]
-    if gemini and (proxy or not deepseek):
+    elif gemini:
         chain += list(_GEMINI_TAIL)
     return chain
 

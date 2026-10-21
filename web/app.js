@@ -586,7 +586,8 @@ function startPolling() {
 // ---------- 渲染 ----------
 // 日志分级：错误/警告/成功/进度/普通
 function classify(line) {
-  const s = String(line);
+  // 「失败 0」不算错误：批量收尾那行是「🎉 批量完成：成功 5，失败 0」
+  const s = String(line).replace(/失败\s*[:：]?\s*0(?!\d)/g, "");
   if (/❌|失败|出错|错误|error|exception|traceback/i.test(s)) return "l-err";
   if (/⚠|warning|警告|跳过/i.test(s)) return "l-warn";
   if (/✅|🎉|完成|就绪|已保存|已生成/.test(s)) return "l-ok";
@@ -620,29 +621,34 @@ function render(st) {
     stext.textContent = "就绪";
   }
 
-  if (st.log && st.log.length !== LAST_LOG_LEN) {
+  if (st.log && st.log.length) {
     const el = $("log");
     // ★ 只追加新增的行，**绝不整体重建**。
     //   以前这里是 `el.innerHTML = st.log.map(...)` —— 每秒轮询重建一次，
     //   用户刚框选中的文字立刻被新节点顶掉，等于"日志根本选不住、复制不了"。
     //   追加还有个好处：自动跟随只在贴着底部时才生效，往上翻着看不会被拽回去。
-    if (st.log.length < LAST_LOG_LEN) {
-      el.textContent = "";          // 后端截断过（超过 800 行会截到 500）→ 整体重建
-      LAST_LOG_LEN = 0;
+    // ★ 后端每次只回**最后 300 行**，另给 log_index（这一截第一行的绝对序号）。
+    //   只按数组长度记 LAST_LOG_LEN 的话，窗口填满后长度恒为 300，新行永远推不出来
+    //   （2026-10-21 界面日志停更的根因）。
+    const base = st.log_index | 0;
+    const total = base + st.log.length;
+    if (total < LAST_LOG_LEN) {     // 换任务 / 后端截断过 → 整体重建
+      el.textContent = "";
+      LAST_LOG_LEN = base;
     }
-    if (st.log.length > LAST_LOG_LEN) {
-      const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      const frag = document.createDocumentFragment();
-      for (let i = LAST_LOG_LEN; i < st.log.length; i++) {
-        const d = document.createElement("div");
-        d.className = classify(st.log[i]);
-        d.textContent = st.log[i];  // 用 textContent，日志内容不会被当 HTML 解析
-        frag.appendChild(d);
-      }
+    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    const frag = document.createDocumentFragment();
+    for (let i = Math.max(0, LAST_LOG_LEN - base); i < st.log.length; i++) {
+      const d = document.createElement("div");
+      d.className = classify(st.log[i]);
+      d.textContent = st.log[i];  // 用 textContent，日志内容不会被当 HTML 解析
+      frag.appendChild(d);
+    }
+    if (frag.childNodes.length) {
       el.appendChild(frag);
-      LAST_LOG_LEN = st.log.length;
       if (stick) el.scrollTop = el.scrollHeight;
     }
+    LAST_LOG_LEN = total;
   }
 
   const res = st.result;

@@ -207,8 +207,13 @@ def _prune_cache(root: Path) -> None:
 #: 源语言字幕里「这句话说完了」的标点。中文成品字幕**行尾一律没有标点**（ASR 产物），
 #: 所以「断没断句」这个信息只能从源语言那份拿。
 _SENT_END = ".!?。！？…"
-#: 一组最多并几行 —— 并太多会读不完，反而要硬加速
-_MAX_GROUP = 3
+#: 一组最多并几行 —— 只是兜底，真正决定「要不要并」的是下面的时长上限
+_MAX_GROUP = 12
+#: 一组最长读多少秒（估算）。超过就分段，别让一次合成读半分钟以上。
+#: ⚠️ 以前这里写的是「最多并 3 行」，长句会被硬切成两段、各念一次，
+#:    听感就是「上一句最后几个字停很久、接不上下一句」（2026-10-21 用户报）。
+#:    按**时长**限比按行数限合理：一行字幕多长并不固定。
+_MAX_GROUP_SEC = 20.0
 #: 估算时长给的宽限（秒）；超出那点交给后面的 fit/atempo 兜
 _GROUP_SLACK = 0.4
 #: 放慢语速填空白时，句末至少留这么久的自然停顿
@@ -285,7 +290,10 @@ def _group_segs(segs: list, cont: list[bool]) -> list[list[int]]:
             # 并进来之后，到下一组开口之前还读得完吗
             end = segs[j + 1][0] if j + 1 < n else segs[j][1]
             joined = " ".join(segs[t][2] for t in g) + " " + segs[j][2]
-            if _est_sec(joined) > (end - segs[i][0]) + _GROUP_SLACK:
+            est = _est_sec(joined)
+            if est > (end - segs[i][0]) + _GROUP_SLACK:
+                break
+            if est > _MAX_GROUP_SEC:       # 一次合成别读太长，按估算时长切
                 break
             g.append(j)
             j += 1
@@ -682,7 +690,10 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
             if dur <= 0.3 or target <= 0.5 or dur >= target:
                 continue
             tempo = max(fit_slow, dur / target)
-            if tempo > 0.93:               # 只慢不到 7% 就不折腾了
+            if tempo > 0.97:               # 只慢不到 3% 就不折腾了
+                # ⚠️ 以前这里是 0.93（不到 7% 就跳过）。对长句来说 7% 就是
+                #    一两秒的死寂（实测 20 秒的组留了 1.5 秒），听感正是
+                #    「上一句最后几个字停很久」（2026-10-21 用户报）。
                 continue
             suffix = "_slow" + ("t" if trim_silence else "")
             fp = paths[i].with_name(_cache_name(units[i]["text"], voice_key, suffix, style=style))

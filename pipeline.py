@@ -689,8 +689,33 @@ def _review_final_subtitles(srt: Path, params: dict, job: Job, report,
     if not params.get("subtitle_review") or params.get("_in_batch"):
         return srt
     chosen = _pause_for_review(srt, job, report, "final", source)
+    _refresh_style(params)          # 暂停期间改的字体/颜色/双语要能跟上，见函数注释
     report("translate", None, "继续配音 / 压制…")
     return chosen
+
+
+#: 暂停点之后**重新读一次**的字幕外观设置。
+#: 整份设置是在开工那一刻拍快照的（见 app.start），所以运行中改什么都不影响这一单 ——
+#: 唯一例外就是这个暂停点：用户是看着字幕去调样式的，改完继续却不生效会很像 bug。
+#: ⚠️ 只同步「外观」，不同步 do_dub / burn_subs / 语言 / 密钥那类会改变流程的键。
+_LIVE_STYLE_KEYS = (
+    "subtitle_font", "subtitle_font_file", "subtitle_size", "subtitle_spacing",
+    "subtitle_color", "subtitle_outline", "subtitle_outline_color",
+    "subtitle_margin_v", "subtitle_bilingual", "subtitle_bilingual_order",
+    "subtitle_bilingual_scale",
+)
+
+
+def _refresh_style(params: dict) -> None:
+    """把用户刚在设置里调过的字幕外观同步进本次任务（只影响还没跑的配音/烧录）。"""
+    try:
+        import settings as cfg
+        live = cfg.load()
+    except Exception:  # noqa: BLE001 - 读不到就照旧，别因为设置文件把任务搞挂
+        return
+    for k in _LIVE_STYLE_KEYS:
+        if k in live:
+            params[k] = live[k]
 
 
 def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) -> Path:
@@ -1499,12 +1524,9 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
     # 「翻译用哪个大模型」由我们指定：引擎打包的路由表只有 Gemini，国内直连必失败。
     # 这里把 DeepSeek 那条链写进引擎的模型目录/预设并指给它。见 llmroute.py
     env.update(llmroute.env(params))
-    # 用了哪个模型、走哪家渠道，直接说出来 —— 不再藏在 ds-flash 这种内部别名后面。
-    if not stage and not getattr(job, "_model_reported", False):
-        job._model_reported = True
-        detail = llmroute.chain_text(params)
-        if detail:
-            report("translate", None, f"🤖 翻译模型：{detail}")
+    # 路由明细**不进界面日志**（2026-10-21 用户要求）：那行又长、带「失败」二字会被
+    # Runner.Classify 判成红色的错误行，后面那句「退 Gemini 免费档」也容易让人以为
+    # 出问题了。要看走了哪条链，去诊断报告（diag.py 里的「实际模型」）。
     # 引擎的 _read_dotenv 会读它自己的 .env（里面可能留着旧 key/keyring），但
     # _get_key_entries 先看进程环境变量。把当前设置里的 key 直接交给子进程，
     # 免得用户在设置里换了 key、引擎还在用旧的那把（实测 401）。

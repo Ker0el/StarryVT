@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.16"
+APP_VERSION = "6.17"
 
 
 def _base_dir() -> Path:
@@ -611,6 +611,14 @@ class Api:
         """
         try:
             import relocate
+            # 跟 move_data_home 一样：任务跑着的时候不能搬。
+            # 引擎正在写 tasks/cache，跨盘复制会拷到半截文件，而复制成功后还会删掉原位置那份
+            # ——正在跑的翻译会当场找不到自己的任务目录。「搬不成重下」那条回退也不该出现，
+            # 而是明确告诉用户等它跑完。
+            with self._lock:
+                if self._status.get("running") or self._installing:
+                    return {"ok": False, "moved_to": "", "fallback": False, "busy": True,
+                            "reason": "现在有任务正在运行，等它跑完再换目录"}
             job = Job()
             return relocate.move_home(cfg.load(), str(new_dir), job, self._report)
         except Exception as e:  # noqa: BLE001
@@ -950,7 +958,12 @@ class Api:
             s = dict(self._status)
             s["awaiting_review"] = bool(job is not None and job.review_ready)
             s["review_kind"] = job.review_kind if job is not None and job.review_ready else ""
-            s["log"] = s["log"][-300:]
+            # 只发最后 300 行，但**必须带上这一截的绝对起点**：前端靠它算「哪几行是新的」。
+            # 只给数组的话，长度到 300 之后永远是 300，前端会以为一行都没新增，日志就此停住。
+            full = s["log"]
+            tail = full[-300:]
+            s["log_index"] = int(s.get("log_gone") or 0) + len(full) - len(tail)
+            s["log"] = tail
             s["tools"] = self._tools
             return s
 
@@ -1116,10 +1129,18 @@ class Api:
         # **不折叠、不去重**：用户明确要求「同类信息重复出现，后续已折叠」这种不要。
         # 日志是给人看的（也是给售后看的），被吞掉的行恰恰可能是关键那一行。
         # 只做一个容量上限：界面上留最近 800 行、超了截到 500，免得界面越拖越卡。
+        #
+        # ★ log_gone 记录「前面被丢掉多少行」——界面靠它算绝对行号。
+        #   不记的话，get_status 只发最后 300 行、长度永远是 300，前端 `_seen` 会
+        #   一直等于 300 → **从第 300 行起再也不推新行**，日志看起来像卡住了
+        #   （2026-10-21 用户报「配音合成卡住」，实际是日志停在第 300 行）。
         with self._lock:
-            self._status["log"].append(line)
-            if len(self._status["log"]) > 800:
-                self._status["log"] = self._status["log"][-500:]
+            st = self._status
+            st["log"].append(line)
+            if len(st["log"]) > 800:
+                dropped = len(st["log"]) - 500      # 是 301 不是 300（第 801 行才触发）
+                st["log"] = st["log"][-500:]
+                st["log_gone"] = int(st.get("log_gone") or 0) + dropped
         self._note_subtitle_paths(line)
         diag.write(f"[{stage}] {line}", "run")
 

@@ -172,18 +172,25 @@ public sealed class RealRunner : IRunner
     {
         if (_done) return;
 
-        // 日志：只发新增的行（后端每次推的是完整列表）
+        // 日志：只推新增的行。后端每次发的是**最后 300 行的窗口**，并带上 `log_index`
+        // （这一截第一行在全量日志里的绝对序号）。
+        // ⚠️ 只按数组长度记账会静默停更：窗口填满 300 行之后长度永远是 300，
+        //    `n == _seen` 一直成立 → 新行一行都推不出来，界面看着像卡死
+        //    （2026-10-21 用户报「配音合成卡住了」，实际是日志停在第 300 行）。
         if (st.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.Array)
         {
             int n = log.GetArrayLength();
-            if (n < _seen) _seen = 0;       // 后端超过 800 行会截到 500，长度变短 → 从头重来
+            int start = st.TryGetProperty("log_index", out var li) && li.TryGetInt32(out var si) ? si : 0;
+            if (start > _seen) _seen = start;      // 前面的行已经被后端丢掉了，直接跳到窗口开头
+            int from = _seen - start;
+            if (from < 0) from = 0;
             var arr = log.EnumerateArray().ToArray();
-            for (int i = _seen; i < n; i++)
+            for (int i = from; i < n; i++)
             {
                 if (arr[i].ValueKind == JsonValueKind.String)
                     Line?.Invoke(new LogLine { Text = arr[i].GetString() ?? "", Level = Classify(arr[i].GetString() ?? "") });
             }
-            _seen = n;
+            _seen = start + n;
         }
 
         var stage = Str(st, "stage");
@@ -267,12 +274,17 @@ public sealed class RealRunner : IRunner
     /// 日志分级：和老界面（web/app.js 的 classify）**一模一样**的规则，
     /// 免得同一行日志在两个界面上颜色不同。
     /// </summary>
+    static readonly Regex ZeroFailure = new(@"失败\s*[:：]?\s*0(?!\d)", RegexOptions.Compiled);
+
     static LogLevel Classify(string s)
     {
-        if (Regex.IsMatch(s, "❌|失败|出错|错误|error|exception|traceback", RegexOptions.IgnoreCase)) return LogLevel.Err;
-        if (Regex.IsMatch(s, "⚠|warning|警告|跳过", RegexOptions.IgnoreCase)) return LogLevel.Warn;
-        if (Regex.IsMatch(s, "✅|🎉|完成|就绪|已保存|已生成")) return LogLevel.Ok;
-        if (Regex.IsMatch(s, @"\d+(\.\d+)?%")) return LogLevel.Progress;
+        // 「失败 0」不算错误：批量收尾那行是「🎉 批量完成：成功 5，失败 0」，
+        // 按关键字判会把全成功也标成红色（2026-10-21 用户反馈红色容易被当成报错）。
+        var t = ZeroFailure.Replace(s ?? "", "");
+        if (Regex.IsMatch(t, "❌|失败|出错|错误|error|exception|traceback", RegexOptions.IgnoreCase)) return LogLevel.Err;
+        if (Regex.IsMatch(t, "⚠|warning|警告|跳过", RegexOptions.IgnoreCase)) return LogLevel.Warn;
+        if (Regex.IsMatch(t, "✅|🎉|完成|就绪|已保存|已生成")) return LogLevel.Ok;
+        if (Regex.IsMatch(t, @"\d+(\.\d+)?%")) return LogLevel.Progress;
         return LogLevel.Normal;
     }
 }

@@ -1579,6 +1579,16 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        // 任务跑着的时候后端不让搬：搬一半会毁掉正在跑的任务。
+        // 这条要单独处理，别落到下面那句「搬不成 → 还是换（重新下载）」上（那会把用户带偏）。
+        if (r is { } rb && rb.TryGetProperty("busy", out var bz) && bz.ValueKind == JsonValueKind.True)
+        {
+            SaveState.Text = rb.TryGetProperty("reason", out var br) && br.ValueKind == JsonValueKind.String
+                ? br.GetString() ?? "现在有任务正在运行"
+                : "现在有任务正在运行";
+            return;
+        }
+
         // 搬不成 → 问一句再回退：重下要几个 GB，别自作主张
         var why = r is { } r2 && r2.TryGetProperty("reason", out var rs) && rs.ValueKind == JsonValueKind.String
             ? rs.GetString() ?? "搬不过去" : "搬不过去";
