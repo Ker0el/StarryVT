@@ -1,0 +1,7 @@
+{
+  "version": "6.13",
+  "sha256": "b4b168e54f112811ed2e0948fc19ca3d29b9af336edefb963c048a2afd8c8939",
+  "notes": "数据目录可换盘；新装默认跟软件放在一起；初始化前检查电脑配置",
+  "published": "2026-10-21",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.13.exe"
+}
