@@ -1,7 +1,7 @@
 {
-  "version": "6.16",
-  "sha256": "bd160395f4ecd8427780ef306bc6f0bed69f678ff1525ed4f9c7c9f5bcdc0aa3",
-  "notes": "双语字幕可导出带原文的 .srt；新增翻译文件名和文件夹名开关",
+  "version": "6.17",
+  "sha256": "15713bd12679700da484763493d847b5906c586e45c90266dd45b6a3948b21c3",
+  "notes": "配音长句连起来读；长视频日志不再停更；翻译只走 DeepSeek",
   "published": "2026-10-21",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.16.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.17.exe"
 }
