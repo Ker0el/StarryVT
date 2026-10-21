@@ -112,10 +112,16 @@ def status() -> dict:
 def _sub_env(params: dict) -> dict:
     """跑子进程用的环境：代理 + HF 镜像 + 强制 UTF-8 输出"""
     env = dict(os.environ)
-    proxy = (params or {}).get("proxy") or ""
-    if proxy and mirrors.proxy_ok(params):
+    proxy = mirrors.effective_proxy(params or {})
+    if proxy:
         env["HTTP_PROXY"] = env["HTTPS_PROXY"] = proxy
         env["NO_PROXY"] = "localhost,127.0.0.1,::1"
+    else:
+        # 没有可用代理：清掉继承来的代理变量并强制直连，免得子进程去读那个已经关掉的系统代理
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                  "http_proxy", "https_proxy", "all_proxy"):
+            env.pop(k, None)
+        env["NO_PROXY"] = env["no_proxy"] = "*"
     endpoint = ((params or {}).get("hf_endpoint") or "").strip()
     if endpoint:
         env["HF_ENDPOINT"] = endpoint          # 官方源下不动时用镜像（设置里那一项）

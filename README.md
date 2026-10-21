@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.14-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.15-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -34,7 +34,7 @@
 ## ✨ 核心功能
 
 - **🎬 一键生成翻译和字幕**：自动完成语音识别、AI 翻译、中文字幕生成、中文配音与字幕压制。
-- **🎨 字幕样式可调**：字体、字号、字间距、描边、颜色、底部距离都能改，设置页里实时预览，点预览图可放大。
+- **🎨 字幕样式可调**：字体（可以选自己电脑上的字体文件）、字号、字间距、描边粗细和描边颜色、字幕颜色、底部距离都能改，设置页里实时预览，点预览图可放大。还能开**双语字幕**，原文和中文一起显示。
 - **🔒 隐私保护**：视频文件不上传，识别与压制都在本机完成。翻译和配音只把字幕文字发给 DeepSeek 和小米 MiMo，用你自己的 API Key，不经过作者服务器。
 - **🎙️ AI 配音与音色替换**：为外语视频生成中文配音，也可为中文视频重新合成配音。
 - **📝 字幕检查与编辑**：翻译完成后暂停，双语对照检查译文，改完再继续配音和压制（默认关闭，可在设置里开启）。
@@ -55,8 +55,11 @@
 - 小米 MiMo TTS，九种音色，支持一键试听
 
 **字幕样式**
-- 字体固定为随包的思源黑体 Light，不用自己装；字号、字间距、描边、颜色、底部距离都能调
+- 默认用随包的思源黑体 Light，不用自己装；也可以选自己电脑上的 .ttf / .otf / .ttc 字体文件
+- 描边颜色可以自动（深色字幕配白边、浅色字幕配黑边），也可以自己选；整组样式能一键恢复默认
 - 长行自动缩小字号，尽量保持一行
+- 可选**双语字幕**：原文和中文各占一行，原文放上还是放下、原文字号多大都能调
+- 自定义字体由你自行提供，请确认你有权使用；随包的思源黑体是 OFL 许可，可商用
 - 可选**本地语音克隆**：用原视频里的人声念中文，不联网、不要 Key
 - 原声音量滑杆，0% 是纯中文，默认保留一点背景音，音乐和音效不丢
 - 视频里的专有名词会记进**本机术语库**，同一个系列的下一条更准
@@ -211,7 +214,7 @@ Agent 会调用 `starryvt_translate` 启动任务，拿到 `job_id` 后用 `star
 | MCP 客户端（可选） | Claude Code / DeepSeek Harness / Codex / Cursor / Trae / WorkBuddy / 豆包工作 等；支持本地 stdio 或本地 HTTP MCP 即可，只在用 AI Agent 调用时需要 |
 | 网络代理 | **下载 YouTube 和从 GitHub 检查更新时可能需要**，填本机代理地址如 `http://127.0.0.1:7897`；B 站、翻译、配音不需要 |
 
-语音克隆和各种缓存默认跟软件放在一起（`<安装目录>\data`）；老版本升级会继续用原来的 `%LOCALAPPDATA%\StarryVT`。想换到别的盘：设置 → 输出 → 数据目录，选好之后会先把已经下好的数据搬过去。
+语音克隆和各种缓存默认跟软件放在一起（`<安装目录>\data`）；之前装过的会继续用原来的 `%LOCALAPPDATA%\StarryVT`。想换到别的盘：设置 → 输出 → 数据目录，选好之后会先把已经下好的数据搬过去。
 
 ## 🌏 支持的语言
 

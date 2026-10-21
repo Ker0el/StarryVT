@@ -27,6 +27,7 @@ import urllib.request
 
 from job import Job
 import diag
+import mirrors
 import tools
 
 MIMO_URL = "https://api.xiaomimimo.com/v1/chat/completions"
@@ -74,7 +75,7 @@ FASTER_STYLE = "语速再快一些，但保持清晰自然，不要赶、不要�
 
 def synth_mimo(text: str, out_path: Path, key: str, voice: str, retries: int = 4,
                timeout: float = 60.0, style: str = "",
-               model: str = MIMO_MODEL) -> str | None:
+               model: str = MIMO_MODEL, params: dict | None = None) -> str | None:
     """单句 MiMo 合成，成功返回 None，失败返回错误信息（指数退避重试）
 
     timeout 取 60s：正常单句 3~20s；请求挂起（服务端不回也不断）时快速失败交给重试，
@@ -88,12 +89,13 @@ def synth_mimo(text: str, out_path: Path, key: str, voice: str, retries: int = 4
                      {"role": "assistant", "content": text}],
         "audio": {"format": "wav", "voice": voice},
     }, ensure_ascii=False).encode("utf-8")
+    opener = mirrors.opener(params or {})
     last = ""
     for attempt in range(retries):
         try:
             req = urllib.request.Request(MIMO_URL, data=payload, headers={
                 "Content-Type": "application/json", "api-key": key})
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with opener.open(req, timeout=timeout) as r:
                 data = json.loads(r.read().decode("utf-8"))
             b64 = data["choices"][0]["message"]["audio"]["data"]
             out_path.write_bytes(base64.b64decode(b64))
@@ -112,6 +114,10 @@ def synth_mimo(text: str, out_path: Path, key: str, voice: str, retries: int = 4
                 return last                  # key 不对，重试多少次都一样
         except Exception as e:  # noqa: BLE001
             last = "连不上，检查网络或代理设置"
+            # 系统代理指着已经关掉的本地端口：清缓存后重新判定，下一次多半会走直连
+            if "10061" in str(e):
+                mirrors.forget_proxy_cache()
+                opener = mirrors.opener(params or {})
         time.sleep(min(8, 2 ** attempt))
     return last
 
@@ -631,7 +637,8 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
             if fp2.exists() and fp2.stat().st_size > 500:
                 pass                          # 上次已经合成过，直接用（别重复调 API）
             elif not clone_local and synth_mimo(units[i]["text"], fp2, api_key, voice_arg,
-                                                style=FASTER_STYLE, model=model) is None:
+                                                style=FASTER_STYLE, model=model,
+                                                params=params) is None:
                 resynth += 1
             if fp2.exists() and fp2.stat().st_size > 500:
                 fp2t = _trimmed(fp2, job) if trim_silence else fp2

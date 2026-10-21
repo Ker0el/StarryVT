@@ -363,7 +363,7 @@ public static class Mock
         new() { Title = "运行组件", Todo = "ffmpeg / ffprobe / yt-dlp" },
         new() { Title = "API Key", Kind = "manual", Todo = "翻译和配音都要用，去设置里填一下",
                 Fix = "settings", FixLabel = "去设置" },
-        new() { Title = "网络代理（可选）", Kind = "manual", Todo = "要下载在线视频才需要，本地翻译不受影响",
+        new() { Title = "网络代理（可选）", Kind = "manual", Todo = "最好全程开启，否则检查更新、下载视频都可能连不上",
                 Fix = "settings", FixLabel = "去设置" },
     ];
 

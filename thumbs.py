@@ -44,13 +44,10 @@ def fetch_many(urls, params: dict | None = None, workers: int = 6) -> dict[str, 
     items = [u for u in dict.fromkeys(urls or []) if isinstance(u, str) and u.startswith("http")]
     if not items:
         return {}
-    proxy = ((params or {}).get("proxy") or "").strip()
+    import mirrors
+    opener = mirrors.opener(params or {})
     cache = cache_dir()
     cache.mkdir(parents=True, exist_ok=True)
-    handlers = []
-    if proxy:
-        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    opener = urllib.request.build_opener(*handlers)
 
     def one(url: str) -> tuple[str, str]:
         dest = cache / f"{_url_key(url)}.jpg"

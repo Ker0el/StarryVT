@@ -303,13 +303,9 @@ def ready(params: dict, model_id: str) -> bool:
 # ---------- 下载 ----------
 
 def _opener(params: dict):
-    proxy = (params or {}).get("proxy") or ""
-    # ★ 必须过 mirrors.proxy_ok：端口开着不等于代理真能出网。只按「填没填」判断的话，
-    #   一个死代理会把所有模型下载一起拖死，而引擎那边（看 proxy_ok）反而能正常走镜像。
-    if proxy and mirrors.proxy_ok(params):
-        return urllib.request.build_opener(
-            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    return urllib.request.build_opener()
+    # ★ 用**实际可用**的代理：配置的那个死了会自动找系统代理 / 本机常见端口；
+    #   都没有就强制直连（别让 urllib 自己去读那个已经关掉的系统代理）。
+    return mirrors.opener(params or {})
 
 
 def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,

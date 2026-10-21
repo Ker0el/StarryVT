@@ -188,7 +188,7 @@ def _llm_unreachable_hint(blob: str, params: dict) -> str:
     """
     if not any(k in blob for k in ("10060", "connecttimeout", "connect timeout")):
         return ""
-    if mirrors.proxy_ok(params):
+    if mirrors.effective_proxy(params):
         return ""
     if params.get("video_context") or params.get("web_search"):
         return ("翻译引擎要联网做「视频语境纠错 / 联网查证」，但这台机器连不上 Google"
@@ -275,13 +275,20 @@ def _subprocess_env(params: dict) -> dict:
     翻译（Google/Gemini）与 YouTube 下载在国内必须走代理；本机回环始终直连。
     """
     env = dict(os.environ)
-    proxy = (params.get("proxy") or "").strip()
+    proxy = mirrors.effective_proxy(params)
     # ⚠️ 必须探通才往下传：填了个连不上的地址时，yt-dlp 连 B 站都会失败
     #    （B 站本来压根不需要代理），用户会以为「在线翻译坏了」。见 mirrors.proxy_ok。
-    if proxy and mirrors.proxy_ok(params):
+    if proxy:
         env["HTTP_PROXY"] = proxy
         env["HTTPS_PROXY"] = proxy
         env["NO_PROXY"] = "localhost,127.0.0.1,::1"
+    else:
+        # 没有可用代理：清掉继承来的代理变量并强制直连。否则子进程会去读 Windows
+        # 系统代理，代理软件关掉后那个端口是死的 → WinError 10061。
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                  "http_proxy", "https_proxy", "all_proxy"):
+            env.pop(k, None)
+        env["NO_PROXY"] = env["no_proxy"] = "*"
     return env
 
 
@@ -647,7 +654,8 @@ def _translate_zh_en(video: Path, params: dict, job: Job, report) -> Path:
     if zh_raw.is_file() and out.is_file() and out.stat().st_mtime >= zh_raw.stat().st_mtime:
         report("translate", None, "英文翻译已有结果，直接复用")
     else:
-        en_translate.translate_srt(raw, out, key, params.get("extra_info") or "", report)
+        en_translate.translate_srt(raw, out, key, params.get("extra_info") or "", report,
+                                   params=params)
     report("translate", _map("translate", 1.0), "英文翻译完成")
     return out
 
@@ -1732,12 +1740,33 @@ def _find_thumbnail(video: Path) -> Path | None:
 
 
 def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
-         params: dict | None = None) -> Path:
-    """烧字幕：SRT -> ASS -> ffmpeg（libsvtav1），返回终版路径"""
+         params: dict | None = None, src_srt: Path | str | None = None) -> Path:
+    """烧字幕：SRT -> ASS -> ffmpeg（libsvtav1），返回终版路径
+
+    src_srt 是**源语言字幕**（`-raw.srt`）。开了「双语字幕」时用它和译文逐行配对，
+    一条字幕里放两行（原文 + 中文）；没开就完全用不到它。
+    """
     work = out_path.parent
     ass = work / "subs.ass"
     p = params or {}
-    font = str(p.get("subtitle_font") or "Starry Han Sans Light")
+    # 字体：用户选了自己的字体文件就用它（族名从文件里读），没选就用随包的思源黑体。
+    # ⚠️ libass 按**族名**找字形，ASS 里的 Fontname 必须和字体文件内部的族名一致，
+    #    直接拿文件名写进去会掉回系统默认字体（见 subtitle_fonts.resolve）。
+    font, font_file = subtitle_fonts.resolve(
+        str(p.get("subtitle_font") or ""), str(p.get("subtitle_font_file") or ""))
+
+    bilingual = bool(p.get("subtitle_bilingual"))
+    src_for_ass = ""
+    if bilingual:
+        src = Path(src_srt) if src_srt else (_work_dir(video, p) / f"{video.stem}-raw.srt")
+        if src.is_file():
+            src_for_ass = str(src)
+        else:
+            report("burn", None, "⚠ 没找到原文对照字幕，这次只烧中文字幕")
+    try:
+        src_scale = float(p.get("subtitle_bilingual_scale") or 80)
+    except (TypeError, ValueError):
+        src_scale = 80.0
     n = srt2ass.srt_to_ass(
         srt_path, ass,
         font=font,
@@ -1745,12 +1774,21 @@ def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
         margin_v=int(p.get("subtitle_margin_v") or 30),
         outline=float(p.get("subtitle_outline") or 2.2),
         spacing=float(p.get("subtitle_spacing") or 0),
-        color=str(p.get("subtitle_color") or "#FFFFFF"))
-    report("burn", _map("burn", 0.02), f"字幕样式生成（{n} 条）")
+        color=str(p.get("subtitle_color") or "#FFFFFF"),
+        outline_color=str(p.get("subtitle_outline_color") or ""),
+        bilingual=bool(src_for_ass),
+        src_srt=src_for_ass,
+        src_order=str(p.get("subtitle_bilingual_order") or "src_top"),
+        src_scale=src_scale)
+    if src_for_ass:
+        where = "原文在上" if (p.get("subtitle_bilingual_order") or "src_top") != "src_bottom" else "原文在下"
+        report("burn", _map("burn", 0.02),
+               f"双语字幕（{where}，原文字号 {src_scale:g}%）：{n} 条")
+    else:
+        report("burn", _map("burn", 0.02), f"字幕样式生成（{n} 条）")
 
     # 可选：带上字体文件，libass 用 fontsdir 从工作目录里找（用户没装字体也能烧）
     vf = "ass=subs.ass"
-    font_file = subtitle_fonts.file_for(font, p.get("subtitle_font_file"))
     font_dir = None
     if font_file and Path(font_file).is_file():
         font_dir = work / ".fonts"
@@ -1941,7 +1979,7 @@ def _warn_google_enhancements(params: dict, report) -> None:
 
     只提示、不拦：万一他是靠系统级代理上网的，填不填设置里的代理框都拦不住。
     """
-    if mirrors.proxy_ok(params):
+    if mirrors.effective_proxy(params):
         return
     on = [label for key, label in (("video_context", "视频语境纠错"),
                                    ("web_search", "联网查证"))
@@ -1965,14 +2003,23 @@ def _precheck(params: dict, report) -> None:
         # 只下载视频：不碰引擎、模型、Key，也没有「字幕识别的模型要下」那些提示
         return
     # 上一轮留下的引擎进程还在跑？它握着 uv 缓存锁，再开一轮必然等 300 秒然后失败
-    # （2026-10-08 客户实测）。这里提前问一句，别让用户白等。
+    # （2026-10-08 客户实测）。
+    # ★ 2026-10-21：没人管的残留直接收掉 —— 客户反馈「任务管理器里根本杀不掉」，
+    #   与其让他去折腾，不如开工前我们自己清干净；另一个星译在用的才留着报错。
     busy = engine.busy_processes()
+    r: dict = {}
     if busy:
+        report("translate", None, "发现上次没退干净的引擎进程：" + "、".join(busy) + "，正在结束…")
+        r = engine.kill_leftovers(report, stage="translate")
+        busy = engine.busy_processes()
+    if busy:
+        if r.get("skipped") and not r.get("remaining"):
+            raise RuntimeError(
+                "另一个星译窗口正在翻译（" + "、".join(busy) + "）。\n"
+                "等它跑完，或先关掉那个窗口，再重新开始。")
         raise RuntimeError(
             "后台还有没退干净的引擎进程在跑：" + "、".join(busy) + "。\n"
-            "它多半是上一次关软件时留下的，正占着引擎数据目录里的文件锁——"
-            "这时候再开任务会等 5 分钟然后失败。\n"
-            "请打开「任务管理器」把它们结束掉，再重新开始。")
+            "已经尝试结束但没成功，它多半卡在驱动或下载上。请重启电脑后再重新开始。")
     # 第一次翻译要下 1.6GB 的语音识别模型，而引擎在下它的时候**一个字节都不打印**
     # （见 _ModelWatch 的说明）。先把话说在前面，免得用户以为死机了。
     if not _hf_whisper_ready(params):
@@ -2264,7 +2311,8 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
             # 「只加字幕（保留原声）」：不配音，直接把字幕烧到原视频上，音轨原样 copy
             final = out_dir / f"{out_stem}_final.mp4"
             _ck().enter("压制字幕")
-            burn(video, srt_copy, final, job, report, params)
+            burn(video, srt_copy, final, job, report, params,
+                 src_srt=src_raw if src_raw.is_file() else None)
             result["final"] = str(final)
             report("burn", 100, f"完成: {final.name}")
         else:
@@ -2326,7 +2374,7 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     if params.get("burn_subs", True):
         final = out_dir / f"{out_stem}_final.mp4"
         _ck().enter("压制字幕")
-        burn(dubbed, srt_copy, final, job, report, params)
+        burn(dubbed, srt_copy, final, job, report, params, src_srt=src_srt)
         result["final"] = str(final)
         report("burn", 100, f"完成: {final.name}")
     return result

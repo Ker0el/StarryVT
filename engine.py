@@ -130,10 +130,17 @@ def status(exe_hint: str = "") -> dict:
 
 def _proxy_env(params: dict) -> dict:
     env = dict(os.environ)
-    proxy = (params or {}).get("proxy") or ""
-    if proxy and mirrors.proxy_ok(params):
+    proxy = mirrors.effective_proxy(params or {})
+    if proxy:
         env["HTTP_PROXY"] = env["HTTPS_PROXY"] = proxy
         env["NO_PROXY"] = "localhost,127.0.0.1,::1"
+    else:
+        # 没有可用代理：清掉继承来的代理变量并强制直连。否则子进程会去读 Windows
+        # 系统代理，而用户关掉代理软件后那个端口是死的 → WinError 10061（2026-10-21 客户报障）。
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                  "http_proxy", "https_proxy", "all_proxy"):
+            env.pop(k, None)
+        env["NO_PROXY"] = env["no_proxy"] = "*"
     # 没有代理的机器：uv 自己也要从 GitHub 拿 Python，这里换成国内加速镜像
     env.update(mirrors.env(params))
     return env
@@ -206,6 +213,85 @@ def install_uv(params: dict, job: Job, report) -> str:
     return str(uv)
 
 
+def _process_snapshot() -> dict[int, tuple[str, int]]:
+    """当前全部进程：{pid: (exe 文件名, 父进程 pid)}（只用 Win32，毫秒级）
+
+    ⚠️ 别用 wmic：Win11 上经常没有；tasklist 又拿不到父进程号 —— 而这次恰恰要
+      靠父进程判断「这个 finesub 是不是另一个还开着的星译在用」。
+    """
+    if os.name != "nt":
+        return {}
+    import ctypes
+
+    class _PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [("dwSize", ctypes.c_uint32),
+                    ("cntUsage", ctypes.c_uint32),
+                    ("th32ProcessID", ctypes.c_uint32),
+                    ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", ctypes.c_uint32),
+                    ("cntThreads", ctypes.c_uint32),
+                    ("th32ParentProcessID", ctypes.c_uint32),
+                    ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", ctypes.c_uint32),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+        k32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+        k32.Process32FirstW.restype = ctypes.c_int
+        k32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_PROCESSENTRY32W)]
+        k32.Process32NextW.restype = ctypes.c_int
+        k32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_PROCESSENTRY32W)]
+        k32.CloseHandle.restype = ctypes.c_int
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+
+        snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)      # TH32CS_SNAPPROCESS
+        if not snap or snap == ctypes.c_void_p(-1).value:
+            return {}
+        out: dict[int, tuple[str, int]] = {}
+        try:
+            pe = _PROCESSENTRY32W()
+            pe.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+            ok = k32.Process32FirstW(snap, ctypes.byref(pe))
+            while ok:
+                out[int(pe.th32ProcessID)] = (str(pe.szExeFile), int(pe.th32ParentProcessID))
+                ok = k32.Process32NextW(snap, ctypes.byref(pe))
+        finally:
+            k32.CloseHandle(snap)
+        return out
+    except Exception:  # noqa: BLE001 - 查不出来就当没有（退回 tasklist 那条路）
+        return {}
+
+
+def _finesub_pids() -> list[int]:
+    """在跑的 finesub.exe 的 PID（拿不到进程快照时退回 tasklist）"""
+    snap = _process_snapshot()
+    me = os.getpid()
+    if snap:
+        return [pid for pid, (name, _ppid) in snap.items()
+                if pid != me and name.lower() == "finesub.exe"]
+    if os.name != "nt":
+        return []
+    try:
+        r = subprocess.run(["tasklist", "/nh", "/fo", "csv", "/fi", "IMAGENAME eq finesub.exe"],
+                           **no_window_kwargs(capture_output=True, text=True,
+                                              encoding="utf-8", errors="replace",
+                                              timeout=15))
+    except Exception:  # noqa: BLE001
+        return []
+    pids: list[int] = []
+    for line in (r.stdout or "").splitlines():
+        parts = [p.strip('" ') for p in line.split('","')]
+        if len(parts) < 2 or parts[0].strip('" ').lower() != "finesub.exe":
+            continue
+        try:
+            pids.append(int(parts[1]))
+        except ValueError:
+            pass
+    return pids
+
+
 def busy_processes() -> list[str]:
     """还有别的 finesub 进程在跑吗？返回 ["finesub.exe (PID 1234)", ...]
 
@@ -215,25 +301,91 @@ def busy_processes() -> list[str]:
 
     只认 `finesub.exe`：这个名字不会有别人用，判错的代价（拦住一个正常的任务）
     比漏判大得多。`uv.exe` 就不好说了——用户自己的别的工具也可能用它，所以只写进提示语。
-    `tasklist` 是系统自带命令，毫秒级，不联网。
     """
-    if os.name != "nt":
-        return []
-    try:
-        r = subprocess.run(["tasklist", "/nh", "/fo", "csv", "/fi", "IMAGENAME eq finesub.exe"],
-                           **no_window_kwargs(capture_output=True, text=True,
-                                              encoding="utf-8", errors="replace",
-                                              timeout=15))
-    except Exception:
-        return []
-    out: list[str] = []
-    for line in (r.stdout or "").splitlines():
-        parts = [p.strip('" ') for p in line.split('","')]
-        if not parts or parts[0].strip('" ').lower() != "finesub.exe":
-            continue
-        pid = parts[1].strip('" ') if len(parts) > 1 else "?"
-        out.append(f"finesub.exe (PID {pid})")
-    return out
+    return [f"finesub.exe (PID {pid})" for pid in _finesub_pids()]
+
+
+def _orphan_leftovers(pids: list[int]) -> tuple[list[int], list[int]]:
+    """把 finesub 分成「没人管了的」和「另一个还开着的星译在用的」
+
+    用户 2026-10-21 的报障：后台留着 finesub，任务管理器里**根本杀不掉**。
+    与其让他去折腾任务管理器，不如我们自己收掉 —— 但必须分清是谁的：
+
+      · 父进程链上还有**另一个活着的星译**（StarryVT.exe / StarryVt.exe）→ 别动，
+        那是用户另开的窗口正在翻译；
+      · 父链已经断了（原来的星译早退出了）→ 孤儿，收掉；
+      · 父链走到本进程 → 我们自己上一轮留下的（取消了但没杀干净），收掉。
+    """
+    snap = _process_snapshot()
+    if not snap:
+        return list(pids), []          # 看不到父子关系时按老行为：都算残留
+    me = os.getpid()
+    orphans: list[int] = []
+    alive_elsewhere: list[int] = []
+    for pid in pids:
+        cur = snap.get(pid, ("", 0))[1]
+        mine = False
+        other = False
+        seen: set[int] = set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            if cur == me:
+                mine = True
+                break
+            info = snap.get(cur)
+            if not info:
+                break                  # 父进程已经没了 → 孤儿
+            name = info[0].lower()
+            if name.startswith("starryvt"):
+                other = True
+                break
+            if name in ("python.exe", "pythonw.exe"):
+                # 开发模式 / 用户自己用脚本起的，别替别人杀
+                other = True
+                break
+            cur = info[1]
+        if other and not mine:
+            alive_elsewhere.append(pid)
+        else:
+            orphans.append(pid)
+    return orphans, alive_elsewhere
+
+
+def kill_leftovers(report=None, stage: str = "translate") -> dict:
+    """结束「没主人」的 finesub 进程（另一个还开着的星译在用的不动）。
+
+    返回 {killed, skipped, remaining, changed}：
+      killed    这次发过结束命令的 PID
+      skipped   是另一个星译实例的，没动
+      remaining 结束之后**还在**的 PID（杀不掉的）
+      changed   是不是真的动过手（调用方据此决定要不要再查一遍）
+    """
+    import time
+    pids = _finesub_pids()
+    if not pids:
+        return {"killed": [], "skipped": [], "remaining": [], "changed": False}
+
+    from job import kill_tree
+    orphans, skipped = _orphan_leftovers(pids)
+    if skipped and report:
+        report(stage, None,
+               "还有另一个星译窗口正在用翻译引擎，没动它：" +
+               "、".join(f"PID {p}" for p in skipped))
+    killed: list[int] = []
+    for pid in orphans:
+        if kill_tree(pid):
+            killed.append(pid)
+        if report:
+            report(stage, None, f"已结束残留的引擎进程 PID {pid}")
+    if killed:
+        # taskkill 返回成功不代表进程立刻消失（要等内核回收），轮询等它真的走
+        for _ in range(20):                      # 最多 5 秒
+            if not set(killed) & set(_finesub_pids()):
+                break
+            time.sleep(0.25)
+    remaining = [p for p in _finesub_pids() if p in set(orphans)]
+    return {"killed": killed, "skipped": skipped, "remaining": remaining,
+            "changed": bool(killed)}
 
 
 # ---------- 空间检查 ----------
@@ -335,11 +487,21 @@ def install_finesub(params: dict, job: Job, report) -> str:
     """一键安装：uv → finesub 引擎本体（运行时不在此步，首次跑任务时自动下载）"""
     # 上一次没退干净 / 另一个实例还在翻译时，uv 覆盖引擎目录会撞文件锁，
     # 用户看到的只是一句权限错误。先讲清楚，别让人白等。
+    # ★ 2026-10-21：没人管的残留**我们自己收掉**（客户反馈「任务管理器里根本杀不掉」），
+    #   只有另一个还开着的星译在用的才留着。
     busy = busy_processes()
+    r: dict = {}
     if busy:
+        r = kill_leftovers(report, stage="engine")
+        busy = busy_processes()
+    if busy:
+        if r.get("skipped") and not r.get("remaining"):
+            raise EngineError(
+                "另一个星译窗口正在使用翻译引擎（" + "、".join(busy) + "）。"
+                "等它跑完，或先关掉那个窗口，再重新安装。")
         raise EngineError(
-            "还有翻译引擎进程在运行：" + "、".join(busy)
-            + "。请先结束正在翻译的窗口（或在任务管理器里结束它），再重新安装。")
+            "还有翻译引擎进程结束不掉（" + "、".join(busy) + "）。"
+            "它多半卡在驱动或下载上，请重启电脑后再重新安装。")
     uv = install_uv(params, job, report)
 
     # 顺手把引擎数据目录挑好：有些机器上系统默认目录建不了目录链接（os error 448），
@@ -370,7 +532,7 @@ def install_finesub(params: dict, job: Job, report) -> str:
     # 走不走镜像看的是那个地址**真的通不通**，不是「填没填」。
     # ⚠️ 有代理时也把清华源垫在官方源后面：用户填的代理可能只是端口开着、
     #    实际出不去（2026-10-19 全面检查时补的），官方源失败后还能靠镜像装上。
-    tuna = not mirrors.proxy_ok(params)
+    tuna = not mirrors.effective_proxy(params)
     if tuna:
         net_tries = [base + ["--index-url", TUNA_INDEX], base]
     else:

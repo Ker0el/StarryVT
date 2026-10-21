@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.14"
+APP_VERSION = "6.15"
 
 
 def _base_dir() -> Path:
@@ -385,11 +385,8 @@ class Api:
         import mirrors
         import urllib.request
         c = cfg.load()
-        proxy = (c.get("proxy") or "").strip()
-        opener = urllib.request.build_opener()
-        if proxy and mirrors.proxy_ok(c):
-            opener = urllib.request.build_opener(
-                urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        # 有可用代理就走，没有就强制直连（别让 urllib 自己去读已经关掉的系统代理）
+        opener = mirrors.opener(c)
         try:
             if kind == "mimo":
                 k = (key or cfg.resolve_mimo_key(c) or "").strip()
@@ -434,11 +431,7 @@ class Api:
         k = (key or c.get("deepseek_key") or "").strip()
         if not k:
             return {"ok": False, "error": "未配置 DeepSeek key"}
-        proxy = (c.get("proxy") or "").strip()
-        opener = urllib.request.build_opener()
-        if proxy and mirrors.proxy_ok(c):
-            opener = urllib.request.build_opener(
-                urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        opener = mirrors.opener(c)
         req = urllib.request.Request(
             "https://api.deepseek.com/user/balance",
             headers={"Authorization": f"Bearer {k}", "Accept": "application/json"})
@@ -500,10 +493,38 @@ class Api:
 
     # ---------------- 字幕样式预览 ----------------
 
+    def font_info(self, path: str = "") -> dict:
+        """读字体文件的族名（设置页选了自定义字体后显示用）。
+
+        族名读不出来也算成功（部分字体 name 表不规整），退回文件名显示。
+        """
+        import subtitle_fonts
+        p = Path(path or "")
+        if not p.is_file():
+            return {"ok": False, "family": "", "error": "找不到这个文件"}
+        fam = subtitle_fonts.family_of(p) or p.stem
+        return {"ok": True, "family": fam, "file": str(p)}
+
+    def reset_subtitle_style(self) -> dict:
+        """「字幕样式」整组恢复默认（用户 2026-10-21 要求能重置）。"""
+        keys = ("subtitle_font", "subtitle_font_file", "subtitle_size", "subtitle_spacing",
+                "subtitle_outline", "subtitle_outline_color", "subtitle_color",
+                "subtitle_margin_v", "subtitle_bilingual", "subtitle_bilingual_order",
+                "subtitle_bilingual_scale")
+        try:
+            cfg.save({k: cfg.DEFAULTS[k] for k in keys})
+        except Exception as e:  # noqa: BLE001
+            diag.write_exception(e, "恢复默认字幕样式")
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        diag.write("字幕样式已恢复默认", "app")
+        return {"ok": True}
+
     def subtitle_preview(self, font: str = "", size: float = 42, outline: float = 2.2,
                          margin_v: int = 30, spacing: float = 0,
                          color: str = "#FFFFFF", font_file: str = "",
-                         large: bool = False) -> dict:
+                         large: bool = False,
+                         bilingual: bool = False, src_order: str = "src_top",
+                         src_scale: float = 80, outline_color: str = "") -> dict:
         """用当前样式渲一帧预览图（和烧录成片走同一条 srt2ass + libass 路径）"""
         try:
             path = subtitle_preview.render({
@@ -513,8 +534,12 @@ class Api:
                 "margin_v": margin_v,
                 "spacing": spacing,
                 "color": color,
-                # 设置里配了字体文件就用它，否则交给系统已安装的字体
+                "outline_color": outline_color,
+                # 设置里配了字体文件就用它，否则交给随包的思源黑体
                 "font_file": font_file or cfg.load().get("subtitle_font_file") or "",
+                "bilingual": bilingual,
+                "src_order": src_order,
+                "src_scale": src_scale,
             }, large=large)
             return {"ok": True, "file": str(path)}
         except Exception as e:  # noqa: BLE001 - 预览失败不能影响设置页
@@ -532,6 +557,36 @@ class Api:
             diag.write(f"壁纸遮罩抽帧失败: {type(e).__name__}: {e}", "app")
             return {"ok": False, "error": "壁纸遮罩生成失败"}
 
+    def detect_proxy(self, proxy: str = "") -> dict:
+        """设置页「检测代理」：填的地址通不通？不通就自动找系统代理 / 本机常见端口。
+
+        返回 {ok, proxy, source, saved}：
+          ok     = 找到了一个真能连上的代理
+          proxy  = 找到的地址（可以直接填进设置）
+          source = configured（你填的就能用）/ system（Windows 系统代理）/
+                   port:7890（本机常见端口）/ none / configured-dead
+          saved  = 是不是已经顺手写进设置
+
+        找到且和原来不一样就**自动保存**：用户点这个按钮就是要「帮我把代理弄好」，
+        存下来界面才看得见。没存也不影响干活 —— 运行期本来就会自动兜底
+        （见 mirrors.effective_proxy）。
+        """
+        import mirrors
+        want = (proxy or "").strip()
+        params = dict(cfg.load())
+        # 用户可能刚改了框里的值还没失焦保存：以框里的为准
+        if want != (params.get("proxy") or "").strip():
+            params["proxy"] = want
+        r = mirrors.detect_proxy(params)
+        saved = False
+        if r.get("ok") and r.get("proxy") != (cfg.load().get("proxy") or "").strip():
+            cfg.save({"proxy": r["proxy"]})
+            saved = True
+        mirrors.forget_proxy_cache()
+        diag.write(f"检测代理：{r.get('proxy') or '没有可用代理'}（{r.get('source')}）"
+                   f"{'，已写入设置' if saved else ''}", "proxy")
+        return {**r, "saved": saved}
+
     def save_settings(self, patch: dict) -> dict:
         """写入设置（界面每次改动都会调，写不进去要能原样告诉用户）"""
         try:
@@ -539,6 +594,9 @@ class Api:
             if patch and "data_home" in patch:
                 import paths
                 paths.reset_default()
+            if patch and "proxy" in patch:
+                import mirrors
+                mirrors.forget_proxy_cache()     # 换了代理立刻重判，别再用旧的探测结果
         except Exception as e:  # noqa: BLE001
             diag.write_exception(e, "保存设置")
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -1001,14 +1059,16 @@ class Api:
                             "out_dir": str(out_dir), "subtitle_raw": raw,
                             "subtitle_final": srt_final or str(srt)}
         self._thread = threading.Thread(target=self._run_reburn,
-                                        args=(job, video, srt, final, params), daemon=True)
+                                        args=(job, video, srt, final, params,
+                                              Path(raw) if raw else None), daemon=True)
         self._thread.start()
         return {"ok": True}
 
-    def _run_reburn(self, job: Job, video: Path, srt: Path, final: Path, params: dict):
+    def _run_reburn(self, job: Job, video: Path, srt: Path, final: Path, params: dict,
+                    src_srt: Path | None = None):
         try:
             from pipeline import burn
-            burn(video, srt, final, job, self._report, params)
+            burn(video, srt, final, job, self._report, params, src_srt=src_srt)
             with self._lock:
                 if self._last_result is not None:
                     self._last_result["final"] = str(final)

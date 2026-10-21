@@ -30,6 +30,8 @@ public sealed partial class SettingsPage : Page
     string _homeSaved = "";        // 当前生效的「引擎数据目录」，改之前拿它比
     string _homeDefault = "";      // 引擎数据目录的默认位置（后端算好的，给提示用）
     string _dataDefault = "";      // 「数据目录」的默认位置（后端算好的，给提示用）
+    string _subFontName = "Starry Han Sans Light";   // 字幕字体族名（ASS 里用的那个）
+    string _subFontFile = "";                        // 自定义字体文件；空 = 随包的思源黑体
     Flyout? _paletteFlyout;
     ColorPicker? _picker;
     DateTime _lastAccentAt = DateTime.MinValue;   // 调色板拖动时的节流（见 ColorChanged）
@@ -79,6 +81,11 @@ public sealed partial class SettingsPage : Page
         CloneEngineBox.SetItems([("云端 MiMo（需联网，可能受限制）", "cloud"),
                                  ("本机语音克隆（免费，速度快，效果好）", "local")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
+
+        // 双语字幕：原文那一行放上面还是下面
+        SubBilingualOrderBox.SetItems([("原文在上（推荐）", "src_top"),
+                                       ("原文在下", "src_bottom")]);
+        SubBilingualOrderBox.Changed += idx => { _ = SubBilingualOrderChangedAsync(); };
 
         // 工作页的默认值：这里改的是「默认」，单个任务里还能临时改
         DefaultOutputBox.SetItems([("出完整成片", "final"), ("只加字幕（保留原声）", "subs-burn"),
@@ -288,6 +295,19 @@ public sealed partial class SettingsPage : Page
         SubSpacingText.Text = FormatSpacing(SubSpacingSlider.Value);
         SubOutlineText.Text = SubOutlineSlider.Value.ToString("0.0");
         SubMarginText.Text = ((int)SubMarginSlider.Value) + " px";
+        SubBilingualCheck.IsChecked = Flag(s, "subtitle_bilingual", false);
+        SubBilingualScaleSlider.Value = Num(s, "subtitle_bilingual_scale", 80);
+        SubBilingualScaleText.Text = ((int)SubBilingualScaleSlider.Value) + "%";
+        SubBilingualOrderBox.SelectTag(
+            Str(s, "subtitle_bilingual_order") is { Length: > 0 } bo ? bo : "src_top", notify: false);
+        UpdateSubBilingualUI();
+        _subFontName = Str(s, "subtitle_font") is { Length: > 0 } fn ? fn : "Starry Han Sans Light";
+        _subFontFile = Str(s, "subtitle_font_file");
+        UpdateSubFontUI();
+        var outlineColor = Str(s, "subtitle_outline_color");
+        SubOutlineColorPicker.Color = ParseHexColor(outlineColor.Length == 0 ? "#000000" : outlineColor);
+        SubOutlineAutoCheck.IsChecked = outlineColor.Length == 0;
+        UpdateSubOutlineUI(outlineColor.Length == 0 ? "#000000" : outlineColor);
         var subColor = Str(s, "subtitle_color") is { Length: > 0 } cc ? cc : "#FFFFFF";
         SubColorPicker.Color = ParseHexColor(subColor);
         UpdateSubColorUI(subColor);
@@ -697,10 +717,201 @@ public sealed partial class SettingsPage : Page
         ScheduleSubPreview();
     }
 
+    // ---------------- 字幕字体（自定义字体文件 / 恢复默认）----------------
+
+    async void PickSubFont_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        string? path = await PickFontFileAsync();
+        if (path is null) return;
+
+        SubFontHint.Text = "正在读取字体…";
+        var r = await Backend.CallAsync("font_info", new { path }, 20_000);
+        string fam = "";
+        if (r is { } rr && rr.TryGetProperty("ok", out var okEl) && okEl.ValueKind == JsonValueKind.True)
+            fam = Str(rr, "family");
+        if (fam.Length == 0)
+        {
+            SubFontHint.Text = "这个字体文件读不出字体名，换一个试试（.ttf / .otf / .ttc）";
+            return;
+        }
+        _subFontName = fam;
+        _subFontFile = path;
+        UpdateSubFontUI();
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["subtitle_font"] = fam,
+            ["subtitle_font_file"] = path,
+        });
+        ScheduleSubPreview();
+    }
+
+    async void ResetSubFont_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        _subFontName = "Starry Han Sans Light";
+        _subFontFile = "";
+        UpdateSubFontUI();
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["subtitle_font"] = "Starry Han Sans Light",
+            ["subtitle_font_file"] = "",
+        });
+        ScheduleSubPreview();
+    }
+
+    void UpdateSubFontUI()
+    {
+        bool custom = _subFontFile.Trim().Length > 0;
+        bool exists = custom && System.IO.File.Exists(_subFontFile);
+        if (!custom)
+        {
+            SubFontText.Text = "思源黑体 Light（随包）";
+            SubFontHint.Text = "支持 .ttf / .otf / .ttc；请使用你有权使用的字体";
+        }
+        else if (!exists)
+        {
+            SubFontText.Text = "思源黑体 Light（随包）";
+            SubFontHint.Text = "找不到之前选的字体文件，已自动用回随包字体";
+        }
+        else
+        {
+            SubFontText.Text = _subFontName;
+            SubFontHint.Text = "正在用：" + System.IO.Path.GetFileName(_subFontFile);
+        }
+        SubFontResetBtn.IsEnabled = custom;
+    }
+
+    async Task<string?> PickFontFileAsync()
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            picker.FileTypeFilter.Add(".ttf");
+            picker.FileTypeFilter.Add(".otf");
+            picker.FileTypeFilter.Add(".ttc");
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(MainWindow.Instance!);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+            var file = await picker.PickSingleFileAsync();
+            return file?.Path;
+        }
+        catch (Exception ex)
+        {
+            App.Dump("选字体文件失败（不影响其它设置）: " + ex.Message);
+            return null;
+        }
+    }
+
+    // ---------------- 描边颜色（自动 / 自选）----------------
+
+    void SubOutlineAuto_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _filling) return;
+        UpdateSubOutlineUI();
+        ScheduleSubSave();
+        ScheduleSubPreview();
+    }
+
+    void SubOutlineColor_Changed(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        UpdateSubOutlineUI(ToHex(args.NewColor));
+        // 用户动手选了颜色，就自动取消「自动」——不然选了也不生效，很费解
+        if (SubOutlineAutoCheck.IsChecked == true)
+        {
+            _filling = true;
+            SubOutlineAutoCheck.IsChecked = false;
+            _filling = false;
+            UpdateSubOutlineUI(ToHex(args.NewColor));
+        }
+        if (!_ready || _filling) return;
+        ScheduleSubSave();
+        ScheduleSubPreview();
+    }
+
+    void UpdateSubOutlineUI(string? hex = null)
+    {
+        bool auto = SubOutlineAutoCheck.IsChecked == true;
+        SubOutlineColorButton.Visibility = auto ? Visibility.Collapsed : Visibility.Visible;
+        if (hex is { Length: 7 })
+        {
+            var c = ParseHexColor(hex);
+            SubOutlineColorSwatch.Background = new SolidColorBrush(c);
+            SubOutlineColorText.Text = ToHex(c);
+        }
+    }
+
+    string CurrentOutlineColor()
+    {
+        if (SubOutlineAutoCheck.IsChecked == true) return "";
+        var s = SubOutlineColorText?.Text ?? "";
+        return s.Length == 7 && s[0] == '#' ? s : "#000000";
+    }
+
+    /// <summary>整组字幕样式恢复默认（用户 2026-10-21 要求能重置）。</summary>
+    async void ResetSubtitleStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "恢复默认字幕样式？",
+            Content = "字体、字号、字间距、描边、描边颜色、字幕颜色、底部距离和双语字幕设置都会回到默认值。",
+            PrimaryButtonText = "恢复默认",
+            CloseButtonText = "算了",
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var r = await Backend.CallAsync("reset_subtitle_style", null, 20_000);
+        if (r is null || !(r.Value.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True))
+        {
+            SaveState.Text = "恢复失败：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应");
+            return;
+        }
+        await LoadAsync();          // 重新读一遍配置，界面全部刷新
+        SaveState.Text = "字幕样式已恢复默认 ✓";
+    }
+
     void SubMargin_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (SubMarginText is null) return;
         SubMarginText.Text = ((int)e.NewValue) + " px";
+        ScheduleSubSave();
+        ScheduleSubPreview();
+    }
+
+    /// <summary>双语字幕开关：关掉时把「原文位置 / 原文字号」两行一起收起来。</summary>
+    async void SubBilingual_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _filling) return;
+        UpdateSubBilingualUI();
+        ScheduleSubPreview();
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["subtitle_bilingual"] = SubBilingualCheck.IsChecked == true,
+        });
+    }
+
+    void UpdateSubBilingualUI()
+    {
+        SubBilingualRows.Visibility = SubBilingualCheck.IsChecked == true
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    async Task SubBilingualOrderChangedAsync()
+    {
+        if (!_ready || _filling) return;
+        ScheduleSubPreview();
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["subtitle_bilingual_order"] =
+                SubBilingualOrderBox.SelectedTag is { Length: > 0 } t ? t : "src_top",
+        });
+    }
+
+    void SubBilingualScale_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (SubBilingualScaleText is null) return;
+        SubBilingualScaleText.Text = ((int)e.NewValue) + "%";
         ScheduleSubSave();
         ScheduleSubPreview();
     }
@@ -722,7 +933,9 @@ public sealed partial class SettingsPage : Page
                     ["subtitle_spacing"] = Math.Round(SubSpacingSlider.Value, 1),
                     ["subtitle_color"] = CurrentSubColor(),
                     ["subtitle_outline"] = Math.Round(SubOutlineSlider.Value, 1),
+                    ["subtitle_outline_color"] = CurrentOutlineColor(),
                     ["subtitle_margin_v"] = (int)SubMarginSlider.Value,
+                    ["subtitle_bilingual_scale"] = (int)SubBilingualScaleSlider.Value,
                 });
             };
         }
@@ -771,12 +984,17 @@ public sealed partial class SettingsPage : Page
         {
             var r = await Backend.CallAsync("subtitle_preview", new
             {
-                font = "Starry Han Sans Light",
+                font = _subFontName,
+                font_file = _subFontFile,
                 size = SubSizeSlider.Value,
                 spacing = Math.Round(SubSpacingSlider.Value, 1),
                 color = CurrentSubColor(),
                 outline = Math.Round(SubOutlineSlider.Value, 1),
+                outline_color = CurrentOutlineColor(),
                 margin_v = (int)SubMarginSlider.Value,
+                bilingual = SubBilingualCheck.IsChecked == true,
+                src_order = SubBilingualOrderBox.SelectedTag is { Length: > 0 } bo ? bo : "src_top",
+                src_scale = SubBilingualScaleSlider.Value,
             }, 20_000);
             if (seq != _previewSeq) return;   // 期间又改了，丢弃这次结果
 
@@ -811,12 +1029,17 @@ public sealed partial class SettingsPage : Page
         {
             var r = await Backend.CallAsync("subtitle_preview", new
             {
-                font = "Starry Han Sans Light",
+                font = _subFontName,
+                font_file = _subFontFile,
                 size = SubSizeSlider.Value,
                 spacing = Math.Round(SubSpacingSlider.Value, 1),
                 color = CurrentSubColor(),
                 outline = Math.Round(SubOutlineSlider.Value, 1),
+                outline_color = CurrentOutlineColor(),
                 margin_v = (int)SubMarginSlider.Value,
+                bilingual = SubBilingualCheck.IsChecked == true,
+                src_order = SubBilingualOrderBox.SelectedTag is { Length: > 0 } bo ? bo : "src_top",
+                src_scale = SubBilingualScaleSlider.Value,
                 large = true,
             }, 30_000);
             if (r is not null
@@ -1056,6 +1279,54 @@ public sealed partial class SettingsPage : Page
     {
         if (!_ready || _filling || sender is not TextBox box || box.Tag is not string key) return;
         await SaveAsync(new Dictionary<string, object?> { [key] = box.Text.Trim() });
+    }
+
+    /// <summary>「检测」代理：填的地址通不通？不通就自动找 Windows 系统代理 / 本机常见端口。</summary>
+    async void DetectProxy_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        ProxyTestBtn.IsEnabled = false;
+        SetHint(ProxyHint, "正在检测…", null);
+        try
+        {
+            // 先把框里现填的值存下去：检测用的必须是用户眼前这一份
+            string typed = ProxyBox.Text.Trim();
+            if (!await SaveAsync(new Dictionary<string, object?> { ["proxy"] = typed }))
+            {
+                SetHint(ProxyHint, "保存不上，检测没法继续", false);
+                return;
+            }
+            var r = await Backend.CallAsync("detect_proxy", new { proxy = typed }, 30_000);
+            if (r is null)
+            {
+                SetHint(ProxyHint, "检测失败：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应"), false);
+                return;
+            }
+            bool ok = r.Value.TryGetProperty("ok", out var okEl) && okEl.ValueKind == JsonValueKind.True;
+            string found = Str(r.Value, "proxy");
+            string source = Str(r.Value, "source");
+            bool saved = r.Value.TryGetProperty("saved", out var sv) && sv.ValueKind == JsonValueKind.True;
+            if (!ok)
+            {
+                SetHint(ProxyHint, typed.Length > 0
+                    ? "这个地址连不上，也没自动找到本机代理。没开代理软件的话，把这一栏清空再试。"
+                    : "没找到本机代理。翻译本地文件不需要代理；下载在线视频时再填。", false);
+                return;
+            }
+            if (saved) ProxyBox.Text = found;      // 后端已写进设置，框里也显示出来
+            string where = source switch
+            {
+                "configured" => "你填的代理可用",
+                "system" => "已自动用上 Windows 系统代理",
+                _ when source.StartsWith("port:") => "已自动找到本机代理",
+                _ => "代理可用",
+            };
+            SetHint(ProxyHint, $"{where}：{found}", true);
+        }
+        finally
+        {
+            ProxyTestBtn.IsEnabled = true;
+        }
     }
 
     /// <summary>

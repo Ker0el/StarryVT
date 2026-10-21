@@ -364,9 +364,18 @@ def _output(c: dict) -> dict:
 
 def _proxy(c: dict) -> dict:
     """代理：只有下载 YouTube 和 Gemini 增强才需要"""
-    proxy = (c.get("proxy") or "").strip()
+    import mirrors
+    configured = (c.get("proxy") or "").strip()
+    proxy = mirrors.effective_proxy(c)
     if proxy:
-        return _item("proxy", "网络代理", OK, proxy)
+        if configured and proxy == configured:
+            return _item("proxy", "网络代理", OK, proxy)
+        return _item("proxy", "网络代理", OK, f"自动检测到本机代理：{proxy}")
+    if configured:
+        return _item("proxy", "网络代理", WARN,
+                     f"你填的代理 {configured} 连不上，也没自动检测到本机代理。"
+                     f"没开代理软件的话，去设置里把这一栏清空。",
+                     "settings", "去设置")
     if (c.get("source") or "").strip().lower().startswith("http"):
         return _item("proxy", "网络代理", WARN,
                      "要下载在线视频通常需要代理；没有代理的话，请改用「本地文件」模式。",
@@ -381,15 +390,18 @@ def _github(c: dict, deep: bool = False) -> dict:
     import mirrors
     import wheels
     title = "外网依赖"
-    proxy = (c.get("proxy") or "").strip()
-    if mirrors.proxy_ok(c):
-        return _item("github", title, OK, "已配网络代理，外网依赖直接走官方源")
+    configured = (c.get("proxy") or "").strip()
+    proxy = mirrors.effective_proxy(c)
+    if proxy:
+        if configured and proxy == configured:
+            return _item("github", title, OK, "已配网络代理，外网依赖直接走官方源")
+        return _item("github", title, OK, f"自动检测到本机代理 {proxy}，外网依赖直接走官方源")
     # ⚠️ 这一行以前只看「填没填」：填了个连不上的地址也报「已配网络代理，直接走官方源」。
     #    客户拿着这份报告以为外网没问题，其实是死端口，什么都下不来（2026-10-15 实例）。
-    if proxy:
-        return _item("github", title, OK,
-                     f"你填的代理 {proxy} 连不上，已自动改用国内加速镜像。"
-                     f"本机没开代理软件的话，去设置里把这一栏清空。",
+    if configured:
+        return _item("github", title, WARN,
+                     f"你填的代理 {configured} 连不上，也没自动检测到本机代理，"
+                     f"已改用国内加速镜像。本机没开代理软件的话，去设置里把这一栏清空。",
                      "settings", "去设置")
     if not mirrors.enabled(c):
         return _item("github", title, WARN,
@@ -416,12 +428,8 @@ def _net(c: dict) -> dict:
     if not key:
         return _item("net", title, WARN, "还没填 DeepSeek Key，跳过联网检查", "settings", "去设置")
     import mirrors
-    proxy = (c.get("proxy") or "").strip()
-    opener = urllib.request.build_opener()
-    # 探不通就别硬走它，不然连「DeepSeek 连不上」都会误报（其实只是那个死端口在挡路）
-    if mirrors.proxy_ok(c):
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    # 有可用代理就走，没有就强制直连（系统代理指向死端口时别被它带崩）
+    opener = mirrors.opener(c)
     req = urllib.request.Request("https://api.deepseek.com/models",
                                  headers={"Authorization": f"Bearer {key}"})
     try:

@@ -18,6 +18,8 @@ import tools
 from job import no_window_kwargs
 
 SAMPLE = "星译 Easy Translate 字幕预览 Subtitle Preview"
+#: 双语预览时「原文」那一行（假想的外语原文）
+SAMPLE_SRC = "Easy Translate - Subtitle Preview"
 
 
 def render(style: dict, large: bool = False) -> Path:
@@ -39,22 +41,38 @@ def render(style: dict, large: bool = False) -> Path:
     except (TypeError, ValueError):
         spacing = 0.0
     color = str(style.get("color") or "#FFFFFF").strip() or "#FFFFFF"
-    font_file = subtitle_fonts.file_for(font, style.get("font_file") or "")
+    outline_color = str(style.get("outline_color") or "").strip()
+    # 字体：用户选了字体文件就用它（族名从文件里读），否则用随包的思源黑体
+    font, font_file = subtitle_fonts.resolve(
+        str(style.get("font") or ""), str(style.get("font_file") or ""))
+    bilingual = bool(style.get("bilingual"))
+    src_order = str(style.get("src_order") or "src_top")
+    try:
+        src_scale = float(style.get("src_scale") or 80)
+    except (TypeError, ValueError):
+        src_scale = 80.0
 
     import paths
     root = paths.resolve("subtitle_preview")
     root.mkdir(parents=True, exist_ok=True)
     tag = hashlib.sha1(
-        f"{font}\x00{size}\x00{outline}\x00{margin_v}\x00{spacing}\x00{color}\x00{font_file}\x00{bool(large)}".encode("utf-8")
+        f"{font}\x00{size}\x00{outline}\x00{margin_v}\x00{spacing}\x00{color}\x00{font_file}\x00{bool(large)}"
+        f"\x00{bilingual}\x00{src_order}\x00{src_scale}\x00{outline_color}".encode("utf-8")
     ).hexdigest()[:12]
     srt = root / f"{tag}.srt"
     ass = root / f"{tag}.ass"
     png = root / f"{tag}.png"
 
     srt.write_text(f"1\n00:00:00,000 --> 00:00:05,000\n{SAMPLE}\n", encoding="utf-8")
+    src = root / f"{tag}-src.srt"
+    if bilingual:
+        src.write_text(f"1\n00:00:00,000 --> 00:00:05,000\n{SAMPLE_SRC}\n", encoding="utf-8")
     srt2ass.srt_to_ass(srt, ass, font=font, size=size, margin_v=margin_v,
                        outline=outline, spacing=spacing, color=color,
-                       play_res="1280x720")
+                       play_res="1280x720",
+                       bilingual=bilingual, src_srt=str(src) if bilingual else "",
+                       src_order=src_order, src_scale=src_scale,
+                       outline_color=outline_color)
 
     vf = f"ass={ass.name}"
     if font_file and Path(font_file).is_file():

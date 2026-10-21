@@ -56,7 +56,13 @@ DEFAULTS: dict = {
     "subtitle_spacing": 0,               # 字间距（px，负数更紧）
     "subtitle_color": "#FFFFFF",         # 字幕颜色（#RRGGBB）
     "subtitle_outline": 2.2,             # 描边粗细
+    "subtitle_outline_color": "",        # 描边颜色；空 = 自动（浅色字幕配黑描边、深色配白描边）
     "subtitle_margin_v": 30,             # 距画面底部的距离
+    # 双语字幕（用户 2026-10-21 要求）：原文 + 中文两行一起烧进视频。
+    # 只影响**烧录进成片**的字幕；输出目录里那份 .srt 仍然是纯中文（配音要读它）。
+    "subtitle_bilingual": False,
+    "subtitle_bilingual_order": "src_top",   # src_top = 原文在上；src_bottom = 原文在下
+    "subtitle_bilingual_scale": 80,          # 原文行字号 = 中文字号的百分之多少
     "auto_subtitle": False,              # True = 视频旁边有同名 .srt/.vtt 时直接拿来翻译，跳过语音识别
     "subtitle_review": False,            # True = 单个视频翻译完成后暂停，双语对照检查译文，改完继续配音/压制
     "tts_clone": False,                  # True = 用原视频里的人声复刻音色来配音（见 clone_engine）
@@ -98,9 +104,11 @@ def load() -> dict:
             data.update(json.loads(SETTINGS_PATH.read_text(encoding="utf-8")))
         except Exception:
             pass  # 配置损坏时退回默认值
-    # 2026-10-17 用户定：字幕字体只保留随包的思源黑体 Light，老配置里的其它字体迁移过来
-    data["subtitle_font"] = "Starry Han Sans Light"
-    data["subtitle_font_file"] = ""
+    # 2026-10-21：字体可以自定义了，不再强制写死。
+    # 但老配置里可能还留着早期版本的系统字体名（那时候没有 subtitle_font_file），
+    # 统一归到随包字体；真正选过字体文件的（有 font_file）原样保留。
+    if not (data.get("subtitle_font_file") or "").strip():
+        data["subtitle_font"] = "Starry Han Sans Light"
     return data
 
 

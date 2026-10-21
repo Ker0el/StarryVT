@@ -43,10 +43,11 @@ DLL_PREFIXES = ("av", "sw")
 
 
 def _opener(proxy: str):
-    handlers = []
     if proxy:
-        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    return urllib.request.build_opener(*handlers)
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    # 空 ProxyHandler = 真正的直连（否则会读系统代理，代理关掉后一律 10061）
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _download(opener, url: str, dest: Path) -> None:

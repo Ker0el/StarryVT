@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import mirrors
+
 # DeepSeek 的 OpenAI 兼容接口（和 llmroute.py 里给引擎用的是同一个 base_url）
 API_URL = "https://api.deepseek.com/chat/completions"
 MODEL = "deepseek-flash"
@@ -29,15 +31,29 @@ SYSTEM = (
 )
 
 
-def _post(payload: dict, key: str, timeout: float = 120.0) -> str:
+def _post(payload: dict, key: str, timeout: float = 120.0,
+          params: dict | None = None) -> str:
     req = urllib.request.Request(
         API_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        got = json.loads(r.read().decode("utf-8"))
-    return got["choices"][0]["message"]["content"]
+    for attempt in range(2):
+        try:
+            # 有可用代理就用，没有就**强制直连**（用 mirrors.opener，别让 urllib
+            # 自己偷偷读那个已经关掉的系统代理）
+            with mirrors.opener(params or {}).open(req, timeout=timeout) as r:
+                got = json.loads(r.read().decode("utf-8"))
+            return got["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError:
+            raise                       # 服务端有回复（4xx/5xx），交给上层按状态码处理
+        except urllib.error.URLError as e:
+            # WinError 10061「目标计算机积极拒绝」：系统代理还指着已经关掉的本地端口。
+            # 清掉探测缓存，第二次会重新判定（多半会改走直连）。
+            if attempt == 0 and "10061" in str(e):
+                mirrors.forget_proxy_cache()
+                continue
+            raise
 
 
 def _parse_array(content: str, n: int) -> list[str] | None:
@@ -60,7 +76,8 @@ def _parse_array(content: str, n: int) -> list[str] | None:
     return [str(x).strip() for x in arr]
 
 
-def _translate_batch(lines: list[str], key: str, extra_info: str = "") -> list[str]:
+def _translate_batch(lines: list[str], key: str, extra_info: str = "",
+                     params: dict | None = None) -> list[str]:
     system = SYSTEM
     if extra_info.strip():
         system += "\nVideo context: " + extra_info.strip()
@@ -76,7 +93,7 @@ def _translate_batch(lines: list[str], key: str, extra_info: str = "") -> list[s
     last = ""
     for attempt in range(4):
         try:
-            content = _post(payload, key)
+            content = _post(payload, key, params=params)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")[:200]
             last = f"HTTP {e.code}: {body}"
@@ -97,7 +114,8 @@ def _translate_batch(lines: list[str], key: str, extra_info: str = "") -> list[s
     raise RuntimeError(f"DeepSeek 翻译失败：{last}")
 
 
-def translate_cues(cues, key: str, extra_info: str = "", report=None):
+def translate_cues(cues, key: str, extra_info: str = "", report=None,
+                   params: dict | None = None):
     """把 [(start, end, 中文)] 翻成 [(start, end, English)]，时间轴不动。"""
     out = []
     for i in range(0, len(cues), BATCH):
@@ -105,7 +123,7 @@ def translate_cues(cues, key: str, extra_info: str = "", report=None):
         texts = [c[2] for c in chunk]
         if report:
             report("translate", None, f"英文翻译 {i + 1}-{i + len(chunk)} / {len(cues)}")
-        english = _translate_batch(texts, key, extra_info)
+        english = _translate_batch(texts, key, extra_info, params)
         for (s, e, _zh), en in zip(chunk, english):
             out.append((s, e, en))
     return out
@@ -139,14 +157,15 @@ def to_srt(cues) -> str:
 
 
 def translate_srt(raw_srt: Path, out_srt: Path, key: str,
-                  extra_info: str = "", report=None) -> Path:
+                  extra_info: str = "", report=None,
+                  params: dict | None = None) -> Path:
     """读中文 raw SRT，写英文 SRT，返回输出路径。"""
     import dubber
 
     cues = dubber.parse_srt(raw_srt)
     if not cues:
         raise RuntimeError("中文识别结果为空，没法翻成英文")
-    english = translate_cues(cues, key, extra_info, report)
+    english = translate_cues(cues, key, extra_info, report, params)
     out_srt.write_text(to_srt(english), encoding="utf-8")
     if report:
         report("translate", None, f"英文字幕已生成：{len(english)} 条")

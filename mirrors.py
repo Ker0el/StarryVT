@@ -23,6 +23,7 @@ torch 走上海交大、语音模型走 hf-mirror），**只有 5 项落在 GitH
 from __future__ import annotations
 
 import hashlib
+import os
 import socket
 import time
 import urllib.parse
@@ -119,7 +120,8 @@ def _head(url: str, timeout: float = PROBE_TIMEOUT) -> bool:
     """
     req = urllib.request.Request(url, headers={"Range": "bytes=0-0", "User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # 镜像探测一律直连（走系统代理反而会被死端口挡掉；能用代理时根本不会来探测镜像）
+        with opener(None, direct=True).open(req, timeout=timeout) as r:
             if getattr(r, "status", 200) >= 400:
                 return False
             return not _is_html_bytes(r.read(512))
@@ -131,15 +133,15 @@ def _head(url: str, timeout: float = PROBE_TIMEOUT) -> bool:
 _proxy_cache: dict[str, tuple[float, bool]] = {}
 
 
-def _probe_proxy(proxy: str) -> bool:
-    """只做一次 TCP 连接测试（不建隧道、不校验证书），1.5 秒连不上就算不通。"""
+def _probe_proxy(proxy: str, timeout: float = 1.5) -> bool:
+    """只做一次 TCP 连接测试（不建隧道、不校验证书），连不上就算不通。"""
     try:
         u = urllib.parse.urlsplit(proxy if "://" in proxy else "http://" + proxy)
         host = u.hostname
         port = u.port or (443 if u.scheme == "https" else 80)
         if not host:
             return False
-        with socket.create_connection((host, port), timeout=1.5):
+        with socket.create_connection((host, port), timeout=timeout):
             return True
     except Exception:  # noqa: BLE001 - 连不上就是不通
         return False
@@ -167,12 +169,138 @@ def proxy_ok(params: dict) -> bool:
     return ok
 
 
+#: 本机常见代理端口（Clash 7890、Clash Verge 7897、v2rayN HTTP 10809、SS 1080）
+COMMON_PROXY_PORTS = (7890, 7897, 10809, 1080)
+
+#: effective_proxy 的结果缓存：{配置里的代理: (时刻, 实际代理, 来源)}
+_effective_cache: dict[str, tuple[float, str, str]] = {}
+
+
+def system_proxy() -> str:
+    """读 Windows 系统代理（Internet Settings 的 ProxyEnable/ProxyServer）。
+
+    很多用户不会在星译里填端口，但代理软件会把系统代理设好；
+    能读到就直接用，读不到再扫本机常见端口。
+    """
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+        with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as k:
+            try:
+                enabled = int(winreg.QueryValueEx(k, "ProxyEnable")[0])
+            except (OSError, TypeError, ValueError):
+                enabled = 0
+            if not enabled:
+                return ""
+            try:
+                server = str(winreg.QueryValueEx(k, "ProxyServer")[0] or "").strip()
+            except OSError:
+                return ""
+        if not server:
+            return ""
+        # 可能是 "127.0.0.1:7890"，也可能是 "http=127.0.0.1:7890;https=..."
+        if "=" in server:
+            parts: dict[str, str] = {}
+            for item in server.split(";"):
+                if "=" in item:
+                    name, value = item.split("=", 1)
+                    parts[name.strip().lower()] = value.strip()
+            server = parts.get("http") or parts.get("https") or ""
+        server = server.strip()
+        if not server:
+            return ""
+        if "://" not in server:
+            server = "http://" + server
+        return server
+    except Exception:  # noqa: BLE001 - 读不到系统代理就继续扫本机端口
+        return ""
+
+
+def _detect_proxy(params: dict, *, force: bool = False) -> tuple[str, str]:
+    """返回 (可用代理, 来源)。来源：configured / system / port:7890 / none / configured-dead"""
+    configured = (params.get("proxy") or "").strip()
+    if configured:
+        # force=True（「检测」按钮）要**真连一次**，不能吃 5 分钟内的旧结果 ——
+        # 用户刚把代理软件打开再点检测，旧缓存会继续说"连不上"。
+        ok = _probe_proxy(configured) if force else proxy_ok({"proxy": configured})
+        if force:
+            _proxy_cache[configured] = (time.time(), ok)
+        if ok:
+            return configured, "configured"
+
+    sysproxy = system_proxy()
+    if sysproxy and sysproxy != configured and _probe_proxy(sysproxy, timeout=0.6):
+        return sysproxy, "system"
+
+    for port in COMMON_PROXY_PORTS:
+        cand = f"http://127.0.0.1:{port}"
+        if cand in (configured, sysproxy):
+            continue
+        if _probe_proxy(cand, timeout=0.35):
+            return cand, f"port:{port}"
+
+    return "", ("configured-dead" if configured else "none")
+
+
+def forget_proxy_cache() -> None:
+    """改过代理设置 / 用户点了「检测」之后清缓存，下一次调用重新判定。"""
+    _effective_cache.clear()
+    _proxy_cache.clear()
+
+
+def opener(params: dict | None = None, *, direct: bool = False, handlers=()):
+    """统一的 urllib opener：有可用代理就走它，没有就**强制直连**。
+
+    ★ 为什么必须显式给一个空的 ProxyHandler（2026-10-21 客户报障）：
+      `urllib.request.build_opener()` **默认会读 Windows 系统代理**。用户关掉代理软件后，
+      系统代理还指着 `127.0.0.1:7897`，于是所有请求都吃 `WinError 10061 目标计算机积极拒绝`。
+      我们前面明明判过「这个代理连不上，该直连」，可 opener 又偷偷把系统代理加回来了 ——
+      判断和实际行为对不上。空 ProxyHandler 才是真正的「不走代理」。
+    """
+    proxy = "" if direct else effective_proxy(params or {})
+    ph = urllib.request.ProxyHandler(
+        {"http": proxy, "https": proxy} if proxy else {})
+    return urllib.request.build_opener(*handlers, ph)
+
+
+
+def effective_proxy(params: dict, *, force: bool = False) -> str:
+    """**真正该用的代理**：配置里的优先，连不上就自动找系统代理 / 本机常见端口。
+
+    返回空串 = 没有可用代理（调用方该走直连或国内镜像）。
+    结果缓存 5 分钟；「检测代理」按钮用 force=True 跳过缓存。
+    """
+    key = (params.get("proxy") or "").strip()
+    now = time.time()
+    hit = _effective_cache.get(key)
+    if hit and not force and now - hit[0] < 300:
+        return hit[1]
+    proxy, source = _detect_proxy(params)
+    _effective_cache[key] = (now, proxy, source)
+    if proxy and source != "configured":
+        try:
+            import diag
+            diag.write(f"自动检测到代理 {proxy}（{source}）", "proxy")
+        except Exception:  # noqa: BLE001 - 日志写不了不影响使用
+            pass
+    return proxy
+
+
+def detect_proxy(params: dict) -> dict:
+    """给「设置 → 网络代理 → 检测」用：强制重新探测，返回 {ok, proxy, source}"""
+    proxy, source = _detect_proxy(params, force=True)
+    return {"ok": bool(proxy), "proxy": proxy, "source": source}
+
+
 def enabled(params: dict) -> bool:
-    """这台机器要不要用镜像：用户关掉了就直接不用；**且代理真的通**才不用"""
+    """这台机器要不要用镜像：用户关掉了就直接不用；**有可用代理**才不用"""
     mode = (params.get("github_mirror", AUTO) or AUTO).strip().lower()
     if mode in (OFF, "none", "-", "disable"):
         return False
-    if proxy_ok(params):
+    if effective_proxy(params):
         return False
     return True
 
@@ -322,13 +450,9 @@ def fetch(url: str, dest: Path, params: dict, report=None, stage: str = "env",
     dest.parent.mkdir(parents=True, exist_ok=True)
     urls = _candidate_urls(url, params)
 
-    # 用户配了代理**而且它真的通**才带上（这台机器自己的进程环境里通常没有 HTTP(S)_PROXY）。
-    # ⚠️ 必须过 proxy_ok：端口上没人监听的时候硬走代理，所有来源会一起失败。
-    opener = urllib.request.build_opener()
-    proxy = (params.get("proxy") or "").strip()
-    if proxy_ok(params):
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    # 用**实际可用**的代理：配置的那个连不上时，会自动找系统代理 / 本机常见端口；
+    # 都没有就强制直连（别让 urllib 又去读那个已经关掉的系统代理）。
+    op = opener(params)
 
     last = ""
     for i, u in enumerate(urls):
@@ -346,7 +470,7 @@ def fetch(url: str, dest: Path, params: dict, report=None, stage: str = "env",
             req = urllib.request.Request(u, headers={"User-Agent": UA})
             h = hashlib.sha256() if sha256 else None
             ctype = ""
-            with opener.open(req, timeout=timeout) as r, open(dest, "wb") as f:
+            with op.open(req, timeout=timeout) as r, open(dest, "wb") as f:
                 ctype = (r.headers.get("Content-Type") or "").lower()
                 total = int(r.headers.get("Content-Length") or 0)
                 got = 0
@@ -391,11 +515,12 @@ def fetch(url: str, dest: Path, params: dict, report=None, stage: str = "env",
             dest.unlink(missing_ok=True)
     # 代理填了但连不上，是这里最常见的失败原因，而且报错只有一串 WinError 谁也看不懂。
     # 直接把话说明白，用户照着做就能自救。
-    if proxy and not proxy_ok(params):
+    configured = (params.get("proxy") or "").strip()
+    if configured and not effective_proxy(params):
         raise RuntimeError(
             f"下载失败：{dest.name}\n"
-            f"连不上你设置的代理 {proxy}。如果本机没开代理软件，"
-            f"去「设置 → 网络代理」把这一栏清空再试；\n"
+            f"连不上你设置的代理 {configured}，也没自动检测到本机可用的代理。"
+            f"如果本机没开代理软件，去「设置 → 网络代理」把这一栏清空再试；\n"
             f"清空后会自动改用国内的加速镜像下载。")
     raise RuntimeError(f"下载失败：{dest.name}（{last}）")
 

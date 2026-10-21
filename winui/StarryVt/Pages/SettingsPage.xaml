@@ -394,6 +394,61 @@
                         </StackPanel>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
+                        <!-- 双语字幕：开了才显示下面两条样式设置（用户 2026-10-21 要求） -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="双语字幕" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">原文和中文各占一行<LineBreak />只影响烧进视频的字幕，导出的 .srt 仍是中文</TextBlock>
+                            </StackPanel>
+                            <CheckBox x:Name="SubBilingualCheck" Grid.Column="1" Content="启用"
+                                      VerticalAlignment="Center" Click="SubBilingual_Changed" />
+                        </Grid>
+
+                        <StackPanel x:Name="SubBilingualRows" Visibility="Collapsed">
+                            <Border Style="{StaticResource RowDividerStyle}" />
+                            <Grid Padding="16,12" ColumnSpacing="20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="320" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="原文位置" Style="{StaticResource RowLabelStyle}" />
+                                    <TextBlock Text="原文那一行放在中文上面还是下面"
+                                               Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ctl:GlassSelect x:Name="SubBilingualOrderBox" Grid.Column="1" MinWidth="220" />
+                            </Grid>
+                            <Border Style="{StaticResource RowDividerStyle}" />
+                            <Grid Padding="16,12" ColumnSpacing="20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="320" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="原文字号" Style="{StaticResource RowLabelStyle}" />
+                                    <TextBlock Text="相对中文字号的大小，100% = 一样大"
+                                               Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Grid Grid.Column="1" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="SubBilingualScaleSlider" Grid.Column="0"
+                                            Minimum="50" Maximum="100" StepFrequency="5"
+                                            ValueChanged="SubBilingualScale_ValueChanged" />
+                                    <TextBlock x:Name="SubBilingualScaleText" Grid.Column="1" FontSize="14"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
                         <Grid Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
@@ -401,12 +456,20 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="字体" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="随包自带，所有电脑效果一致"
+                                <TextBlock Text="默认随包自带；也可以选自己电脑上的字体文件"
                                            Style="{StaticResource RowDescStyle}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="思源黑体 Light" FontSize="14"
-                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <TextBlock x:Name="SubFontText" Text="思源黑体 Light（随包）" FontSize="14" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="选择字体文件…" Click="PickSubFont_Click" />
+                                    <Button x:Name="SubFontResetBtn" Content="恢复默认" Click="ResetSubFont_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="SubFontHint" Style="{StaticResource RowDescStyle}"
+                                           TextWrapping="Wrap"
+                                           Text="支持 .ttf / .otf / .ttc；请使用你有权使用的字体" />
+                            </StackPanel>
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
@@ -487,6 +550,45 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
+                                <TextBlock Text="描边颜色" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Text="自动会根据字幕颜色配黑或白"
+                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <CheckBox x:Name="SubOutlineAutoCheck" Content="自动（推荐）"
+                                          Click="SubOutlineAuto_Changed" />
+                                <Button x:Name="SubOutlineColorButton"
+                                        HorizontalAlignment="Left" Padding="10,6"
+                                        Visibility="Collapsed">
+                                    <Button.Flyout>
+                                        <Flyout Placement="Bottom">
+                                            <ColorPicker x:Name="SubOutlineColorPicker"
+                                                         RequestedTheme="Dark"
+                                                         IsAlphaEnabled="False"
+                                                         IsColorChannelTextInputVisible="False"
+                                                         IsHexInputVisible="True"
+                                                         IsMoreButtonVisible="False"
+                                                         Orientation="Horizontal"
+                                                         ColorChanged="SubOutlineColor_Changed" />
+                                        </Flyout>
+                                    </Button.Flyout>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border x:Name="SubOutlineColorSwatch" Width="18" Height="18"
+                                                CornerRadius="4" Background="Black"
+                                                BorderBrush="#40FFFFFF" BorderThickness="1" />
+                                        <TextBlock x:Name="SubOutlineColorText" Text="#000000" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
                                 <TextBlock Text="字幕颜色" Style="{StaticResource RowLabelStyle}" />
                                 <TextBlock Text="深色会自动配白色描边"
                                            Style="{StaticResource RowDescStyle}" />
@@ -536,6 +638,11 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Grid>
                         </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+                        <Grid Padding="16,12">
+                            <Button Content="全部恢复默认" Click="ResetSubtitleStyle_Click"
+                                    HorizontalAlignment="Left" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -580,7 +687,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="引擎数据目录" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB（不含语音克隆，那一项在下面「数据目录」）<LineBreak />留空 = 默认位置（新装会跟「数据目录」放在一起；已经装过的继续用原来的位置）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB（不含语音克隆，那一项在下面「数据目录」）<LineBreak />留空 = 默认位置（新装会跟「数据目录」放在一起；之前装过的保持原来的位置）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载</TextBlock>
                             </StackPanel>
                             <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
@@ -617,7 +724,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="数据目录" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">语音克隆、配音缓存、缩略图都放这里<LineBreak />留空 = 默认位置（新装跟软件放在一起；老用户保持原来的位置）。点「选择…」可以换盘</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">语音克隆、配音缓存、缩略图都放这里<LineBreak />留空 = 默认位置（新装跟软件放在一起；之前装过的保持原来的位置）。点「选择…」可以换盘</TextBlock>
                             </StackPanel>
                             <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
@@ -755,7 +862,7 @@
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
                         <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                  IsExpanded="False" Margin="0,4,0,4">
+                                  IsExpanded="True" Margin="0,4,0,4">
                             <Expander.Header>
                                 <TextBlock Text="高级（一般不用改）" FontSize="15" FontWeight="SemiBold" />
                             </Expander.Header>
@@ -784,11 +891,25 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="网络代理" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">下载在线视频才需要<LineBreak />翻译本地文件可留空</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">最好全程开启<LineBreak />检查更新、下载视频、联网查证都要用</TextBlock>
                             </StackPanel>
-                            <TextBox x:Name="ProxyBox" Grid.Column="1"
-                                     PlaceholderText="http://127.0.0.1:7897"
-                                     LostFocus="Field_LostFocus" Tag="proxy" />
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <Grid ColumnSpacing="9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ProxyBox" VerticalAlignment="Center"
+                                             PlaceholderText="http://127.0.0.1:7897"
+                                             LostFocus="Field_LostFocus" Tag="proxy" />
+                                    <Button x:Name="ProxyTestBtn" Grid.Column="1" Content="检测"
+                                            Click="DetectProxy_Click"
+                                            ToolTipService.ToolTip="测一下填的地址通不通；不通就自动找 Windows 系统代理和本机常见端口" />
+                                </Grid>
+                                <TextBlock x:Name="ProxyHint" Style="{StaticResource RowDescStyle}"
+                                           TextWrapping="Wrap"
+                                           Text="开了代理软件就保持开启。不知道端口可以留空，会自动使用系统代理并探测本机常见端口。" />
+                            </StackPanel>
                         </Grid>
 
                         <Border Style="{StaticResource RowDividerStyle}" />

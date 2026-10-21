@@ -26,7 +26,10 @@ def _key(key: str | None = None) -> str:
 
 
 def _post(path: str, payload: dict, key: str = "", timeout: float = 60) -> dict:
-    k = _key(key)
+    import mirrors
+    import settings as cfg
+    params = cfg.load()
+    k = (key or str(params.get("deepseek_key") or "")).strip()
     if not k:
         return {"ok": False, "error": "未配置 DeepSeek API Key"}
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -39,7 +42,8 @@ def _post(path: str, payload: dict, key: str = "", timeout: float = 60) -> dict:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # 有可用代理就走，没有就强制直连（系统代理指着死端口时别被它带崩）
+        with mirrors.opener(params).open(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raw = e.read().decode("utf-8", errors="replace")[:500]

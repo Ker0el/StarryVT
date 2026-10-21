@@ -178,8 +178,12 @@ def install() -> bool:
 def verify_files() -> bool:
     print("\n[2/4] 查装出来的东西")
     ok = True
-    for rel in ("StarryVt.exe", "backend/StarryVT.exe", "backend/_internal/bin/yt-dlp.exe",
-                "backend/_internal/bin/ffmpeg.exe", "App.xbf", "MainWindow.xbf", "StarryVt.pri",
+    # 随包工具的位置跟后端打包路线有关：PyInstaller 在 backend/_internal/bin，
+    # Nuitka 在 backend/bin（build.py 默认 Nuitka）。按实际布局选，别写死。
+    tools_dir = ("backend/bin" if (SANDBOX / "backend" / "bin" / "ffmpeg.exe").is_file()
+                 else "backend/_internal/bin")
+    for rel in ("StarryVt.exe", "backend/StarryVT.exe", f"{tools_dir}/yt-dlp.exe",
+                f"{tools_dir}/ffmpeg.exe", "App.xbf", "MainWindow.xbf", "StarryVt.pri",
                 "Pages/OnlinePage.xbf", "Controls/SmoothTextBox.xbf",
                 "TERMS.md", "THIRD_PARTY_LICENSES.md", "licenses"):
         ok &= check((SANDBOX / rel).exists(), f"{rel}")

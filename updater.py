@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import diag
+import mirrors
 import tools
 from job import CREATE_BREAKAWAY_FROM_JOB, Cancelled, no_window_kwargs
 
@@ -50,7 +51,9 @@ def _opener(proxy: str = ""):
     if proxy:
         return urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    return urllib.request.build_opener()
+    # 空 ProxyHandler = 真正的直连。不传的话 build_opener 会自己去读 Windows 系统代理，
+    # 用户关掉代理软件后系统里还留着 127.0.0.1:7897 → WinError 10061（2026-10-21 客户报障）。
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _is_self_hosted(u: str) -> bool:
@@ -78,6 +81,8 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     """
     last_kind = "未知错误"
     tried: list[str] = []
+    configured = (proxy or "").strip()
+    proxy = mirrors.effective_proxy({"proxy": configured})
     for u in _manifest_urls(url):
         tried.append(u)
         try:
@@ -105,6 +110,10 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     #   诊断报告里一条记录都没有 —— 分不清是「没新版」还是「压根没查成」。
     diag.write(f"检查更新失败（当前 v{current}）：试了 {len(tried)} 个源都不行，"
                f"最后一个是 {last_kind}", "update")
+    if configured and not proxy:
+        return {"ok": False,
+                "error": f"检查更新失败（{last_kind}）——你填的代理 {configured} 连不上，"
+                         f"也没自动检测到本机代理。没开代理软件的话，去设置里把这一栏清空。"}
     return {"ok": False, "error": f"检查更新失败（{last_kind}）——检查网络/代理"}
 
 
@@ -122,6 +131,8 @@ def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
     dst = Path(tempfile.gettempdir()) / "StarryVT-Setup-new.exe"
     attempts = 3
     last: Exception | None = None
+    # 设置里填的代理可能已经失效；这里和检查更新走同一套「填的能用就用、不能就自动探」
+    proxy = mirrors.effective_proxy({"proxy": proxy})
 
     for attempt in range(1, attempts + 1):
         job.check()

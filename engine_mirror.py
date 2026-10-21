@@ -41,7 +41,8 @@ def _reachable(url: str, timeout: float = 6.0) -> bool:
     """
     try:
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": mirrors.UA})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # 对象存储是国内的，直连；别让系统里那个已经关掉的代理把探测打成"不通"
+        with mirrors.opener(None, direct=True).open(req, timeout=timeout) as r:
             return 200 <= r.status < 300
     except Exception:  # noqa: BLE001
         return False

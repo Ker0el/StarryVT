@@ -95,11 +95,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _opener(params: dict):
-    handlers: list = [_NoRedirect()]
-    proxy = (params.get("proxy") or "").strip()
-    if proxy:
-        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    return urllib.request.build_opener(*handlers)
+    # 有可用代理就走，没有就强制直连（别让 urllib 自己读已经关掉的系统代理）
+    return mirrors.opener(params or {}, handlers=[_NoRedirect()])
 
 
 def remote_tag(channel: str, params: dict) -> str:
