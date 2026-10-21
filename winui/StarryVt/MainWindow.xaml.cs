@@ -1295,6 +1295,9 @@ public sealed partial class MainWindow : Window
     /// <summary>后端查到的更新信息（点「立即更新」要用里面的 pkg_url / sha256）</summary>
     JsonElement _updateInfo;
 
+    /// <summary>正在下载/安装更新：用来把后端的 error/cancelled 收尾到更新条上</summary>
+    bool _updateBusy;
+
     /// <summary>后端推来「有没有新版本」。有就挂横幅；没有、或查失败，就什么都不做。</summary>
     void OnUpdateInfo(JsonElement info)
     {
@@ -1303,6 +1306,7 @@ public sealed partial class MainWindow : Window
         {
             try
             {
+                if (_updateBusy) return;          // 下载中，别把进度条重置回「有新版本」
                 _updateInfo = info;
                 bool ok = info.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.True;
                 bool has = info.TryGetProperty("has_update", out var h) && h.ValueKind == JsonValueKind.True;
@@ -1318,6 +1322,7 @@ public sealed partial class MainWindow : Window
                     UpdateNotes.Text = (err.Length > 0 ? err + "。" : "")
                         + "机器连不上更新服务器（其它功能不受影响，但一键装引擎也要访问那里）。";
                     UpdateGoBtn.Visibility = Visibility.Collapsed;   // 没有东西可装
+                    UpdateManualBtn.Visibility = Visibility.Visible; // 但可以手动去 Releases 下
                     UpdateLaterBtn.Content = "知道了";
                     UpdateBar.Visibility = Visibility.Visible;
                     Motion.Reveal(UpdateBar, 10, 320);
@@ -1326,14 +1331,15 @@ public sealed partial class MainWindow : Window
                 if (!has) return;
 
                 UpdateGoBtn.Visibility = Visibility.Visible;         // 上次可能是失败态，复原
+                UpdateGoBtn.Content = "立即更新";
+                UpdateGoBtn.IsEnabled = true;
+                UpdateManualBtn.Visibility = Visibility.Collapsed;
                 UpdateLaterBtn.Content = "以后再说";
+                UpdateLaterBtn.IsEnabled = true;
                 string ver = info.TryGetProperty("version", out var v) ? (v.GetString() ?? "") : "";
                 string notes = info.TryGetProperty("notes", out var n) ? (n.GetString() ?? "") : "";
                 UpdateTitle.Text = $"有新版本 v{ver}";
                 UpdateNotes.Text = notes;
-                UpdateGoBtn.Content = "立即更新";
-                UpdateGoBtn.IsEnabled = true;
-                UpdateLaterBtn.IsEnabled = true;
                 UpdateBar.Visibility = Visibility.Visible;
                 Motion.Reveal(UpdateBar, 10, 320);
             }
@@ -1346,18 +1352,62 @@ public sealed partial class MainWindow : Window
     /// <summary>更新包下载中的进度 —— 后端走任务状态那条通道推的（stage=update）</summary>
     void OnUpdateProgress(JsonElement st)
     {
+        if (!_updateBusy) return;                    // 不是我们发起的更新，别碰更新条
         string stage = st.TryGetProperty("stage", out var s) ? (s.GetString() ?? "") : "";
+        string err = st.TryGetProperty("error", out var e) ? (e.GetString() ?? "") : "";
+
+        // ★ 以前这里只认 stage=update：下载失败时后端推的是 stage=error，
+        //   被整个忽略，更新条永远停在「正在下载新版本…」（2026-10-21 用户实测）。
+        if (stage is "error" or "cancelled")
+        {
+            DispatcherQueue.TryEnqueue(() => FinishUpdateError(stage, err));
+            return;
+        }
         if (stage != "update") return;
+
         double pct = st.TryGetProperty("percent", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDouble() : 0;
         string msg = "";
         if (st.TryGetProperty("log", out var l) && l.ValueKind == JsonValueKind.Array && l.GetArrayLength() > 0)
             msg = l[l.GetArrayLength() - 1].GetString() ?? "";
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (UpdateBar.Visibility != Visibility.Visible) return;
+            if (!_updateBusy) return;
+            UpdateManualBtn.Visibility = Visibility.Collapsed;
             UpdateGoBtn.Content = $"{pct:0}%";
             if (msg.Length > 0) UpdateNotes.Text = msg;
         });
+    }
+
+    /// <summary>下载失败/取消：把更新条从「正在下载」收回来，给重试和手动下载两个出口。</summary>
+    void FinishUpdateError(string stage, string err)
+    {
+        if (!_updateBusy) return;
+        _updateBusy = false;
+        bool barVisible = UpdateBar.Visibility == Visibility.Visible;
+
+        UpdateTitle.Text = stage == "cancelled" ? "已取消更新" : "更新没下载成功";
+        UpdateNotes.Text = stage == "cancelled"
+            ? "下载已取消，可以稍后再试。"
+            : "下载失败，网络中断。可以点「重试」，或点「手动下载」去 GitHub 下载。";
+        UpdateGoBtn.Content = stage == "cancelled" ? "立即更新" : "重试";
+        UpdateGoBtn.IsEnabled = true;
+        UpdateLaterBtn.Content = "以后再说";
+        UpdateLaterBtn.IsEnabled = true;
+        UpdateManualBtn.Visibility = Visibility.Visible;
+        // 详细错误放到悬停提示里，不占那两行位置
+        ToolTipService.SetToolTip(UpdateNotes, err.Length > 0 ? err : "下载失败");
+        if (barVisible) UpdateBar.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>手动下载：打开发布页，用户自己从浏览器下载安装包。</summary>
+    async void UpdateManual_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Services.Backend.CallAsync("open_url",
+                new { url = "https://github.com/Ker0el/StarryVT/releases/latest" }, 20_000);
+        }
+        catch (Exception ex) { App.Dump("打开发布页失败: " + ex.Message); }
     }
 
     /// <summary>
@@ -1390,9 +1440,12 @@ public sealed partial class MainWindow : Window
     async void UpdateGo_Click(object sender, RoutedEventArgs e)
     {
         if (_updateInfo.ValueKind != JsonValueKind.Object) return;
+        _updateBusy = true;                  // 先置位：下载失败的状态可能比 do_update 返回还快
         UpdateGoBtn.IsEnabled = false;
         UpdateLaterBtn.IsEnabled = false;
+        UpdateManualBtn.Visibility = Visibility.Collapsed;
         UpdateGoBtn.Content = "准备中…";
+        UpdateNotes.Text = "正在连接更新服务器…";
         try
         {
             string pkg = _updateInfo.TryGetProperty("pkg_url", out var p) ? (p.GetString() ?? "") : "";
@@ -1411,9 +1464,11 @@ public sealed partial class MainWindow : Window
             App.Dump("发起更新失败: " + ex.Message);
             UpdateNotes.Text = "更新没起来：" + ex.Message;
         }
+        _updateBusy = false;
         UpdateGoBtn.IsEnabled = true;
         UpdateLaterBtn.IsEnabled = true;
-        UpdateGoBtn.Content = "立即更新";
+        UpdateGoBtn.Content = "重试";
+        UpdateManualBtn.Visibility = Visibility.Visible;
     }
 
     void ModalScrim_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)

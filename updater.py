@@ -14,13 +14,14 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import diag
 import tools
-from job import CREATE_BREAKAWAY_FROM_JOB, no_window_kwargs
+from job import CREATE_BREAKAWAY_FROM_JOB, Cancelled, no_window_kwargs
 
 DEFAULT_UPDATE_URL = "https://github.com/Ker0el/StarryVT/releases/latest/download/latest.json"
 
@@ -108,44 +109,76 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
 
 
 def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
-    """下载安装包到临时目录（支持取消与进度）
+    """下载安装包到临时目录（支持取消与进度、自动重试）
 
     下完必须校验：大小对不上（服务端给了 Content-Length）或 sha256 不符，就当场失败。
     半个安装包跑静默安装 = 更新装坏、程序再也起不来——这种事故比"下载失败"难查得多。
+
+    ★ 2026-10-21 加重试：GitHub 会 302 到 release-assets.githubusercontent.com，
+      那一段 TLS 偶发 EOF（实测过一次，同一时刻 curl 走同样的代理完全正常）。
+      以前一次失败就直接抛，用户看到的是「正在下载新版本…」永远不动。
+      现在最多 3 次，每次重新建连接、从 0 开始（目前没做断点续传）。
     """
     dst = Path(tempfile.gettempdir()) / "StarryVT-Setup-new.exe"
-    if dst.exists():
+    attempts = 3
+    last: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        job.check()
         try:
-            dst.unlink()
-        except Exception:
-            pass
-    report("update", 0, "正在下载新版本…")
-    with _opener_for(pkg_url, proxy).open(pkg_url, timeout=60) as r, open(dst, "wb") as f:
-        total = int(r.headers.get("Content-Length") or 0)
-        got = 0
-        while True:
-            job.check()
-            chunk = r.read(256 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
-            got += len(chunk)
-            if total:
-                report("update", int(got * 100 / total),
-                       f"下载中 {got // 1048576}MB / {total // 1048576}MB")
-    size = dst.stat().st_size
-    if size < 1024 * 1024:
-        raise RuntimeError("下载的安装包不完整（文件太小），请稍后重试")
-    if total and size != total:
-        raise RuntimeError(f"下载的安装包不完整（{size // 1048576}MB / 应为 {total // 1048576}MB），"
-                           f"请检查网络后重试")
-    if sha256:
-        report("update", None, "校验安装包…")
-        if _sha256(dst) != sha256:
             dst.unlink(missing_ok=True)
-            raise RuntimeError("安装包校验失败（下载过程中被改动或损坏），请重试")
-    diag.write(f"新版本已下载: {dst}（{size // 1048576}MB）", "update")
-    return dst
+        except OSError:
+            pass
+        if attempt == 1:
+            report("update", 0, "正在下载新版本…")
+        else:
+            report("update", 0, f"下载中断，正在重试（{attempt}/{attempts}）…")
+
+        try:
+            with _opener_for(pkg_url, proxy).open(pkg_url, timeout=120) as r, open(dst, "wb") as f:
+                total = int(r.headers.get("Content-Length") or 0)
+                got = 0
+                while True:
+                    job.check()
+                    chunk = r.read(256 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        report("update", int(got * 100 / total),
+                               f"下载中 {got // 1048576}MB / {total // 1048576}MB")
+
+            size = dst.stat().st_size
+            if size < 1024 * 1024:
+                raise RuntimeError("下载的安装包不完整（文件太小），请稍后重试")
+            if total and size != total:
+                raise RuntimeError(f"下载的安装包不完整（{size // 1048576}MB / 应为 {total // 1048576}MB），"
+                                   f"请检查网络后重试")
+            if sha256:
+                report("update", None, "校验安装包…")
+                if _sha256(dst) != sha256:
+                    raise RuntimeError("安装包校验失败（下载过程中被改动或损坏），请重试")
+            diag.write(f"新版本已下载: {dst}（{size // 1048576}MB）", "update")
+            return dst
+
+        except Cancelled:
+            try:
+                dst.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        except Exception as e:  # noqa: BLE001 - 网络/校验错误都重试
+            last = e
+            diag.write(f"下载新版本失败（第 {attempt}/{attempts} 次）：{type(e).__name__}: {e}", "update")
+            try:
+                dst.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if attempt < attempts:
+                time.sleep(2 * attempt)
+
+    raise RuntimeError(f"下载失败（已重试 {attempts} 次）：{type(last).__name__}: {last}")
 
 
 def _sha256(path: Path) -> str:

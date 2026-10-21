@@ -135,6 +135,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon Grid.Column="0" Glyph="&#xE895;" FontSize="18" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
@@ -143,7 +144,10 @@
                                        MaxLines="2" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <Button x:Name="UpdateGoBtn" Grid.Column="2" Content="立即更新" Click="UpdateGo_Click" />
-                        <Button x:Name="UpdateLaterBtn" Grid.Column="3" Content="以后再说" Click="UpdateLater_Click" />
+                        <HyperlinkButton x:Name="UpdateManualBtn" Grid.Column="3" Content="手动下载"
+                                         Visibility="Collapsed" Click="UpdateManual_Click"
+                                         ToolTipService.ToolTip="打开 GitHub Releases 页面" />
+                        <Button x:Name="UpdateLaterBtn" Grid.Column="4" Content="以后再说" Click="UpdateLater_Click" />
                     </Grid>
                 </Border>
 

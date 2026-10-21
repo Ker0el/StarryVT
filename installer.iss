@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.13"
+#define AppVersion "6.14"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
