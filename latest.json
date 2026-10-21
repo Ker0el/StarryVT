@@ -1,7 +1,7 @@
 {
-  "version": "6.15",
-  "sha256": "bf94f61731426b027e36c7641e39c1f4c1f05a52ec7432b857dfcae7e1bdca2d",
-  "notes": "双语字幕、自定义字体和描边颜色；代理连不上会自动换成本机可用的，修 WinError 10061",
+  "version": "6.16",
+  "sha256": "bd160395f4ecd8427780ef306bc6f0bed69f678ff1525ed4f9c7c9f5bcdc0aa3",
+  "notes": "双语字幕可导出带原文的 .srt；新增翻译文件名和文件夹名开关",
   "published": "2026-10-21",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.15.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.16.exe"
 }
