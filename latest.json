@@ -1,7 +1,7 @@
 {
-  "version": "6.14",
-  "sha256": "85ac5f09263a9f1c1d363167b86bc6d96ea13a2d47e1a0f8c41b725aefd954bf",
-  "notes": "更新包下载自动重试；失败时显示重试和手动下载",
+  "version": "6.15",
+  "sha256": "bf94f61731426b027e36c7641e39c1f4c1f05a52ec7432b857dfcae7e1bdca2d",
+  "notes": "双语字幕、自定义字体和描边颜色；代理连不上会自动换成本机可用的，修 WinError 10061",
   "published": "2026-10-21",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.14.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.15.exe"
 }
