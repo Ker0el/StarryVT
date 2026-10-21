@@ -2169,13 +2169,83 @@ def run_pipeline(params: dict, job: Job, report) -> dict:
         report("timing", None, clock.summary())
 
 
+#: 文件名翻译缓存：{(原名, 目标语言): 译名}，一次运行里同一个名字只翻一次
+_NAME_TRANS: dict[tuple[str, str], str] = {}
+
+
+def _has_cjk(s: str) -> bool:
+    return any("一" <= ch <= "鿿" for ch in s or "")
+
+
+def _clean_name(s: str) -> str:
+    """把模型返回的文件名收拾干净：去引号/换行/Windows 非法字符，限长。"""
+    s = re.sub(r"[\r\n\t]+", " ", (s or "").strip())
+    s = s.strip().strip("\"'`“”‘’").strip()
+    s = re.sub(r'[<>:"/\\|?*]', " ", s)
+    s = re.sub(r"\s+", " ", s).strip(" ._-")
+    return s[:80].strip(" ._-")
+
+
+def _translated_stem(video: Path, params: dict, report=None) -> str:
+    """把视频文件名翻成目标语言（只用于**输出**的目录名/文件名，原文件不改）。
+
+    设置 → 输出 → 翻译文件名和文件夹名。默认关；开了会对每个视频多一次很短的
+    DeepSeek 请求。翻译失败、返回空、跟原名一样，全都退回原名，绝不让它挡住任务。
+    """
+    stem = (video.stem or "").strip()
+    if not stem or not params.get("translate_names"):
+        return video.stem
+    target_en = (params.get("source_lang") or "") == "zh-en"
+    # 已经是目标语言就别浪费一次请求（中文名翻中文 / 英文名翻英文）
+    if target_en and not _has_cjk(stem):
+        return video.stem
+    if not target_en and _has_cjk(stem):
+        return video.stem
+    key = (stem, "en" if target_en else "zh")
+    hit = _NAME_TRANS.get(key)
+    if hit:
+        return hit
+    api_key = str(params.get("deepseek_key") or "").strip()
+    if not api_key:
+        return video.stem
+    if target_en:
+        system = ("Translate the video file name into natural English. Keep numbers, "
+                  "brand names and technical terms. Output only the translated name, "
+                  "no quotes, no explanation.")
+    else:
+        system = ("把下面的视频文件名翻译成简体中文。保留数字、品牌名和技术术语。"
+                  "只输出翻译结果，不要引号，不要解释。")
+    try:
+        out = en_translate._post({
+            "model": en_translate.MODEL,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": stem}],
+            "temperature": 0.1,
+            "stream": False,
+        }, api_key, timeout=30, params=params)
+    except Exception as e:  # noqa: BLE001 - 名字翻不了就用原名，绝不能挡住任务
+        if report:
+            report("translate", None, f"（文件名没翻成，用原名：{type(e).__name__}）")
+        return video.stem
+    new = _clean_name(out)
+    if not new or new.casefold() == stem.casefold():
+        return video.stem
+    _NAME_TRANS[key] = new
+    if report:
+        report("translate", None, f"文件名翻译：{stem} → {new}")
+    return new
+
+
 def _plan_out_dir(base: Path, video: Path, stamp: str, in_batch: bool,
-                  batch_index: int = 0, report=None) -> tuple[Path, str]:
+                  batch_index: int = 0, report=None,
+                  name_stem: str = "") -> tuple[Path, str]:
     """给这次任务挑输出目录和成品文件名 —— 保证整条路径不超过 MAX_OUT_PATH
 
     正常情况目录名就是视频名（批量）/ 视频名-时间戳（单个）；视频名太长或源目录
     太深时，目录换成短名、成品文件名头尾各留一段。返回 (输出目录, 成品文件名主干)。
+    name_stem 是「翻译后的文件名」；空 = 用原名。
     """
+    stem = (name_stem or "").strip() or video.stem
     # 批量模式：父目录已带批次时间，这里直接用视频名；单个模式带时间戳
     # ⚠️ 递归扫子文件夹之后，**不同子目录里同名是常事**（每一章都有一个 "01 Intro.mp4"），
     #    照原名建目录的话第二条会写进第一条的目录里、把结果覆盖掉 —— 撞名就加 -2/-3。
@@ -2185,13 +2255,13 @@ def _plan_out_dir(base: Path, video: Path, stamp: str, in_batch: bool,
         return (len(base_str) + 1 + len(dir_name) + 1 + len(stem)
                 + len("_dubbed.mp4") <= MAX_OUT_PATH)
 
-    dir_name = video.stem if in_batch else f"{video.stem}-{stamp}"
-    if not _fits(str(base), dir_name, video.stem):
+    dir_name = stem if in_batch else f"{stem}-{stamp}"
+    if not _fits(str(base), dir_name, stem):
         dir_name = (f"{batch_index:03d}" if batch_index else "task") if in_batch else stamp
 
     budget = (MAX_OUT_PATH - len(str(base)) - 1 - len(dir_name) - 1
               - len("_dubbed.mp4"))
-    out_stem = _fit_stem(video.stem, budget)
+    out_stem = _fit_stem(stem, budget)
     if budget < 8:
         # 源目录本身太深，连最短的名字都放不下 —— 成品改存兜底目录
         alt = _default_output_dir()
@@ -2202,7 +2272,7 @@ def _plan_out_dir(base: Path, video: Path, stamp: str, in_batch: bool,
             base = alt
             budget = (MAX_OUT_PATH - len(str(base)) - 1 - len(dir_name) - 1
                       - len("_dubbed.mp4"))
-            out_stem = _fit_stem(video.stem, budget)
+            out_stem = _fit_stem(stem, budget)
 
     out_dir = base / dir_name
     if in_batch:
@@ -2244,8 +2314,10 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     # 视频搬进任务目录后（改叫「原始视频.mp4」）就按名字找不到了。
     thumb_src = _find_thumbnail(video)
 
+    name_stem = _translated_stem(video, params, report)
     out_dir, out_stem = _plan_out_dir(base, video, stamp, in_batch,
-                                      int(params.get("_batch_index") or 0), report)
+                                      int(params.get("_batch_index") or 0), report,
+                                      name_stem=name_stem)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # 把下载的原片收进任务目录（一个视频 = 一个文件夹，删起来干净）
@@ -2304,8 +2376,29 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     srt_copy = _review_final_subtitles(srt_copy, params, job, report,
                                        src_raw if src_raw.is_file() else None)
 
+    # 开了「双语字幕」时，额外导出一份带原文的 SRT 给人工校对用。
+    # ★ 2026-10-21 客户需求：批量翻生肉后要对着原文改译文。
+    #   ⚠️ 只多写 `_双语.srt`，上面那份纯中文的 `{out_stem}.srt` 不动 ——
+    #      配音和烧录都读它，混进原文会把原文也念出来。
+    bilingual_srt = ""
+    if params.get("subtitle_bilingual"):
+        if src_raw.is_file():
+            try:
+                bi = out_dir / f"{out_stem}_双语.srt"
+                n = srt2ass.write_bilingual_srt(
+                    srt_copy, src_raw, bi,
+                    src_order=str(params.get("subtitle_bilingual_order") or "src_top"))
+                bilingual_srt = str(bi)
+                report("translate", None, f"双语字幕文件已导出：{bi.name}（{n} 条）")
+            except Exception as e:  # noqa: BLE001 - 多一份文件失败不影响正片
+                report("translate", None,
+                       f"⚠ 双语字幕文件没导出来（{type(e).__name__}: {e}）")
+        else:
+            report("translate", None, "⚠ 没找到原文对照字幕，这次只导出中文字幕")
+
     result = {"video": str(video), "srt": str(srt_copy), "dubbed": "", "final": "",
-              "out_dir": str(out_dir), "cover": cover}
+              "out_dir": str(out_dir), "cover": cover,
+              "bilingual_srt": bilingual_srt}
     if not params.get("do_dub", True):
         if params.get("burn_subs"):
             # 「只加字幕（保留原声）」：不配音，直接把字幕烧到原视频上，音轨原样 copy

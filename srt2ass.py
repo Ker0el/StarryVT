@@ -93,6 +93,38 @@ def _pair_texts(main_cues: list[dict], src_cues: list[dict]) -> list[str]:
     return out
 
 
+def _ms_ts(ms: int) -> str:
+    h, ms = divmod(int(ms), 3600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_bilingual_srt(main_srt: Path | str, src_srt: Path | str,
+                        out_srt: Path | str, src_order: str = "src_top") -> int:
+    """把「译文 SRT + 原文 SRT」合成一份双语 SRT，给人工校对用。
+
+    ★ 2026-10-21 客户需求：批量翻译生肉后，想要一份带原文的字幕文件，方便用
+      外部编辑器对着原文改译文。**只多写一个文件**，输出目录里那份纯中文 `.srt`
+      一个字节都不动（配音和烧录都读它，混进原文会念错）。
+    原文放上还是放下跟「双语字幕」设置走，默认原文在上。返回写出的条数。
+    """
+    main = _parse_cues(main_srt)
+    texts = _pair_texts(main, _parse_cues(src_srt))
+    src_top = (src_order or "src_top").strip().lower() != "src_bottom"
+    blocks: list[str] = []
+    for i, c in enumerate(main, 1):
+        src = texts[i - 1] if i - 1 < len(texts) else ""
+        if src:
+            lines = [src, c["text"]] if src_top else [c["text"], src]
+        else:
+            lines = [c["text"]]
+        blocks.append(f"{i}\n{_ms_ts(c['start'])} --> {_ms_ts(c['end'])}\n"
+                      + "\n".join(lines) + "\n")
+    Path(out_srt).write_text("\n".join(blocks), encoding="utf-8")
+    return len(blocks)
+
+
 def _two_line(src: str, main: str, size: float, play_w: int, spacing: float,
               scale: float, src_top: bool) -> str:
     """双语字幕：两行塞进同一条 Dialogue（ASS 用 \\N 硬换行）。

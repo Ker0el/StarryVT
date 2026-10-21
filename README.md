@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.15-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.16-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
@@ -58,7 +58,7 @@
 - 默认用随包的思源黑体 Light，不用自己装；也可以选自己电脑上的 .ttf / .otf / .ttc 字体文件
 - 描边颜色可以自动（深色字幕配白边、浅色字幕配黑边），也可以自己选；整组样式能一键恢复默认
 - 长行自动缩小字号，尽量保持一行
-- 可选**双语字幕**：原文和中文各占一行，原文放上还是放下、原文字号多大都能调
+- 可选**双语字幕**：原文和中文各占一行，原文放上还是放下、原文字号多大都能调；开启后还会多导出一份 `_双语.srt`，方便对着原文人工校对
 - 自定义字体由你自行提供，请确认你有权使用；随包的思源黑体是 OFL 许可，可商用
 - 可选**本地语音克隆**：用原视频里的人声念中文，不联网、不要 Key
 - 原声音量滑杆，0% 是纯中文，默认保留一点背景音，音乐和音效不丢

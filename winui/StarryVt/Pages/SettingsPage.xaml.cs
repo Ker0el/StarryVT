@@ -209,6 +209,7 @@ public sealed partial class SettingsPage : Page
             DeepBox.Password = Str(kp, "deepseek");
         }
         OutDirBox.Text = Str(s, "output_dir");
+        TranslateNamesCheck.IsChecked = Flag(s, "translate_names", false);
         AutoOpenCheck.IsChecked = Flag(s, "auto_open", false);
         LearnTermsCheck.IsChecked = Flag(s, "learn_terms", true);
         DeepSeekSearchCheck.IsChecked = Flag(s, "deepseek_web_search", false);
@@ -319,6 +320,16 @@ public sealed partial class SettingsPage : Page
     {
         if (!_ready || _filling) return;
         await SaveAsync(new Dictionary<string, object?> { ["auto_subtitle"] = AutoSubtitleCheck.IsChecked == true });
+    }
+
+    /// <summary>输出目录和成片文件名用翻译后的名字（原文件不改）。</summary>
+    async void TranslateNames_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _filling) return;
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["translate_names"] = TranslateNamesCheck.IsChecked == true,
+        });
     }
 
     /// <summary>字幕检查页开关：勾上后左侧导航栏出现「字幕检查」。</summary>

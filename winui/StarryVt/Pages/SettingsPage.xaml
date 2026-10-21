@@ -402,7 +402,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="双语字幕" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">原文和中文各占一行<LineBreak />只影响烧进视频的字幕，导出的 .srt 仍是中文</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">原文和中文各占一行<LineBreak />会多导出一份「_双语.srt」方便校对；配音仍用纯中文那份</TextBlock>
                             </StackPanel>
                             <CheckBox x:Name="SubBilingualCheck" Grid.Column="1" Content="启用"
                                       VerticalAlignment="Center" Click="SubBilingual_Changed" />
@@ -674,6 +674,20 @@
                                          LostFocus="Field_LostFocus" Tag="output_dir" />
                                 <Button Grid.Column="1" Content="选择…" Click="PickOutDir_Click" />
                             </Grid>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="翻译文件名和文件夹名" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">输出目录和成片文件名用翻译后的中文<LineBreak />原文件不改；翻不了就用原名</TextBlock>
+                            </StackPanel>
+                            <CheckBox x:Name="TranslateNamesCheck" Grid.Column="1" Content="启用"
+                                      VerticalAlignment="Center" Click="TranslateNames_Changed" />
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
