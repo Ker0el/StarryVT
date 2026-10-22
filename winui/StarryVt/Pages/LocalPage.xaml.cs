@@ -298,6 +298,7 @@ public sealed partial class LocalPage : Page
             do_dub = _defaultOutput is "final" or "dub",
             burn_subs = _defaultOutput == "final" || _defaultOutput == "subs-burn",
             download_only = _defaultOutput == "download",
+            asr_only = _defaultOutput == "subs-src",
         })
         : ("start", new
         {
@@ -305,6 +306,7 @@ public sealed partial class LocalPage : Page
             do_dub = _defaultOutput is "final" or "dub",
             burn_subs = _defaultOutput == "final" || _defaultOutput == "subs-burn",
             download_only = _defaultOutput == "download",
+            asr_only = _defaultOutput == "subs-src",
         });
 
     static string Str(JsonElement el, string name) =>
@@ -382,9 +384,12 @@ public sealed partial class LocalPage : Page
     void UpdateStartLabel()
     {
         bool batch = _mode == "batch";
-        StartLabel.Text = _defaultOutput == "download"
-            ? (batch ? "开始批量下载" : "下载视频")
-            : (batch ? "开始批量翻译" : "开始翻译");
+        StartLabel.Text = _defaultOutput switch
+        {
+            "download" => batch ? "开始批量下载" : "下载视频",
+            "subs-src" => batch ? "开始批量提取字幕" : "提取原文字幕",
+            _ => batch ? "开始批量翻译" : "开始翻译",
+        };
     }
 
     // ---------- 列表操作 ----------
@@ -511,12 +516,13 @@ public sealed partial class LocalPage : Page
             if (_mode == "batch")
             {
                 if (_items.Count == 0) { Hint("先选一个文件夹（或者把文件夹拖进来）"); return; }
-                if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput == "download")) return;   // 没填 Key → 引导去设置页
+                // 「只提取原文字幕」也不碰任何 Key（不翻译、不配音），和下载视频一样直接放行
+                if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput is "download" or "subs-src")) return;   // 没填 Key → 引导去设置页
                 StartBatch();
                 return;
             }
             if (_picked is null) { Hint("先选一个视频"); return; }
-            if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput == "download")) return;
+            if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput is "download" or "subs-src")) return;
             StartSingle(_picked);
         }
         catch (Exception ex) { App.Dump("开始翻译失败: " + ex); }

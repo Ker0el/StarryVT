@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.17"
+APP_VERSION = "6.18"
 
 
 def _base_dir() -> Path:
@@ -832,7 +832,8 @@ class Api:
             key = cfg.resolve_mimo_key(merged)
             if merged.get("do_dub", True) and not key:
                 return {"ok": False, "error": "未配置 MiMo API key（配音用）—— 点右上角「设置」，旁边有申请入口"}
-            if not (merged.get("deepseek_key") or merged.get("gemini_key")):
+            if not (merged.get("deepseek_key") or merged.get("gemini_key")) \
+                    and not merged.get("asr_only"):
                 note = "提示：未配置 DeepSeek/Gemini key，将使用本机已有的翻译服务配置"
             if not (merged.get("source") or "").strip():
                 return {"ok": False, "error": "请先选择视频文件或填写视频链接"}

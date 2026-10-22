@@ -201,7 +201,7 @@ async def starryvt_probe(source: str) -> dict:
 def starryvt_translate(
     source: str,
     source_lang: Literal["en", "ja", "ko", "ru", "de", "zh-en", "zh"] = "en",
-    output_mode: Literal["final", "dub", "subs", "subs-burn", "download"] = "final",
+    output_mode: Literal["final", "dub", "subs", "subs-burn", "subs-src", "download"] = "final",
     output_dir: str = "",
     voice: str = "冰糖",
     tts_style: str = "",
@@ -216,7 +216,7 @@ def starryvt_translate(
     Args:
         source: 本地视频 / 文件夹路径，或 YouTube / B 站链接。
         source_lang: 源语言。en / ja / ko / ru / de 译为中文，zh-en 是中文译为英文，zh 是中文换音色重配。
-        output_mode: final = 成片（配音 + 烧录字幕）；dub = 只出配音；subs = 只出字幕；subs-burn = 只烧字幕、保留原声；download = 只下载/输出视频，不翻译。
+        output_mode: final = 成片（配音 + 烧录字幕）；dub = 只出配音；subs = 只出字幕（仍会翻译）；subs-src = 只提取原文字幕（不翻译、不花 DeepSeek 额度）；subs-burn = 只烧字幕、保留原声；download = 只下载/输出视频，不翻译。
         output_dir: 输出目录；空 = 视频旁边的 output\\ 或设置里的输出目录。
         voice: 配音音色，必须是 starryvt_env 返回的 voices 之一。
         tts_style: 配音怎么读的自然语言描述；空 = 标准语速。
@@ -240,7 +240,8 @@ def starryvt_translate(
             batch = True
 
     if output_mode != "download":
-        if not _voice_ok(voice):
+        # 只提取原文字幕不用配音，音色随便填都不该拦；引擎仍然要（ASR 靠它）
+        if output_mode != "subs-src" and not _voice_ok(voice):
             return {"ok": False, "error": f"没有这个音色：{voice}",
                     "voices": list(cfg.VOICES)}
 
@@ -278,6 +279,7 @@ def starryvt_translate(
         "do_dub": output_mode in ("final", "dub"),
         "burn_subs": output_mode in ("final", "subs-burn"),
         "download_only": output_mode == "download",
+        "asr_only": output_mode == "subs-src",
         "batch_kind": batch_kind,
     }
 

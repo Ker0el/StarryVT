@@ -718,9 +718,14 @@ def _refresh_style(params: dict) -> None:
             params[k] = live[k]
 
 
-def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) -> Path:
-    """finesub 翻译（带临时性失败自动重试），返回成品中文 SRT 路径"""
-    if (params.get("source_lang") or "").strip().lower() == "de":
+def translate(video: Path, params: dict, job: Job, report, attempts: int = 3,
+              stage: str = "") -> Path:
+    """finesub 翻译（带临时性失败自动重试），返回成品中文 SRT 路径
+
+    stage="raw-srt" 时只跑到「原始字幕」（人声分离 + ASR + 字幕稳定化），
+    **一个 LLM 都不调** —— 「只提取原文字幕」那个模式走这条路，不花 DeepSeek 额度。
+    """
+    if not stage and (params.get("source_lang") or "").strip().lower() == "de":
         # 引擎的翻译提示词是按日语场景写的（「日本轻小说感」那些）。德语走同一个
         # 模型没问题，但得把这条说明塞进 extra_info，别让译文带出日语语气。
         # ⚠️ 必须改**调用方那个 dict**，不能 `params = dict(params)`：`_work_dir()`
@@ -731,7 +736,7 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) ->
             hint = ("【语言】源语言是德语。请译成自然、通顺的简体中文；"
                     "不要套用日语语气词、敬语或轻小说风格。")
             params["extra_info"] = (hint + ("\n\n" + old if old else "")).strip()
-    if params.get("deepseek_web_search"):
+    if not stage and params.get("deepseek_web_search"):
         params = dict(params)
         block = _deepseek_web_extra(video, params, report)
         if block:
@@ -744,7 +749,7 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) ->
     prepared = False
     while n < attempts:
         try:
-            if (params.get("source_lang") or "") == "zh-en":
+            if not stage and (params.get("source_lang") or "") == "zh-en":
                 return _translate_zh_en(video, params, job, report)
             # 用户导入的字幕/文稿只准备一次：放好了就让引擎跳过识别；
             # 读不了就把这个参数摘掉，后面照常走 YouTube 字幕 / 语音识别。
@@ -752,7 +757,7 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) ->
                 if not _prepare_user_subtitle(video, params, job, report):
                     params.pop("subtitle_file", None)
                 prepared = True
-            return _translate_once(video, params, job, report)
+            return _translate_once(video, params, job, report, stage=stage)
         except datadir.MountBlocked:
             # 数据目录被 Windows 拒绝建链接（os error 448）：换一个目录重来一次。
             # 预先探过还失败，说明探测和引擎的实际行为有出入，所以这里再兜一次底。
@@ -787,7 +792,8 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3) ->
             for _ in range(20):  # 可取消的等待
                 job.check()
                 time.sleep(0.5)
-    raise RuntimeError(f"finesub 翻译失败（已重试 {attempts} 次）: {last}")
+    raise RuntimeError(("finesub 字幕提取失败" if stage else "finesub 翻译失败")
+                       + f"（已重试 {attempts} 次）: {last}")
 
 
 def _write_finesub_env(params: dict) -> str:
@@ -1824,8 +1830,11 @@ def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
             font_dir = None
 
     dur = probe_duration(video) or 1.0
+    # preset 10（2026-10-22 实测，123 秒素材）：比 preset 8 快 2.0×，体积 +2.4%，
+    # PSNR 差 0.01 dB（25.185 → 25.171），肉眼看不出。preset 12 只再快 3% 但体积 +5.9%；
+    # NVENC 只快 1.66× 且体积 +11%，都不如 10 划算。
     cmd = [tools.path("ffmpeg"), "-v", "error", "-y", "-i", str(video.resolve()),
-           "-vf", vf, "-c:v", "libsvtav1", "-preset", "8", "-crf", "32",
+           "-vf", vf, "-c:v", "libsvtav1", "-preset", "10", "-crf", "32",
            "-c:a", "copy", "-progress", "pipe:1", "-nostats", out_path.name]
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                   text=True, encoding="utf-8", errors="replace", cwd=str(work))
@@ -2215,7 +2224,8 @@ def _translated_stem(video: Path, params: dict, report=None) -> str:
     DeepSeek 请求。翻译失败、返回空、跟原名一样，全都退回原名，绝不让它挡住任务。
     """
     stem = (video.stem or "").strip()
-    if not stem or not params.get("translate_names"):
+    # 只提取原文字幕时**一次 DeepSeek 都不该调**（客户就是为了不花额度才用这个模式）
+    if not stem or not params.get("translate_names") or params.get("asr_only"):
         return video.stem
     target_en = (params.get("source_lang") or "") == "zh-en"
     # 已经是目标语言就别浪费一次请求（中文名翻中文 / 英文名翻英文）
@@ -2386,6 +2396,18 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
             video = dest
         report("done", 100, "🎉 视频已下载" if tmp_dl is not None else "🎉 视频已输出")
         return {"video": str(video), "srt": "", "dubbed": "", "final": "",
+                "out_dir": str(out_dir), "cover": cover}
+
+    if params.get("asr_only"):
+        # 「只提取原文字幕」：引擎只跑到「原始字幕」（人声分离 + ASR + 稳定化），
+        # **一个 LLM 都不调**，不花 DeepSeek 额度。2026-10-22 客户需求。
+        _ck().enter("提取原文字幕")
+        raw = translate(video, params, job, report, stage="raw-srt")
+        src_copy = out_dir / f"{out_stem}.srt"
+        src_copy.write_bytes(raw.read_bytes())
+        _ck().leave()
+        report("done", 100, f"🎉 原文字幕已提取：{src_copy.name}")
+        return {"video": str(video), "srt": str(src_copy), "dubbed": "", "final": "",
                 "out_dir": str(out_dir), "cover": cover}
 
     _ck().enter("翻译（引擎）")

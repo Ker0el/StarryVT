@@ -536,6 +536,11 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
         jobs = min(jobs, 2)
 
     # 1) 逐组合成（并发）
+    # ⚠️ 2026-10-22 试过「第一遍就按估算时长预加速」，**实测不成立**：
+    #    _est_sec 是 5.5 单位/秒的粗估，对这批判定超长的句子实际慢了 40%，
+    #    8 个样本按预测语速合成后仍然全部超窗（有的还是 2 倍）。已改回 1.0，
+    #    超长句继续走下面「整批重念一档」那条路（实测 113 组里只有 19 组
+    #    连重念+最大变速都塞不下，为省那 2 分钟去牺牲韵律不值得）。
     paths = [work / _cache_name(u["text"], voice_key, style=style) for u in units]
     todo = [i for i in range(len(units))
             if not (paths[i].exists() and paths[i].stat().st_size > 500)]
@@ -618,6 +623,16 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     over = [(i, durs[i], _room(i)) for i in range(len(units))
             if durs[i] > _room(i) + 0.12]
     fitted = resynth = 0
+    if over:
+        # 诊断：超长多少、超得有多狠。决定了「重念」和「直接变速」该怎么分。
+        # 1.00-1.05 这种轻微超长其实 atempo 一下就听不出来，不值得再合成一遍。
+        ratios = sorted(d / max(0.1, r) for _i, d, r in over)
+        def _cnt(lo: float, hi: float) -> int:
+            return sum(1 for x in ratios if lo <= x < hi)
+        diag.write(
+            "[dub] 超长 %d/%d 组：1.00-1.05 %d，1.05-1.10 %d，1.10-1.20 %d，>1.20 %d"
+            % (len(over), len(units), _cnt(1.0, 1.05), _cnt(1.05, 1.10),
+               _cnt(1.10, 1.20), _cnt(1.20, 99)), "run")
 
     if fit and over and clone_local:
         # 本机引擎**加载一次要二三十秒**，所以「说快一档」也得整批一次做完 ——

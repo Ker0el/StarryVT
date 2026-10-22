@@ -82,6 +82,7 @@ public sealed partial class OnlinePage : Page
             do_dub = _defaultOutput is "final" or "dub",
             burn_subs = _defaultOutput == "final" || _defaultOutput == "subs-burn",
             download_only = _defaultOutput == "download",
+            asr_only = _defaultOutput == "subs-src",
         })
         : ("start", new
         {
@@ -90,6 +91,7 @@ public sealed partial class OnlinePage : Page
             do_dub = _defaultOutput is "final" or "dub",
             burn_subs = _defaultOutput == "final" || _defaultOutput == "subs-burn",
             download_only = _defaultOutput == "download",
+            asr_only = _defaultOutput == "subs-src",
         });
 
     static string Str(JsonElement el, string name) =>
@@ -136,9 +138,12 @@ public sealed partial class OnlinePage : Page
     void UpdateStartLabel()
     {
         bool batch = _mode == "batch";
-        StartLabel.Text = _defaultOutput == "download"
-            ? (batch ? "开始批量下载" : "下载视频")
-            : (batch ? "开始批量翻译" : "开始翻译");
+        StartLabel.Text = _defaultOutput switch
+        {
+            "download" => batch ? "开始批量下载" : "下载视频",
+            "subs-src" => batch ? "开始批量提取字幕" : "提取原文字幕",
+            _ => batch ? "开始批量翻译" : "开始翻译",
+        };
     }
 
     // ---------- 剪贴板 ----------
@@ -430,7 +435,8 @@ public sealed partial class OnlinePage : Page
             await LoadOutputDefaultAsync();
 
             // 先查 Key 再开跑：没填就引导去设置页，别下载完一大半才发现翻不了
-            if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput == "download")) return;
+            // 「只提取原文字幕」不碰任何 Key，和下载视频一样直接放行
+            if (!await Services.Keys.EnsureAsync(XamlRoot, doDub: _defaultOutput is "final" or "dub", downloadOnly: _defaultOutput is "download" or "subs-src")) return;
 
             // 「解析」是可选的：直接开跑也行，只是少了按标题认出来的背景信息。
             // 框里的内容跟解析过的不一样，就当没解析过（别把上一个链接的背景信息带过去）。

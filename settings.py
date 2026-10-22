@@ -50,6 +50,7 @@ DEFAULTS: dict = {
     "do_dub": True,
     "burn_subs": True,
     "download_only": False,              # True = 只下载/输出视频，跳过翻译、配音和压制（由 default_output=download 触发）
+    "asr_only": False,                   # True = 只提取原文字幕（ASR），不调 DeepSeek、不配音、不压制
     "orig_vol": 0.15,                    # 成片里保留的原声音量（0 = 纯中文，1 = 与原声等响）
     "tts_style": "",                     # 配音「怎么读」的风格指令；空 = 用 dubber.DEFAULT_STYLE
     "tts_speed": "auto",                 # 配音整体语速：auto = 标准语速，只按每句时长自动适配 / 5 = 整体 +5% / 10 = 整体 +10%

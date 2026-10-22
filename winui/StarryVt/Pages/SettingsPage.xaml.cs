@@ -90,6 +90,7 @@ public sealed partial class SettingsPage : Page
         // 工作页的默认值：这里改的是「默认」，单个任务里还能临时改
         DefaultOutputBox.SetItems([("出完整成片", "final"), ("只加字幕（保留原声）", "subs-burn"),
                                    ("只出配音", "dub"), ("只出字幕", "subs"),
+                                   ("只提取原文字幕（不翻译）", "subs-src"),
                                    ("下载视频", "download")]);
         DefaultOutputBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
         {
