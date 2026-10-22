@@ -623,7 +623,10 @@ public sealed partial class OnlinePage : Page
             var r = await Backend.CallAsync("boot", null, 30_000);
             if (r is null || !r.Value.TryGetProperty("settings", out var s)) return;
             var mode = Str(s, "default_output");
-            if (mode is "final" or "dub" or "subs" or "subs-burn" or "download") _defaultOutput = mode;
+            // ⚠️ 新增输出模式**必须加进这个白名单**，否则设置里选了也读不进来
+            //    （6.18 的 subs-src 就栽在这里：看着设置生效了，实际还在翻译）
+            if (mode is "final" or "dub" or "subs" or "subs-src" or "subs-burn" or "download")
+                _defaultOutput = mode;
         }
         catch { /* 读不到就用「出完整成片」 */ }
         UpdateStartLabel();
