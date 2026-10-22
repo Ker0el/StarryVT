@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.18-2ea44f?style=for-the-badge" alt="下载最新版"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇️%20下载最新版-v6.19-2ea44f?style=for-the-badge" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/平台-Windows%2010%20%7C%2011-0078d4?style=for-the-badge" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/翻译引擎-finesub-8957e5?style=for-the-badge" alt="finesub">
   <img src="https://img.shields.io/badge/配音-小米%20MiMo-ff8a3d?style=for-the-badge" alt="小米 MiMo">
