@@ -1,7 +1,7 @@
 {
-  "version": "6.18",
-  "sha256": "f57e52c59976377cafc50cfb6641fd5b953282deeafe635df5f8ef27b5676ae9",
-  "notes": "新增只提取原文字幕（不翻译、不花额度）；配音和压制更快",
+  "version": "6.19",
+  "sha256": "1a24141a0748da7b32a0ac63842eeadcac71d5f022826526257ae80e51a49008",
+  "notes": "修「只提取原文字幕（不翻译）」在 6.18 里选了不生效的问题",
   "published": "2026-10-22",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.18.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.19.exe"
 }
