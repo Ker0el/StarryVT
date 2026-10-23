@@ -51,7 +51,7 @@
                         HorizontalAlignment="Left" Padding="0,0,4,0">
 
                 <!-- ================= API Key ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="KeysCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
@@ -148,7 +148,7 @@
                 </Border>
 
                 <!-- ================= 配音 ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="TranslateCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
@@ -362,7 +362,7 @@
                 </Border>
 
                 <!-- ================= 字幕样式 ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="SubtitleCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
@@ -647,7 +647,7 @@
                 </Border>
 
                 <!-- ================= 输出 ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="OutputCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
@@ -694,7 +694,7 @@
                         <!-- 引擎数据目录：2026-10-16 从「高级（一般不用改）」挪出来的 ——
                              首页撤掉换盘按钮之后，这里是**唯一**的换盘入口，
                              不能藏在写着"一般不用改"的折叠里（首页那行的「去设置」就送到这儿）。 -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid x:Name="EngineHomeRow" Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -731,7 +731,7 @@
                         <!-- 数据目录：语音克隆和各种缓存的统一根目录（2026-10-21 加）。
                              注意它和上面「引擎数据目录」是两回事：那一项只管翻译引擎，
                              这一项管星译自己的数据（语音克隆、配音缓存、缩略图、wheel）。 -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid x:Name="DataHomeRow" Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -784,7 +784,7 @@
                 <!-- ================= 外观 ================= -->
                 <!-- 2026-10-16 从「输出与界面」拆出来：输出（文件放哪）和外观（长什么样）
                      本来就不是一回事，混在一张卡里选项多了看着乱（用户点名） -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="AppearanceCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
@@ -871,11 +871,12 @@
                 </Border>
 
                 <!-- ================= 高级 ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="AdvancedCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
-                        <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                        <Expander x:Name="AdvancedExpander"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                   IsExpanded="True" Margin="0,4,0,4">
                             <Expander.Header>
                                 <TextBlock Text="高级（一般不用改）" FontSize="15" FontWeight="SemiBold" />
@@ -883,7 +884,7 @@
                             <StackPanel>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid x:Name="UpdateRow" Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -898,7 +899,7 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid x:Name="ProxyRow" Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -999,7 +1000,7 @@
                 </Border>
 
                 <!-- ================= 遇到问题 ================= -->
-                <Border Style="{StaticResource CardStyle}" Translation="0,0,20"
+                <Border x:Name="TroubleshootCard" Style="{StaticResource CardStyle}" Translation="0,0,20"
                         Background="{ThemeResource PanelBrush}"
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>

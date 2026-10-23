@@ -2027,6 +2027,33 @@ public sealed partial class MainWindow : Window
             ContentFrame.Navigate(page, null, TransitionFor(page));
     }
 
+    /// <summary>
+    /// 切到设置页并滚到对应分区（2026-10-23 用户报障：点「去设置」只切页、
+    /// 不定位；页面缓存了上次的滚动位置，于是有时看到最上面、有时最下面）。
+    /// section 用 doctor 的 item id（keys / data_dir / output / proxy …）。
+    /// </summary>
+    public void NavigateToSettings(string? section = null)
+    {
+        NavigateTo("settings");
+        if (string.IsNullOrWhiteSpace(section)) return;
+        _ = ScrollSettingsToAsync(section!);
+    }
+
+    async Task ScrollSettingsToAsync(string section)
+    {
+        // 页面可能是刚创建的：等它进视觉树、布局完再滚。页面是缓存复用的，
+        // 已经在的时候第一轮就会命中。
+        for (int i = 0; i < 30; i++)
+        {
+            if (ContentFrame.Content is SettingsPage sp && sp.IsLoaded)
+            {
+                sp.ScrollToSection(section);
+                return;
+            }
+            await Task.Delay(100);
+        }
+    }
+
     // ============================================================ Win32 投放目标（绕过 WinUI 的拖放）
     //
     // ⚠️⚠️ WinUI 3 内建的拖放（AllowDrop / DragOver / Drop）在**UAC 关闭**的机器上是哑的：

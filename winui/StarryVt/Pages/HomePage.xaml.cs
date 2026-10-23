@@ -316,9 +316,16 @@ public sealed partial class HomePage : Page
         {
             string home = "";
             var r = await Backend.CallAsync("boot", null, 30_000);
-            if (r is { } rr && rr.TryGetProperty("settings", out var s)
-                && s.TryGetProperty("finesub_home", out var h) && h.ValueKind == JsonValueKind.String)
-                home = h.GetString() ?? "";
+            if (r is { } rr && rr.TryGetProperty("settings", out var s))
+            {
+                // ★ 用**实际生效**的目录，不是设置里那个可能是空串的 finesub_home。
+                //   新用户的默认位置是「软件旁的 data\engine」，空串会被误显示成
+                //   %LOCALAPPDATA%\FineSub（C 盘）—— 2026-10-23 客户报障：
+                //   明明装在 D 盘，初始化界面却写着 C 盘。
+                home = Str(s, "finesub_home_actual");
+                if (home.Length == 0) home = Str(s, "finesub_home_default");
+                if (home.Length == 0) home = Str(s, "finesub_home");
+            }
             if (home.Length == 0)
                 home = System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FineSub");
@@ -334,7 +341,7 @@ public sealed partial class HomePage : Page
     /// <summary>「装到哪」那行的「去设置」：**不在这屏换盘**（用户定），把想改的人送到
     /// 设置页的那一项去 —— 首页没有误点换盘的坑，但想知道/想改的人找得到路。</summary>
     void GoSettings_Click(object sender, RoutedEventArgs e)
-        => MainWindow.Instance?.NavigateTo("settings");
+        => MainWindow.Instance?.NavigateToSettings("engine");   // 直接落在「引擎数据目录」那一行
 
     /// <summary>「装到哪」那一行只在**还没配好**时显示 —— 只告知装到哪，不给换
     /// （2026-10-16 用户定：初始化这一屏不放换盘入口，要换去设置页，那儿改前会确认）</summary>
@@ -559,10 +566,15 @@ public sealed partial class HomePage : Page
                 var r = await Backend.CallAsync("engine_status", null, 20_000);
                 if (r is not null)
                 {
-                    bool ok = !(r.Value.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.False);
+                    // ★ 显式读 `ready`（本体 + 运行环境）。以前的写法是「没有 ok=false 就当成功」，
+                    //   而旧后端根本不返回 ok —— 于是引擎只有 exe、运行环境没装好也判成就绪，
+                    //   初始化直接放人进翻译页（2026-10-23 客户报障）。别再用缺省即成功。
+                    bool ok = r.Value.TryGetProperty("ready", out var o)
+                              && o.ValueKind == JsonValueKind.True;
                     var d = Str(r.Value, "detail");
                     if (d.Length == 0) d = Str(r.Value, "version");
-                    return (ok, d.Length > 0 ? d : ok ? "翻译引擎已就绪" : "引擎还没就绪");
+                    return (ok, d.Length > 0 ? d : ok ? "翻译引擎已就绪"
+                                                      : "引擎本体在，但运行环境还没准备好");
                 }
             }
             else if (s.Key == "downloader")
@@ -735,11 +747,15 @@ public sealed partial class HomePage : Page
 
     void StepAction_Click(object sender, RoutedEventArgs e)
     {
-        var tag = (sender as FrameworkElement)?.Tag as string;
+        var btn = sender as FrameworkElement;
+        var tag = btn?.Tag as string;
+        // 行的 DataContext 就是这一项（SetupStep）；把它的 id 传给设置页当分区，
+        // 否则「去设置」只会切页、不定位（用户 2026-10-23 报障）。
+        var step = btn?.DataContext as SetupStep;
         switch (tag)
         {
             case "settings":
-                MainWindow.Instance?.NavigateTo("settings");
+                MainWindow.Instance?.NavigateToSettings(step?.Key);
                 break;
             case "recheck":
                 Recheck_Click(sender, e);

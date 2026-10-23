@@ -199,11 +199,38 @@ def _write(path: Path, text: str) -> None:
     path.write_bytes(text.encode("utf-8", "surrogateescape"))
 
 
+def _bundled_original(name: str) -> str:
+    """从随包的 finesub wheel 里读同一份 pylock 的原始内容（没有备份时的救命稻草）
+
+    ★ 2026-10-23 客户报障：pylock 已经改成本机回环、但 `.starryvt-orig` 备份丢了
+      （老版本 / 备份被删 / 手工改过）。这时 `_original_text` 只能把前缀剥掉，
+      剩下的是一个裸文件名——`entries()` 再也找不到 GitHub 地址，`prepare()` 误以为
+      “上游已经不用 GitHub 了”直接返回 True，pylock 就永远指着一个死端口。
+      随包的 engine_whl 里就是同一版引擎的原件，从那里恢复最可靠。
+    """
+    if not name:
+        return ""
+    try:
+        import zipfile
+        for whl in sorted((tools.bundle_dir() / "engine_whl").glob("finesub-*.whl")):
+            try:
+                with zipfile.ZipFile(whl) as z:
+                    for entry in z.namelist():
+                        if entry.endswith(name):
+                            return z.read(entry).decode("utf-8", "surrogateescape")
+            except (OSError, zipfile.BadZipFile):
+                continue
+    except OSError:
+        pass
+    return ""
+
+
 def _original_text(path: Path, text: str = "") -> str:
     """这个 pylock **改写前**的内容
 
     已经改过的（含回环地址）从备份里取原件——端口每次可能不一样，
     所以每次开工都要拿原始内容重新改一遍，不能只看“有没有 GitHub 地址”。
+    备份丢了就从随包 wheel 里恢复，并把备份补回去。
     """
     if not text:
         text = _read(path)
@@ -214,7 +241,14 @@ def _original_text(path: Path, text: str = "") -> str:
         orig = _read(backup)
         if orig and LOCALHOST not in orig:
             return orig
-    return _LOOPBACK.sub("", text)           # 没有可用备份：把回环前缀剥掉
+    bundled = _bundled_original(path.name)
+    if bundled and LOCALHOST not in bundled:
+        try:
+            _write(backup, bundled)          # 把丢失的备份补回来
+        except OSError:
+            pass
+        return bundled
+    return _LOOPBACK.sub("", text)           # 实在没有原件：把回环前缀剥掉
 
 
 def entries(path: Path) -> list[tuple[str, str]]:
@@ -287,11 +321,18 @@ def prepare(params: dict, report=None) -> bool:
     for url, sha in need.items():
         path = _local(url, sha, params, report)
         if not path:
+            # ★ 别把 pylock 留在「指向一个已经死掉的本机端口」的状态（2026-10-23 客户报障）：
+            #   以前这里直接 return False，而 pylock 可能还留着上一次改写成的
+            #   http://127.0.0.1:51873/…；那个服务只活在上一个星译后端进程里，进程一退
+            #   就没了。引擎随后必然报 os error 10061，看起来像「下载不下来」。
+            #   还原成 GitHub 原始地址，至少还能走代理 / 加速镜像。
+            restore()
             return False
         mapping[url] = _name_of(url)
 
     port = serve()
     if not port:
+        restore()
         return False
     changed = [f for f in files if _patch(f, mapping, port)]
     if changed and report:

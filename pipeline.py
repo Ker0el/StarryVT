@@ -2068,6 +2068,9 @@ def _precheck(params: dict, report) -> None:
         #   **必须挂在这儿，不能只挂在装引擎那一步**：已经装好引擎的人根本不会再走
         #   install_finesub，不在这儿恢复的话他们的清单会一直指向已经停用的 COS。
         engine_mirror.apply(report)
+        # ffmpeg 资源缺失时改用钉死的日期构建，避免临时打 GitHub API（限流）。
+        import runtime_pin
+        runtime_pin.apply(params, report)
     except Exception as e:  # noqa: BLE001 - 预检尽力而为，不影响开工
         report("engine", None, f"（外网依赖预检跳过：{e}）")
 

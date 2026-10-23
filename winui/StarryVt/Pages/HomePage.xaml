@@ -135,8 +135,9 @@
                  初始化这一屏不放换盘入口 —— 要换去设置页（那儿改之前会弹确认），
                  所以这里只给一个「去设置」的链接把人送过去：想改的人找得到路，
                  首页又不会有「误点换盘」的坑（中途换 = 这一趟仍下进老目录，白下一份）。
-                 这行字留着，是因为「默认落在 C 盘的 %LOCALAPPDATA%\FineSub、约 15 GB」
+                 这行字留着，是因为「引擎和模型要占约 15 GB、具体落在哪块盘」
                  是开工前就该知道的事（游戏本的 C 盘很容易被占满）。
+                 路径**必须取实际生效值**（finesub_home_actual），见 LoadHomeRowAsync。
                  只在**还没配好**时出现（配好之后这行就收起了）。 -->
             <StackPanel x:Name="HomeRow" Orientation="Horizontal" Spacing="8"
                         HorizontalAlignment="Right">

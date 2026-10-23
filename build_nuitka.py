@@ -113,6 +113,8 @@ def main() -> int:
         # 统一数据目录（语音克隆 / 缓存都跟着 data_home 走）。显式列出，
         # 免得哪天改成只在函数里 import 被静态分析漏掉。
         "--include-module=paths",
+        # ffmpeg 钉死（只在 install_finesub / _precheck 里延迟 import，显式带上）
+        "--include-module=runtime_pin",
         *[f"--nofollow-import-to={m}" for m in EXCLUDES],
         "app.py",
     ]

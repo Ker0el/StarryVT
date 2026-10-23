@@ -50,7 +50,7 @@ public static class Keys
                 DefaultButton = ContentDialogButton.Primary,
             };
             if (await dlg.ShowAsync() == ContentDialogResult.Primary)
-                MainWindow.Instance?.NavigateTo("settings");   // 设置页第一张卡片就是 API Key
+                MainWindow.Instance?.NavigateToSettings("keys");   // 直接滚到 API Key 这张卡
         }
         catch (Exception e) { App.Dump("Key 引导框失败: " + e.Message); }
         return false;

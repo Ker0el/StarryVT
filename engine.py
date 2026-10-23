@@ -114,14 +114,30 @@ def find_finesub(exe_hint: str = "") -> str | None:
 
 
 def status(exe_hint: str = "") -> dict:
-    """引擎状态：{engine: bool, engine_path, uv: bool, ready: bool}"""
+    """引擎状态：{ready, engine_path, uv_path, uv_ready, runtime_ready, bin_dir}
+
+    ★ `ready` 必须是「本体 + 运行环境都在」（2026-10-23 客户报障）：
+      以前只看 finesub.exe 在不在，于是 `finesub setup` 失败（常见是 GitHub API
+      限流导致 ffmpeg 装不上）后，首页照样打勾、按钮变成「进入本地翻译」，
+      用户一进去就撞「引擎没装好」。运行环境才是能不能翻译的分界线。
+    """
     fb = find_finesub(exe_hint)
     uv = find_uv()
+    try:
+        import datadir
+        import settings as cfg
+        home = (str((cfg.load() or {}).get("finesub_home") or "").strip()
+                or str(datadir.default_home()))
+        runtime_ok = datadir.runtime_ready(Path(home))
+    except Exception:  # noqa: BLE001 - 状态查询不该因为读配置失败而崩
+        runtime_ok = False
     return {
-        "ready": bool(fb),
+        "ready": bool(fb) and runtime_ok,
+        "ok": bool(fb) and runtime_ok,
         "engine_path": fb or "",
         "uv_path": uv or "",
         "uv_ready": bool(uv),
+        "runtime_ready": runtime_ok,
         "bin_dir": str(BIN_DIR),
     }
 
@@ -575,7 +591,15 @@ def install_finesub(params: dict, job: Job, report) -> str:
     except Exception as e:  # noqa: BLE001
         report("engine", None, f"（下载源恢复跳过：{e}）")
 
-    _provision_runtime(params, job, report, fb)
+    # ★ ffmpeg 的 sha256 以前要问 api.github.com（60 次/小时/出口 IP，国内共享出口
+    #   很容易被打满）。把 Date 构建钉死进清单，安装时就不再调 API。见 runtime_pin.py。
+    try:
+        import runtime_pin
+        runtime_pin.apply(params, report)
+    except Exception as e:  # noqa: BLE001 - 钉不上就退回 API，不拦安装
+        report("engine", None, f"（ffmpeg 钉死跳过：{e}）")
+
+    runtime_ok = _provision_runtime(params, job, report, fb)
 
     # 模型权重（人声分离 / 语音识别 / 第二模型校验，约 3.7GB）也趁这一步下齐。
     # 引擎自己是「用到才下」而且**那一步全程静默**（提示走 debug、进度被子进程吞掉、
@@ -594,16 +618,32 @@ def install_finesub(params: dict, job: Job, report) -> str:
     # 内置术语词条：给用户的词条库打底（UE / Blender / Houdini / GPT …）。
     # 离线、幂等（内容没变时引擎自己报 "no change"）；失败不算失败——只是这次没导上，
     # 下次启动还会再试（见 builtin_kb.py，以及 winui_backend 的启动兜底）。
-    try:
-        import builtin_kb
-        builtin_kb.ensure(params, job, report)
-    except Cancelled:
-        raise
-    except Exception as e:  # noqa: BLE001
-        report("engine", None, f"（内置词条导入跳过：{e}）")
+    #
+    # ★ 运行环境没装好时**绝不能导**（2026-10-23 客户报障）：18 条词条 × 2 条命令
+    #   会各起一个 finesub 进程，每个都重新尝试装 ffmpeg、各打一次 GitHub API。
+    #   未认证配额是 60 次/小时按出口 IP 计，一轮就能烧光，下一轮 setup 必然限流 ——
+    #   用户看到的就是「运行环境一直下不下来」。这里跳过，等环境好了下次启动自动补。
+    if runtime_ok:
+        try:
+            import builtin_kb
+            builtin_kb.ensure(params, job, report)
+        except Cancelled:
+            raise
+        except Exception as e:  # noqa: BLE001
+            report("engine", None, f"（内置词条导入跳过：{e}）")
+    else:
+        report("engine", None,
+               "（运行环境还没准备好，先跳过内置词条导入——否则每条命令都会重试下载，反而更慢）")
 
     _keep_awake(False)                 # 装完了，恢复系统的睡眠策略
-    report("engine", 100, f"✅ 翻译引擎已就绪")
+    if runtime_ok:
+        report("engine", 100, "✅ 翻译引擎已就绪")
+    else:
+        # 别谎报成功：HomePage 会按 engine_status 判「能不能进翻译页」，
+        # 这里把话说清楚，省得用户以为装好了、一翻译又失败。
+        report("engine", 100,
+               "⚠ 翻译引擎本体已装好，但运行环境没准备好 —— 请稍后点「重新试一次」。"
+               "如果日志里出现「GitHub API 速率限制」，等约 1 小时再试，不要反复点。")
     if prefetched and all(prefetched.values()):
         report("engine", None, "模型权重已一并下好，第一次翻译不用再等下载")
     else:
@@ -628,7 +668,7 @@ def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine") 
     return p.wait()
 
 
-def _provision_runtime(params: dict, job: Job, report, finesub: str) -> None:
+def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     """把引擎的 Python 运行环境先装好（`finesub setup`）
 
     **为什么要在这一步做**：运行时 = Python 环境 + CUDA 版 torch，解包约 2.8GB、
@@ -642,6 +682,9 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> None:
 
     **失败不算失败**：真出问题的话第一次翻译还会再试一次，那时的报错更具体；
     这里只提示一句，不把「装引擎」这一步判死。
+
+    返回 True / False：调用方据此决定要不要继续做**依赖运行环境**的事
+    （目前是内置词条导入）；False 时那些事一律跳过，避免反复触发下载。
     """
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
     env = _proxy_env(params)
@@ -655,10 +698,11 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> None:
         raise
     except Exception as e:  # noqa: BLE001
         report("engine", None, f"（运行环境预置跳过：{e}）")
-        return
+        return False
     if code == 0:
         report("engine", None, "✅ 引擎运行环境已就绪")
-    else:
-        report("engine", None,
-               f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"
-               f"如果一直失败，请把诊断报告发给我们。")
+        return True
+    report("engine", None,
+           f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"
+           f"如果一直失败，请把诊断报告发给我们。")
+    return False
