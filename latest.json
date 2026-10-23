@@ -1,7 +1,7 @@
 {
-  "version": "6.19",
-  "sha256": "1a24141a0748da7b32a0ac63842eeadcac71d5f022826526257ae80e51a49008",
-  "notes": "修「只提取原文字幕（不翻译）」在 6.18 里选了不生效的问题",
-  "published": "2026-10-22",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.19.exe"
+  "version": "6.20",
+  "sha256": "9db7628dbb3bc41aa2478389df718dd689751c69676f9bbe7f5643eb2decaa33",
+  "notes": "修初始化时引擎运行环境反复下载失败、残留 finesub 进程结束不掉；初始化页显示真实安装盘符；「去设置」跳到对应分区",
+  "published": "2026-10-24",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.20.exe"
 }

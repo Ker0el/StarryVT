@@ -148,6 +148,12 @@ def _engine(c: dict) -> dict:
     st = engine.status(c.get("finesub_exe") or "")
     if st.get("ready"):
         return _item("engine", "翻译引擎", OK, "已就绪")
+    if st.get("engine_path"):
+        # 本体在、运行环境不在：说清楚是「没装完」，别让用户以为要重装一遍
+        return _item("engine", "翻译引擎", WARN,
+                     "引擎本体已装好，但运行环境还没准备好（多半是下载被限流或中断）。"
+                     "点右边按钮继续准备，已下好的部分不会重下。",
+                     "engine", "继续准备运行环境")
     return _item("engine", "翻译引擎", BAD,
                  "没有检测到翻译引擎。点右边按钮一键安装，装完就能翻译。",
                  "engine", "一键安装引擎")

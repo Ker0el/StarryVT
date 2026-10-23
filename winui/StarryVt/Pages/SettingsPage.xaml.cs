@@ -56,6 +56,54 @@ public sealed partial class SettingsPage : Page
         SettingsContent.Width = Math.Min(1120, Math.Max(320, w - 8));
     }
 
+    /// <summary>
+    /// 滚到设置页的某个分区（首页自检 / 弹框里的「去设置」用）。
+    ///
+    /// 2026-10-23 用户报障：点「去设置」只切页、不定位 —— 页面又缓存了上次的
+    /// 滚动位置，所以有人看到的是最下面、有人看到最上面，还得自己滑。
+    /// section 用 doctor 的 item id（keys / data_dir / output …），认不出来就
+    /// 保持当前位置（至少不会乱跳）。
+    /// </summary>
+    public void ScrollToSection(string section)
+    {
+        var key = (section ?? "").Trim().ToLowerInvariant();
+        FrameworkElement? target = key switch
+        {
+            "keys" or "api" or "net" => KeysCard,
+            "translate" or "voice" or "clone" or "llm_route" => TranslateCard,
+            "subtitle" or "subtitle_style" => SubtitleCard,
+            "output" => OutputCard,
+            "data_dir" or "engine" or "models" or "disk" => EngineHomeRow,
+            "data" or "data_home" => DataHomeRow,
+            "proxy" or "github" or "network" or "mirror" => ProxyRow,
+            "downloader" or "update" => UpdateRow,
+            "appearance" or "wall" or "wallpaper" => AppearanceCard,
+            "install_dir" or "hardware" or "tools" => TroubleshootCard,
+            _ => null,
+        };
+        if (target is null) return;
+
+        // 「高级」里的行折叠时 BringIntoView 只会停在卡片头 —— 先展开，再等一帧
+        // 让它完成布局，否则滚动请求会被丢掉。别的分区不动这个折叠状态。
+        if (ReferenceEquals(target, ProxyRow) || ReferenceEquals(target, UpdateRow))
+            AdvancedExpander.IsExpanded = true;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            try
+            {
+                target.StartBringIntoView(new BringIntoViewOptions
+                {
+                    AnimationDesired = true,
+                    VerticalAlignmentRatio = 0.08,
+                    HorizontalAlignmentRatio = 0.0,
+                });
+                if (key is "keys" or "api" or "net")
+                    (DeepBox.Password.Length == 0 ? DeepBox : MimoBox).Focus(FocusState.Programmatic);
+            }
+            catch (Exception e) { App.Dump("滚动到设置分区失败: " + e.Message); }
+        });
+    }
+
     public SettingsPage()
     {
         InitializeComponent();
@@ -1354,8 +1402,12 @@ public sealed partial class SettingsPage : Page
         var old = (_homeSaved ?? "").Trim();
         if (string.Equals(want.Trim(), old, StringComparison.OrdinalIgnoreCase)) return false;   // 没改，放行
         // 旧目录里还没装运行时 → 换了也不可惜，别拿弹框烦人
-        var probe = old.Length > 0 ? old : System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FineSub");
+        // ★ 空串 = 用**实际默认**（软件旁的 data\engine），不是硬编码的 C 盘
+        //   %LOCALAPPDATA%\FineSub —— 否则 D 盘用户改目录时会被告知「原来装在 C 盘」。
+        var probe = old.Length > 0 ? old : (_homeDefault ?? "").Trim();
+        if (probe.Length == 0)
+            probe = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FineSub");
         try
         {
             if (!File.Exists(System.IO.Path.Combine(probe, "runtime", "python", "Scripts", "python.exe")))

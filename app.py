@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.19"
+APP_VERSION = "6.20"
 
 
 def _base_dir() -> Path:
@@ -696,6 +696,17 @@ class Api:
         try:
             path = engine.install_finesub(params, job, self._report)
             cfg.save({"finesub_exe": path})
+            # ★ 本体装好 ≠ 能翻译（2026-10-23 客户报障）：`finesub setup` 失败时
+            #   以前照样报「🎉 安装完成」，首页也打勾，用户一翻译才发现运行环境不在。
+            #   这里按磁盘上的运行环境复核，没有就按失败上报，让首页显示「重新试一次」。
+            import datadir
+            home = (str(params.get("finesub_home") or "").strip()
+                    or str(datadir.default_home()))
+            if not datadir.runtime_ready(Path(home)):
+                raise engine.EngineError(
+                    "翻译引擎本体已装好，但运行环境还没准备好（多半是下载被限流或中断）。"
+                    "请稍后点「重新试一次」；如果日志里出现「GitHub API 速率限制」，"
+                    "等约 1 小时再试，不要反复点。")
             with self._lock:
                 self._status.update(running=False, stage="done", percent=100)
             self._report("done", 100, "🎉 翻译引擎安装完成，可以开始翻译了")

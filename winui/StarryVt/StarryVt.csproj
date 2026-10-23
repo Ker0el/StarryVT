@@ -17,7 +17,7 @@
     <!-- 这个版本号进 exe 的 VERSIONINFO（文件属性 / 崩溃日志里认的就是它）。
          ⚠️ 它和 installer.iss 的 AppVersion 是**两套**，发版时两处都要改：
          这三处 + latest.json 的 version 必须一致，不然用户看到 / 崩溃日志里对不上。 -->
-    <Version>6.19.0</Version>
+    <Version>6.20.0</Version>
 
     <!-- 程序图标（任务栏 / Alt-Tab / 资源管理器看的是 exe 里嵌的这份，不是文件名）：
          源图 assets\icon-src.png → 生成多尺寸 app.ico（16/24/32/48/64/128/256，都 32bpp） -->

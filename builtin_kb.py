@@ -131,6 +131,19 @@ def ensure(params: dict | None = None, job=None, report=None, *,
     if not force and _done_version() >= VERSION:
         return {"ok": True, "imported": 0, "count": len(items), "skipped": "已是最新"}
 
+    # ★ 运行环境没装好时**一条命令都别跑**（2026-10-23 客户报障）：
+    #   每条 `finesub knowledge ...` 都会重新走 ensure_ready → 发现 ffmpeg 缺失 →
+    #   打 GitHub API 要摘要。18 条约 37 次调用，未认证配额是 60 次/小时、**按出口 IP**，
+    #   一轮就能烧光；下一轮 `finesub setup` 于是必然撞限流，用户看到的是
+    #   「运行环境一直下不下来」，反复重开只会更快耗尽。
+    #   词条是锦上添花，等运行环境好了下次启动会自动补（见 winui_backend._seed_builtin_kb）。
+    import datadir
+    home = (str(params.get("finesub_home") or "").strip()
+            or str(datadir.default_home()))
+    if not datadir.runtime_ready(Path(home)):
+        return {"ok": False, "imported": 0, "count": len(items),
+                "skipped": "引擎运行环境还没准备好，先不导入"}
+
     import engine                                    # 延迟导入：engine 会反过来调本模块
     finesub = engine.find_finesub(str(params.get("finesub_exe") or ""))
     if not finesub:

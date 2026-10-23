@@ -7,66 +7,39 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
-| annotated-doc | 0.0.5 | MIT |
 | annotated-types | 0.8.0 | MIT |
-| anyio | 4.14.2 | MIT |
+| anyio | 4.15.1 | MIT |
 | attrs | 26.1.0 | MIT |
-| backports.zstd | 1.8.0 | PSF-2.0 |
 | bottle | 0.13.4 | MIT |
-| brotli | 1.2.0 | MIT |
-| certifi | 2026.7.22 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
-| charset-normalizer | 3.4.9 | MIT |
-| click | 8.4.2 | BSD-3-Clause |
+| click | 8.5.0 | BSD-3-Clause |
 | clr_loader | 0.3.1 | MIT |
-| colorama | 0.4.6 | BSD License |
-| cryptography | 47.0.0 | Apache-2.0 OR BSD-3-Clause |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
 | h11 | 0.16.0 | MIT |
-| httpcore | 1.0.9 | BSD-3-Clause |
-| httpx | 0.28.1 | BSD-3-Clause |
-| httpx-sse | 0.4.3 | MIT |
-| idna | 3.18 | BSD-3-Clause |
-| Jinja2 | 3.1.6 | BSD License |
+| httpcore2 | 2.16.0 | BSD-3-Clause |
+| httpx2 | 2.16.0 | BSD-3-Clause |
+| idna | 3.20 | BSD-3-Clause |
 | jsonschema | 4.26.0 | MIT |
 | jsonschema-specifications | 2025.9.1 | MIT |
-| Mako | 1.4.1 | MIT |
-| markdown-it-py | 4.2.0 | MIT License |
-| MarkupSafe | 2.1.5 | BSD-3-Clause |
-| mcp | 1.30.0 | MIT |
-| mdurl | 0.1.2 | MIT License |
-| protobuf | 7.35.1 | 3-Clause BSD License |
+| mcp | 2.3.0 | MIT |
+| mcp-types | 2.3.0 | MIT |
+| opentelemetry-api | 1.45.1 | Apache-2.0 |
 | proxy_tools | 0.1.0 | MIT |
-| pydantic | 2.13.4 | MIT |
-| pydantic-settings | 2.15.0 | MIT |
-| pydantic_core | 2.46.4 | MIT |
-| Pygments | 2.20.0 | BSD-2-Clause |
-| PyJWT | 2.13.0 | MIT |
-| pyOpenSSL | 26.1.0 | Apache License, Version 2.0 |
-| PySocks | 1.7.1 | BSD |
-| python-dotenv | 1.2.2 | BSD-3-Clause |
+| pydantic | 2.14.1 | MIT |
+| pydantic_core | 2.50.1 | MIT |
+| PyJWT | 2.15.1 | MIT |
 | python-multipart | 0.0.32 | Apache-2.0 |
-| pythonnet | 3.1.0 | MIT |
+| pythonnet | 3.2.1 | MIT |
 | pywebview | 6.2.1 | BSD-3-Clause |
 | pywin32 | 312 | PSF |
-| PyYAML | 6.0.3 | MIT |
 | referencing | 0.37.0 | MIT |
-| requests | 2.33.1 | Apache-2.0 |
-| rpds-py | 2026.6.3 | MIT |
-| shellingham | 1.5.4 | ISC License |
-| sniffio | 1.3.1 | MIT OR Apache-2.0 |
-| socksio | 1.0.0 | MIT |
-| sse-starlette | 3.4.8 | BSD-3-Clause |
-| starlette | 1.6.0 | BSD-3-Clause |
-| typer | 0.27.1 | MIT |
-| typing-inspection | 0.4.3 | MIT |
+| rpds-py | 2026.9.1 | MIT |
+| sse-starlette | 3.5.0 | BSD-3-Clause |
+| starlette | 1.9.0 | BSD-3-Clause |
+| truststore | 0.10.5 | MIT |
+| typing-inspection | 0.4.4 | MIT |
 | typing_extensions | 4.16.0 | PSF-2.0 |
-| tzdata | 2026.3 | Apache-2.0 |
-| ujson | 5.13.0 | BSD-3-Clause AND TCL |
-| urllib3 | 2.7.0 | MIT |
-| uvicorn | 0.52.3 | BSD-3-Clause |
-| websockets | 11.0.3 | BSD-3-Clause |
-| wsproto | 1.3.2 | MIT |
-| zstandard | 0.25.0 | BSD-3-Clause |
+| uvicorn | 0.54.0 | BSD-3-Clause |
 
 > 完整许可证原文随包放在 `licenses\` 目录里（安装目录下同名文件夹）；各自的官方仓库也能查到（`python -m pip show <包名>` 可看本地元数据）。
 > Python 本体采用 PSF 许可证（`licenses/Python-PSF.txt`）；Python 包（含 MCP 及其依赖）的许可证原文汇总见 `licenses/PYTHON-PACKAGES-LICENSES.txt`；cryptography 为 Apache-2.0 / BSD-3-Clause 双许可（两份原文都在 `licenses\`）。
@@ -78,8 +51,8 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
-| FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll） | n9.0.2-27-g7e93014c5b-20261013 | LGPL-3.0-or-later |
-| yt-dlp（yt-dlp.exe） | 2026.08.19 | Unlicense（公有领域） |
+| FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll） | n9.0.2-35-g9a9b70bb8c-20261023 | LGPL-3.0-or-later |
+| yt-dlp（yt-dlp.exe） | 2026.10.21 | Unlicense（公有领域） |
 - **FFmpeg（ffmpeg.exe / ffprobe.exe 及同目录 av*.dll）**：**随本软件分发**。刻意选用 LGPL 构建（不含 GPL 的 libx264/libx265），以独立进程方式调用、未修改其代码，用户可自行替换。许可证原文见 `licenses/LGPL-3.0.txt` 与 `licenses/GPL-3.0.txt`；对应源码见 <https://ffmpeg.org/download.html>，本构建的打包脚本见 <https://github.com/BtbN/FFmpeg-Builds>。
 - **yt-dlp（yt-dlp.exe）**：**随本软件分发**。许可证原文见 `licenses/yt-dlp-Unlicense.txt`；源码见 <https://github.com/yt-dlp/yt-dlp>。
 
@@ -88,7 +61,7 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
-| CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.4.0.cu128 / 4.8.1+finesub0.6.0.cu128 | MIT |
+| CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.6.0.cu128 | MIT |
 - **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；同时带 0.4.0 与 0.6.0 两个引擎版本对应的构建，运行时按引擎实际需要选用。该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。
 
 ### 翻译引擎及其 Python 依赖（随本软件分发，位于 `engine_whl\`）
@@ -97,7 +70,7 @@
 | --- | --- | --- |
 | annotated-types | 0.8.0 | MIT |
 | anyio | 4.15.1 | MIT |
-| certifi | 2026.10.18 | MPL-2.0 |
+| certifi | 2026.10.23 | MPL-2.0 |
 | finesub | 0.6.0 | GPL-3.0-or-later |
 | h11 | 0.16.0 | MIT |
 | httpcore | 1.0.9 | BSD-3-Clause |
@@ -191,4 +164,4 @@
 - 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\fonts\OFL.txt`；字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。
 - 若你二次分发本软件，请一并保留本清单与 `licenses\` 目录。
 
-（本清单由 `make_licenses.py` 自动生成，共 60 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）
+（本清单由 `make_licenses.py` 自动生成，共 33 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）
