@@ -1,7 +1,7 @@
 {
-  "version": "6.20",
-  "sha256": "9db7628dbb3bc41aa2478389df718dd689751c69676f9bbe7f5643eb2decaa33",
-  "notes": "修初始化时引擎运行环境反复下载失败、残留 finesub 进程结束不掉；初始化页显示真实安装盘符；「去设置」跳到对应分区",
+  "version": "6.21",
+  "sha256": "693778a7a49f85203441ae645fe87577f7a6da013a52a6271e18f40d47271af3",
+  "notes": "装引擎前先检查微软 VC++ 运行库（缺或过旧就当场补装，不再白下 2.6 GB 的 torch 后失败）；诊断报告带上运行库版本，0 字节的模型缓存不再显示「完整」；「有任务正在运行」会说清楚在跑什么",
   "published": "2026-10-24",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.20.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.21.exe"
 }

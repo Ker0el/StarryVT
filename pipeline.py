@@ -2058,7 +2058,17 @@ def _precheck(params: dict, report) -> None:
                "提示：第一次翻译要先下载语音识别模型（约 1.6 GB，视网速可能十几分钟）。"
                "这一步引擎自己不报进度，我们会持续报告「下载中…」，请耐心等待。")
     _warn_google_enhancements(params, report)
-    datadir.ensure(params, report)
+    home = datadir.ensure(params, report)
+    # 运行环境还没装的话，这一趟要下 2.6 GB 的 torch。先过一遍微软运行库：
+    # 缺了它 c10.dll 必然加载失败，引擎还会把 staging 删掉重来（2026-10-23 客户
+    # 就是在这儿反复重下、一次没成）。装过运行环境的人跳过，不额外打扰。
+    runtime_dir = Path(home) if home else datadir.default_home()
+    if not datadir.runtime_ready(runtime_dir):
+        import vcruntime
+        if not vcruntime.ensure(params, report):
+            raise RuntimeError(
+                "翻译引擎的运行环境装不了：这台机器缺微软 VC++ 运行库，torch 加载不起来。\n"
+                "按日志里的提示装好（或重启）之后，再重新开始。")
     # 引擎跑起来后要从 GitHub 拿几个组件（没代理下不动）：提前换成国内镜像 +
     # 本机自带的副本。这里失败不拦任务——真下不动时 translate() 还会再兜一次。
     try:

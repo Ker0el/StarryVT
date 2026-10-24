@@ -653,11 +653,15 @@ def install_finesub(params: dict, job: Job, report) -> str:
     return fb
 
 
-def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine") -> int:
+def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine",
+            tail: list[str] | None = None) -> int:
     """跑一个命令并把输出**逐行**报给界面，返回退出码。
 
     长任务必须流式：uv 装 torch 要下载 2.6GB、好几分钟，`job.run(capture_output=True)`
     会把这几分钟的输出全憋到结束才吐出来——界面上就是一行不动，用户以为死机。
+
+    tail 不为 None 时顺便留最后几十行：失败后要据此认出「是哪一类失败」
+    （例如 c10.dll 那句 WinError 1114 埋在 90 行包清单后面，光看退出码认不出）。
     """
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   text=True, encoding="utf-8", errors="replace", env=env)
@@ -665,6 +669,10 @@ def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine") 
         line = line.rstrip()
         if line:
             report(stage, None, line)
+            if tail is not None:
+                tail.append(line)
+                if len(tail) > 80:
+                    del tail[0]
     return p.wait()
 
 
@@ -686,14 +694,28 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     返回 True / False：调用方据此决定要不要继续做**依赖运行环境**的事
     （目前是内置词条导入）；False 时那些事一律跳过，避免反复触发下载。
     """
+    # ★ 先过微软运行库这一关（2026-10-23 客户报障）：
+    #   torch 的 c10.dll 要从系统里拿 MSVCP140 / VCRUNTIME140，机器上那份太旧或没有，
+    #   最后验证 `import torch` 时必然 WinError 1114。引擎一失败就把 staging 删掉，
+    #   于是每次重试都要**把整套依赖重装一遍**（torch 的 wheel 有 uv 缓存，但
+    #   重建 venv + 解包落盘也要好几分钟）—— 客户点了十几次，一次也没走完。
+    #   这一关只读几个文件版本，几毫秒；不过关就当场装官方的（会弹一次 UAC）。
+    import vcruntime
+    if not vcruntime.ensure(params, report):
+        report("engine", None,
+               "⚠ 运行环境先不装了：这台机器缺微软 VC++ 运行库，torch 装上也加载不了。"
+               "按上面的提示处理好之后，点「重新试一次」。")
+        return False
+
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
     env = _proxy_env(params)
     if params.get("finesub_home"):
         env["FINESUB_HOME"] = params["finesub_home"]
     env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
     env["PYTHONIOENCODING"] = "utf-8"
+    tail: list[str] = []
     try:
-        code = _stream(job, [finesub, "setup"], env, report)
+        code = _stream(job, [finesub, "setup"], env, report, tail=tail)
     except Cancelled:
         raise
     except Exception as e:  # noqa: BLE001
@@ -702,6 +724,14 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     if code == 0:
         report("engine", None, "✅ 引擎运行环境已就绪")
         return True
+    # 退出码后面什么都不说，用户只能看到一行「没准备好」。引擎的失败原因都印在
+    # 输出的最后几行里，认得出就翻译成人话（见 _stream 的 tail）。
+    if any(("1114" in s) or ("c10.dll" in s) for s in tail):
+        report("engine", None,
+               "⚠ 运行环境卡在加载 torch（WinError 1114 / c10.dll）：这是微软 VC++ 运行库的问题，"
+               "不是网络也不是显卡。程序已经尝试自动修；如果还不行，"
+               "重启电脑后再点「重新试一次」，或手动装一次 https://aka.ms/vc14/vc_redist.x64.exe。")
+        return False
     report("engine", None,
            f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"
            f"如果一直失败，请把诊断报告发给我们。")

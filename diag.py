@@ -133,8 +133,14 @@ def _hf_cache_report() -> list[str]:
                        and not b.name.endswith(".incomplete"))
             part = [b for b in blobs if b.name.endswith(".incomplete")]
             psize = sum(b.stat().st_size for b in part)
-            state = (f"已下 {done / 1048576:.0f} MB"
-                     + (f"，下到一半 {psize / 1048576:.0f} MB" if part else "，完整"))
+            if not done and not part:
+                # 0 字节 ≠ 完整：这是只建了个目录、一个文件都没下到（旧版预取中断，
+                # 或者引擎自己建的壳）。以前这里写「完整」，报告看着像没事，
+                # 实际开跑就卡在 `Cannot load the vocabulary`。
+                state = "空目录（一个文件都没下到）"
+            else:
+                state = (f"已下 {done / 1048576:.0f} MB"
+                         + (f"，下到一半 {psize / 1048576:.0f} MB" if part else "，完整"))
             lines.append(f"    {repo.name}: {state}")
     return lines or ["(无)"]
 
@@ -374,6 +380,16 @@ def environment_info(deep: bool = False) -> str:
         lines.append(f"查找目录: {' | '.join(ck['dirs'])}")
     except Exception as e:  # noqa: BLE001
         lines.append(f"(检测随包组件失败: {e})")
+    try:
+        # 微软运行库：torch 的 c10.dll 运行时要从系统里拿这几支，缺/旧就会
+        # 报 WinError 1114「DLL 初始化例程失败」（看着像 torch 坏了）。
+        # 2026-10-23 客户那台机器就是栽在这儿，报告里必须能一眼看到版本。
+        import vcruntime
+        lines.append("----- 微软运行库（torch 依赖）-----")
+        lines.append(vcruntime.summary())
+        lines.append(f"判定: {vcruntime.problem() or '正常'}")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(检测运行库失败: {e})")
     return "\n".join(lines) + "\n"
 
 

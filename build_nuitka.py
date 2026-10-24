@@ -115,6 +115,9 @@ def main() -> int:
         "--include-module=paths",
         # ffmpeg 钉死（只在 install_finesub / _precheck 里延迟 import，显式带上）
         "--include-module=runtime_pin",
+        # 微软运行库检测（同上，只在 engine._provision_runtime / pipeline._precheck /
+        # diag 里延迟 import）
+        "--include-module=vcruntime",
         *[f"--nofollow-import-to={m}" for m in EXCLUDES],
         "app.py",
     ]

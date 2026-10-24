@@ -28,7 +28,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.20"
+APP_VERSION = "6.21"
 
 
 def _base_dir() -> Path:
@@ -57,6 +57,20 @@ VIDEO_TYPES = ("视频文件 (*.mp4;*.mov;*.mkv;*.webm;*.avi)", "所有文件 (*
 #: 正好是用户检查识别文本的窗口。见 Api._note_subtitle_paths。
 _RE_OUT_DIR = re.compile(r"输出目录:\s*(.+?)\s*$")
 _RE_RAW_SRT = re.compile(r"([A-Za-z]:\\[^\r\n]*?-raw\.srt)", re.I)
+
+
+#: 后台任务的中文名。被「有任务正在运行」挡住时要把**在跑什么**说出来 ——
+#: 2026-10-23 客户点更新只看到一句「有任务正在运行」，不知道等的是什么，
+#: 而当时那个"任务"其实是卡住的词条导入（见 builtin_kb.ensure 的闸）。
+_STAGE_LABEL = {
+    "update": "正在更新软件",
+    "ytdlp": "正在更新下载器",
+    "engine": "正在安装翻译引擎",
+    "clone": "正在克隆配音",
+    "download": "正在下载视频",
+    "burn": "正在压制字幕",
+    "translate": "正在翻译",
+}
 
 
 class Api:
@@ -264,6 +278,14 @@ class Api:
         c = cfg.load()
         return updater.check(APP_VERSION, c.get("update_url", ""), c.get("proxy", ""))
 
+    def _busy_message(self, suffix: str = "请等它完成后再更新") -> str:
+        """「有任务在跑」这句话要带上**在跑什么**（调用时已持锁）"""
+        stage = (self._status.get("stage") or "").strip()
+        label = _STAGE_LABEL.get(stage)
+        if label:
+            return f"{label}，{suffix}"
+        return f"有任务正在运行，{suffix}"
+
     def do_update(self, pkg_url: str = "", sha256: str = "") -> dict:
         """下载并安装新版本（下载在后台线程，完成后退出并静默安装）"""
         import updater
@@ -271,7 +293,7 @@ class Api:
             return {"ok": False, "error": "更新地址无效"}
         with self._lock:
             if self._status["running"]:
-                return {"ok": False, "error": "有任务正在运行，请等它完成后再更新"}
+                return {"ok": False, "error": self._busy_message()}
             self._job = Job()
             self._status = {"running": True, "stage": "update", "percent": 0,
                             "log": ["开始更新…"], "result": None, "error": ""}
@@ -317,7 +339,7 @@ class Api:
         """手动更新下载器（后台跑，进度写进主日志区）"""
         with self._lock:
             if self._status["running"]:
-                return {"ok": False, "error": "有任务正在运行，请等它完成后再更新"}
+                return {"ok": False, "error": self._busy_message()}
             self._job = Job()
             self._status = {"running": True, "stage": "ytdlp", "percent": 0,
                             "log": ["开始检查下载器更新…"], "result": None, "error": ""}
@@ -660,7 +682,7 @@ class Api:
         """清空术语库并重新导入内置词条（回到出厂状态）。理由见 knowledge.py 开头。"""
         with self._lock:
             if self._status["running"]:
-                return {"ok": False, "error": "有任务正在运行，请稍后再试"}
+                return {"ok": False, "error": self._busy_message("请等它完成后再试")}
             try:
                 import knowledge
                 r = knowledge.clear(cfg.load(), Job())
@@ -680,7 +702,7 @@ class Api:
         """一键安装翻译引擎（uv + finesub）"""
         with self._lock:
             if self._status["running"]:
-                return {"ok": False, "error": "有任务正在运行，请稍后再试"}
+                return {"ok": False, "error": self._busy_message("请等它完成后再试")}
             if self._installing:
                 return {"ok": False, "error": "安装已在进行中"}
             self._installing = True
