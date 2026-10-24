@@ -268,6 +268,16 @@ def environment_info(deep: bool = False) -> str:
     except Exception as e:  # noqa: BLE001
         lines.append(f"(读模型缓存失败: {e})")
     try:
+        # 下载缓存单独报一行：安装失败重试会让它无限涨（2026-10-23 客户那台 40.4 GB，
+        # 模型才 3.5 GB）。正常装好之后它和运行环境是硬链接，实际多占不到 1 GB。
+        import engine as _eng
+        import settings as cfg2
+        _cb = _eng.engine_cache_bytes(cfg2.load())
+        lines.append(f"引擎下载缓存: {_cb / 2**30:.1f} GB"
+                     f"（超过 {_eng.CACHE_PRUNE_GB:.0f} GB 会自动清理）")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(读下载缓存失败: {e})")
+    try:
         lines.append("----- 下载路由 -----")
         lines += _routes_report()
     except Exception as e:  # noqa: BLE001

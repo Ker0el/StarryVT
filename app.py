@@ -15,6 +15,14 @@ import threading
 import time
 from pathlib import Path
 
+# 无控制台运行时（WinUI 调后端）stdout/stderr 可能是 None，第三方库一写就
+# AttributeError 把整个后端带走（Buzz 在 --noconsole 下被 torch.hub 坑过）。
+# 换成 no-op 流，代价为零。
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 import webview
 
 import settings as cfg
@@ -28,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.21"
+APP_VERSION = "6.22"
 
 
 def _base_dir() -> Path:

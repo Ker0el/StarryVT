@@ -653,6 +653,73 @@ def install_finesub(params: dict, job: Job, report) -> str:
     return fb
 
 
+#: 引擎的下载缓存超过这个大小就先清一次（见 prune_engine_cache）
+CACHE_PRUNE_GB = 6.0
+
+
+def engine_cache_bytes(params: dict) -> int:
+    """引擎的下载缓存现在占多少字节（`cache\\uv` + `cache\\downloads`）"""
+    home = (params.get("finesub_home") or "").strip()
+    base = Path(home) if home else datadir.default_home()
+    total = 0
+    for sub in ("uv", "downloads"):
+        d = base / "cache" / sub
+        if not d.is_dir():
+            continue
+        try:
+            for p in d.rglob("*"):
+                try:
+                    if p.is_file():
+                        total += p.stat().st_size
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return total
+
+
+def prune_engine_cache(params: dict, report=None, stage: str = "engine",
+                       force: bool = False) -> int:
+    """清掉**没有被运行环境引用**的缓存（`uv cache prune`），返回清完还剩多少字节
+
+    为什么要有（2026-10-24 客户报障）：引擎只在**安装成功之后**才 prune。装失败或
+    被取消时 staging 被删掉，缓存里的轮子却全都留着 —— 那台机器 `cache` 40.4 GB、
+    模型才 3.5 GB，D 盘就被这一项吃红了。
+
+    阈值（{CACHE_PRUNE_GB}）是刻意的：一次正常下载约 5 GB，低于阈值说明可能是
+    网络抖动后重试，**不清**（清了就要重下 2.6 GB）；反复失败累积到阈值以上才清。
+    已装好环境的机器清了也腾不出空间（缓存和运行环境是硬链接），但也不会删坏。
+    """
+    size = engine_cache_bytes(params)
+    if not force and size < int(CACHE_PRUNE_GB * (1 << 30)):
+        return size
+    uv = find_uv()
+    if not uv:
+        return size
+    home = (params.get("finesub_home") or "").strip()
+    base = Path(home) if home else datadir.default_home()
+    env = _proxy_env(params)
+    try:
+        r = subprocess.run(
+            [uv, "cache", "prune", "--cache-dir", str(base / "cache" / "uv")],
+            **no_window_kwargs(capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
+                               timeout=300, env=env))
+    except Exception as e:  # noqa: BLE001 - 清缓存失败绝不能拖累安装
+        if report:
+            report(stage, None, f"（清理引擎缓存跳过：{e}）")
+        return size
+    after = engine_cache_bytes(params)
+    if report:
+        if size > after:
+            report(stage, None,
+                   f"已清理引擎缓存 {size / 2**30:.1f} GB → {after / 2**30:.1f} GB"
+                   f"（上次安装失败留下的，不影响已经装好的环境）")
+        elif r.returncode != 0:
+            report(stage, None, f"（清理引擎缓存失败，退出码 {r.returncode}，继续安装）")
+    return after
+
+
 def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine",
             tail: list[str] | None = None) -> int:
     """跑一个命令并把输出**逐行**报给界面，返回退出码。
@@ -707,6 +774,10 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
                "按上面的提示处理好之后，点「重新试一次」。")
         return False
 
+    # 装之前先看一眼缓存：反复失败的机器上它会一直涨（见 prune_engine_cache）。
+    # 放在这里而不是失败之后，是因为"上一轮"的垃圾最占地方，先清掉再下。
+    prune_engine_cache(params, report)
+
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
     env = _proxy_env(params)
     if params.get("finesub_home"):
@@ -724,6 +795,8 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     if code == 0:
         report("engine", None, "✅ 引擎运行环境已就绪")
         return True
+    # 这次失败留下的轮子也一并收拾（超阈值才动手，见 prune_engine_cache）
+    prune_engine_cache(params, report)
     # 退出码后面什么都不说，用户只能看到一行「没准备好」。引擎的失败原因都印在
     # 输出的最后几行里，认得出就翻译成人话（见 _stream 的 tail）。
     if any(("1114" in s) or ("c10.dll" in s) for s in tail):

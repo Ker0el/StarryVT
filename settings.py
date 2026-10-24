@@ -7,8 +7,16 @@ import json
 import os
 from pathlib import Path
 
+import tools
+
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT"
 SETTINGS_PATH = APP_DIR / "settings.json"
+
+#: 这几项是磁盘路径，读写时都换成真实长路径（8.3 短名见 tools.long_path）。
+#: 只列**程序自己算出来写进去**的两个；用户手填的 output_dir 不在此列，
+#: 免得把人家故意写的相对路径 / 特殊写法改掉。
+PATH_KEYS = ("finesub_home", "data_home")
+_healed = False          # 这个进程里是否已经自愈过一次（见 load）
 
 DEFAULTS: dict = {
     "source": "",                        # 本次输入的 视频文件路径 / 视频链接 / 文件夹 / 合集链接
@@ -113,12 +121,34 @@ def load() -> dict:
     # 统一归到随包字体；真正选过字体文件的（有 font_file）原样保留。
     if not (data.get("subtitle_font_file") or "").strip():
         data["subtitle_font"] = "Starry Han Sans Light"
+    # 8.3 短路径（D:\AI_PRO~1\…）在设置里一旦钉住就永远回不来 —— 重启、重装都不改。
+    # 读出来统一换成长路径；第一次命中时顺手把文件也改掉（只做一次，load 是高频调用）。
+    global _healed
+    changed = False
+    for key in PATH_KEYS:
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            fixed = str(tools.long_path(val))
+            if fixed != val:
+                data[key] = fixed
+                changed = True
+    if changed and not _healed:
+        _healed = True
+        try:
+            save({k: data[k] for k in PATH_KEYS})
+        except Exception:  # noqa: BLE001 - 写不进去也要把长路径给调用方
+            pass
     return data
 
 
 def save(patch: dict) -> dict:
     data = load()
     data.update({k: v for k, v in patch.items() if k in DEFAULTS or k in ("mimo_key", "deepseek_key", "gemini_key")})
+    # 落盘前再归一化一次：以后写进来的也永远是长路径
+    for key in PATH_KEYS:
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            data[key] = str(tools.long_path(val))
     APP_DIR.mkdir(parents=True, exist_ok=True)
     # ★ 原子写：先写同目录临时文件，再 os.replace 换过去。
     #   以前直接 write_text，装引擎/换数据目录时正好断电或被杀进程，settings.json

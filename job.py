@@ -183,6 +183,12 @@ class Job:
                 f"请重新安装本软件，或把该程序放到软件目录后重启。") from e
         with self._lock:
             self._procs.append(p)
+        if self.cancel.is_set():
+            # 取消正好落在 check() 和 append 之间：cancel_now() 已经跑完 kill_all()，
+            # 那时 _procs 里还没有这个进程，于是它逃过一劫继续跑（2026-10-24 对照
+            # Buzz 的 process_lock 发现的竞态）。这里补一刀，并按取消处理。
+            kill_tree(p.pid)
+            raise Cancelled()
         return p
 
     def run(self, cmd, **kw) -> subprocess.CompletedProcess:

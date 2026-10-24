@@ -46,11 +46,15 @@ def legacy_root() -> Path:
 
 
 def app_dir() -> Path:
-    """程序根目录（打包后是 backend 的上一层；开发时是源码目录）"""
+    """程序根目录（打包后是 backend 的上一层；开发时是源码目录）
+
+    打包态要先过 long_path：用 8.3 短路径起的进程，`sys.executable` 返回的就是
+    短路径，`<app>\\data\\engine` 会跟着变成 `D:\\AI_PRO~1\\…` 并被写进设置。
+    """
     import tools
     if tools.is_packaged():
         # {app}\backend\StarryVT.exe -> {app}
-        return Path(sys.executable).parent.parent
+        return tools.long_path(Path(sys.executable)).parent.parent
     return Path(__file__).parent
 
 

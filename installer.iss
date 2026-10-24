@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.21"
+#define AppVersion "6.22"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
@@ -98,6 +98,8 @@ begin
 end;
 
 [UninstallDelete]
-; 卸载时清掉整个安装目录（含运行时产生的 output\、缩略图缓存等不在安装清单里的文件）
-; 新布局的数据目录默认在 {app}\data，这里会一起删掉（里面都是可重下的语音克隆和缓存）
-Type: filesandordirs; Name: "{app}"
+; ★ 只删「可以重下」的 {app}\data（引擎模型/运行环境/语音克隆/缩略图缓存）。
+;   **绝不能删整个 {app}**：默认成片目录就是 {app}\backend\output，
+;   删安装目录等于把用户已经翻好的视频一起删掉（2026-10-24 对照 Buzz 发现）。
+;   安装清单里的文件 Inno 自己会删，这里只补它不知道的那些。
+Type: filesandordirs; Name: "{app}\data"

@@ -1,7 +1,7 @@
 {
-  "version": "6.21",
-  "sha256": "994dec4614742a2df5d0e383f816ae4ac427e5ae5b6a7bc5d9cf910d7853f79a",
-  "notes": "装引擎前先检查微软 VC++ 运行库（缺或过旧就当场补装，不再白下 2.6 GB 的 torch 后失败）；诊断报告带上运行库版本，0 字节的模型缓存不再显示「完整」；「有任务正在运行」会说清楚在跑什么",
+  "version": "6.22",
+  "sha256": "31e53f5c0f02285d7ead595907f46df59bc0dbfaac5f79f3025b732f51baa46e",
+  "notes": "卸载不再删除已经翻译好的成片；装引擎反复失败时自动清理超过 6 GB 的下载缓存；修取消瞬间可能漏杀的后台进程；数据目录不再显示 AI_PRO~1 这类 8.3 短路径（设置里的老值会自动改正）",
   "published": "2026-10-24",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.21.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.22.exe"
 }
