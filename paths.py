@@ -54,7 +54,7 @@ def app_dir() -> Path:
     import tools
     if tools.is_packaged():
         # {app}\backend\StarryVT.exe -> {app}
-        return tools.long_path(Path(sys.executable)).parent.parent
+        return tools.exec_path().parent.parent
     return Path(__file__).parent
 
 

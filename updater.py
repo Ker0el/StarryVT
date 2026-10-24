@@ -268,7 +268,7 @@ def install_and_restart(setup_path: Path, restart: bool = True):
          → 安装还没写完就把程序拉起来了，拉起来的是旧 exe，还顺手锁住了自己，
          安装程序替换失败 → 用户看到"更新完没自动打开 / 版本没变"。
     """
-    exe = sys.executable
+    exe = str(tools.exec_path())        # 长路径：短名会渗进更新脚本和日志
     also_name = ""
     # 3.0 起后端起在 backend\ 里，用户看到的是它上一层那个界面 exe：
     # 重启要重启**界面** —— 把后端自己拉起来只会多一个没窗口的进程。

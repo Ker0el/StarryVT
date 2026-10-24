@@ -81,7 +81,7 @@ def _app_dir() -> Path:
     import tools
     if tools.is_packaged():
         # 过一遍 long_path：用 8.3 短路径起的进程，sys.executable 是短的
-        return tools.long_path(Path(sys.executable)).parent
+        return tools.exec_path().parent
     return Path(__file__).parent
 
 

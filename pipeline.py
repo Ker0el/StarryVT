@@ -48,7 +48,7 @@ def _writable(cand: Path) -> bool:
 
 def _default_output_dir() -> Path:
     """兜底输出目录：程序目录下的 output/（装在只读位置时回退到「视频库\\StarryVT」）"""
-    base = Path(sys.executable).parent if tools.is_packaged() else Path(__file__).parent
+    base = tools.exec_path().parent if tools.is_packaged() else Path(__file__).parent
     cand = base / "output"
     return cand if _writable(cand) else Path.home() / "Videos" / "StarryVT"
 

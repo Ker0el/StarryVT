@@ -78,6 +78,16 @@ def long_path(p) -> Path:
         return path
 
 
+def exec_path() -> Path:
+    """当前可执行文件的**长路径**（8.3 短名已展开）；开发态是解释器路径
+
+    ★ 凡是「从 `sys.executable` 推目录」的地方都用这个，别再直接写
+      `Path(sys.executable)` —— 用短路径启动时那串会渗进输出目录、任务目录、
+      诊断报告和设置里，用户在界面上看到的就是 `D:\\AI_PRO~1\\…`。
+    """
+    return long_path(Path(sys.executable))
+
+
 def is_packaged() -> bool:
     """现在跑的是「打包后的程序」还是「源码直接跑」。
 
@@ -113,7 +123,7 @@ def app_dir() -> Path:
     `sys.executable` 就是短的，跟着算出来的数据目录也会是短的。见 long_path 的说明。
     """
     if is_packaged():
-        return long_path(Path(sys.executable)).parent
+        return exec_path().parent
     return Path(__file__).parent
 
 

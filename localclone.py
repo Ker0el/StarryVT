@@ -54,7 +54,7 @@ def ckpt() -> Path:
     return src() / "checkpoints"
 # 两个辅助脚本跟主程序一起走（build_nuitka.py 的 --include-data-file 和
 # _rebuild_backend.py 的 --add-data 里都列了它们；那份 StarryVT.spec 早就没人用了）。
-APP_DIR = (Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+APP_DIR = (Path(getattr(sys, "_MEIPASS", tools.exec_path().parent))
            if tools.is_packaged() else Path(__file__).parent)
 # ★★ 它们必须待在**自己的子目录**里（打包时也映射到 <APP_DIR>\clone\）。
 #    这两个脚本是拿**克隆环境那个 3.11 的 python** 跑的，而 sys.path[0] 就是脚本

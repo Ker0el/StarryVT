@@ -1,7 +1,7 @@
 {
-  "version": "6.22",
-  "sha256": "31e53f5c0f02285d7ead595907f46df59bc0dbfaac5f79f3025b732f51baa46e",
-  "notes": "卸载不再删除已经翻译好的成片；装引擎反复失败时自动清理超过 6 GB 的下载缓存；修取消瞬间可能漏杀的后台进程；数据目录不再显示 AI_PRO~1 这类 8.3 短路径（设置里的老值会自动改正）",
+  "version": "6.23",
+  "sha256": "4c35903d838c5d1ce82132826f7e7bcad86ce921cd7c341827595c67c25e5234",
+  "notes": "修「程序安装位置 / 输出目录 / 任务目录」仍显示 D:\\AI_PRO~1 这类 8.3 短路径的问题：所有从可执行文件推导的目录统一用长路径；其余同 6.22（卸载保留成片、缓存自动清理、取消竞态）",
   "published": "2026-10-24",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.22.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.23.exe"
 }

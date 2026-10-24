@@ -36,13 +36,14 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.22"
+APP_VERSION = "6.23"
 
 
 def _base_dir() -> Path:
     """资源目录：打包后（PyInstaller）在解包目录，开发时在脚本目录"""
     if tools.is_packaged():
-        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        mei = getattr(sys, "_MEIPASS", None)
+        return Path(mei) if mei else tools.exec_path().parent
     return Path(__file__).parent
 
 
@@ -239,12 +240,13 @@ class Api:
         #    后端 exe 在 `{app}\backend\`，而文档由 build.py 放在**应用根目录**
         #    （`{app}\THIRD_PARTY_LICENSES.md`）—— 原来的三处探测一个都够不着，
         #    点「感谢」只会静默失败。开发版则是 `_internal\` 那一层。
+        _exe = tools.exec_path().parent
         for cand in (
             BASE_DIR / name,                              # 开发：脚本目录；PyInstaller：_MEIPASS
-            Path(sys.executable).parent / name,           # 后端目录兜底
-            Path(sys.executable).parent / "_internal" / name,
-            Path(sys.executable).parent.parent / name,    # ★ 安装版：backen\ 的上一级 = 应用根
-            Path(sys.executable).parent.parent / "_internal" / name,
+            _exe / name,                                  # 后端目录兜底
+            _exe / "_internal" / name,
+            _exe.parent / name,                           # ★ 安装版：backen\ 的上一级 = 应用根
+            _exe.parent / "_internal" / name,
         ):
             if cand.exists():
                 p = cand

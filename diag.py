@@ -160,7 +160,7 @@ def _disk_report() -> list[str]:
     except Exception:
         pass
     import tools
-    base = Path(sys.executable).parent if tools.is_packaged() else Path(__file__).parent
+    base = tools.exec_path().parent if tools.is_packaged() else Path(__file__).parent
     cands.append(str(base))
     for c in cands:
         anchor = Path(c).anchor or c
@@ -224,7 +224,7 @@ def environment_info(deep: bool = False) -> str:
     # ⚠️ 用 tools.is_packaged()：Nuitka 不设 sys.frozen，直接读它的话，
     #    用户诊断报告里会写着「打包运行: False」，把人往「这不是正式版？」上带。
     frozen = tools.is_packaged()
-    base = Path(sys.executable).parent if frozen else Path(__file__).parent
+    base = tools.exec_path().parent if frozen else Path(__file__).parent
     cfg_now: dict | None = None          # 后面的段落（数据目录 / 外网依赖 / 模型路由）都要用
     lines = [
         "===== 环境信息 =====",

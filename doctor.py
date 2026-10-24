@@ -128,7 +128,7 @@ def _install_dir() -> dict:
     import sys
     import tempfile
     import tools
-    base = Path(sys.executable).parent if tools.is_packaged() else Path(__file__).parent
+    base = tools.exec_path().parent if tools.is_packaged() else Path(__file__).parent
     try:
         tmp = Path(tempfile.gettempdir()).resolve()
         inside = base.resolve() == tmp or tmp in base.resolve().parents
