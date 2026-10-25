@@ -1,7 +1,7 @@
 {
-  "version": "6.23",
-  "sha256": "4c35903d838c5d1ce82132826f7e7bcad86ce921cd7c341827595c67c25e5234",
-  "notes": "修「程序安装位置 / 输出目录 / 任务目录」仍显示 D:\\AI_PRO~1 这类 8.3 短路径的问题：所有从可执行文件推导的目录统一用长路径；其余同 6.22（卸载保留成片、缓存自动清理、取消竞态）",
-  "published": "2026-10-24",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.23.exe"
+  "version": "6.24",
+  "sha256": "0fab80b7efb0d857011383308bb3717ac7448c7c9ace18a49a4df4375ca83f89",
+  "notes": "修「翻译引擎路径」填成目录时每个任务都失败、只显示「拒绝访问」的问题（WinError 5）：现在会识别目录并自动退回 PATH/默认位置，启动时的词条导入也不再失败；引擎安装失败不再被 NameError 掩盖；诊断报告的引擎自检会带上正确的数据目录（不再误报 runtime / ffmpeg missing）",
+  "published": "2026-10-25",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.24.exe"
 }

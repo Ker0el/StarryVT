@@ -282,6 +282,7 @@ def environment_info(deep: bool = False) -> str:
         lines += _routes_report()
     except Exception as e:  # noqa: BLE001
         lines.append(f"(读下载路由失败: {e})")
+    exe_hint = ""              # 下面两个 try 块都要用；读配置失败时也不能 NameError
     try:
         import settings as cfg
         c = cfg.load()
@@ -296,9 +297,19 @@ def environment_info(deep: bool = False) -> str:
             out_real = str(resolve_output_base(c, create=False))
         except Exception as e:  # noqa: BLE001
             out_cfg, out_real = (c.get("output_dir") or "").strip(), f"(解析失败: {e})"
+        # 「翻译引擎路径」填成目录时，Popen(目录) 只会报 WinError 5（2026-10-25 客户）。
+        # 报告里直接点出来，省得每次都要从崩溃日志里猜。
+        exe_hint = (c.get("finesub_exe") or "").strip()
+        exe_shown = exe_hint or "(默认 PATH)"
+        if exe_hint:
+            try:
+                if Path(exe_hint).is_dir():
+                    exe_shown += "  ⚠ 这是个目录（应填 finesub.exe；留空 = 自动查找）"
+            except OSError:
+                pass
         lines += [
             "----- 配置 -----",
-            f"finesub_exe: {c.get('finesub_exe') or '(默认 PATH)'}",
+            f"finesub_exe: {exe_shown}",
             f"finesub_home: {c.get('finesub_home') or '(引擎默认)'}",
             f"代理: {c.get('proxy') or '(无)'}",
             f"HF 镜像: {c.get('hf_endpoint') or '(无)'}",
@@ -324,7 +335,8 @@ def environment_info(deep: bool = False) -> str:
         lines.append(f"(读取配置失败: {e})")
     try:
         import engine
-        st = engine.status()
+        # 带设置里的提示查：报「实际会用的那个引擎」，不再是 PATH 上的另一个
+        st = engine.status(exe_hint)
         lines += [
             "----- 翻译引擎 -----",
             f"finesub: {st.get('engine_path') or '(未找到)'}",
@@ -473,12 +485,27 @@ def engine_doctor() -> str:
     try:
         import engine
         import job as jobmod
-        exe = engine.find_finesub("")
+        # ★ 必须带上和真正跑引擎时同一套环境（2026-10-25 客户报障）：
+        #   不传 FINESUB_HOME 时引擎按自己的默认 home 找 runtime / ffmpeg，
+        #   数据目录已经搬到 D:\... 的机器会误报「runtime missing」「ffmpeg missing」，
+        #   把排查引到错误的方向。
+        try:
+            import settings as cfg
+            c = cfg.load() or {}
+        except Exception:  # noqa: BLE001 - 读不到配置也要能出报告
+            c = {}
+        exe = engine.find_finesub(str(c.get("finesub_exe") or ""))
         if not exe:
             return ""
+        env = dict(os.environ)
+        home = str(c.get("finesub_home") or "").strip()
+        if home:
+            env["FINESUB_HOME"] = home
+        env["FINESUB_HF_ENDPOINT"] = c.get("hf_endpoint") or "https://hf-mirror.com"
+        env["PYTHONIOENCODING"] = "utf-8"
         r = subprocess.run([exe, "doctor"], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=30,
-                           stdin=subprocess.DEVNULL,
+                           stdin=subprocess.DEVNULL, env=env,
                            creationflags=getattr(jobmod, "CREATE_NO_WINDOW", 0))
         return ((r.stdout or "") + (r.stderr or "")).strip()
     except Exception:

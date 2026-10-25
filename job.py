@@ -181,6 +181,15 @@ class Job:
             raise RuntimeError(
                 f"找不到程序「{cmd[0]}」——它可能被杀毒软件隔离或安装不完整。"
                 f"请重新安装本软件，或把该程序放到软件目录后重启。") from e
+        except PermissionError as e:
+            # CreateProcess 对**目录**也是 [WinError 5]：2026-10-25 客户把设置里的
+            # 「翻译引擎路径」填成了 D:\StarryVT（程序目录），界面只显示「拒绝访问」，
+            # 查了很久才发现是设置填错。这里把命令和补救办法直接说出来。
+            raise RuntimeError(
+                f"无法启动程序「{cmd[0]}」（拒绝访问：{e}）。"
+                f"常见原因：设置里的「翻译引擎路径」填成了目录而不是 finesub.exe，"
+                f"或该程序被杀毒软件拦截。请把「翻译引擎路径」留空（自动查找）后重试。"
+            ) from e
         with self._lock:
             self._procs.append(p)
         if self.cancel.is_set():

@@ -17,7 +17,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-from job import Job, no_window_kwargs
+from job import Cancelled, Job, no_window_kwargs
 import datadir
 import engine_mirror
 import mirrors
@@ -91,24 +91,36 @@ def find_uv() -> str | None:
 
 
 def find_finesub(exe_hint: str = "") -> str | None:
-    """找 finesub 引擎：设置里的自定义路径 > PATH > 常见位置"""
-    if exe_hint:
-        p = Path(exe_hint)
-        if p.exists():
+    """找 finesub 引擎：设置里的自定义路径 > PATH > 常见位置
+
+    ★ 只认**文件**（2026-10-25 客户报障）：以前只要 `exists()` 就返回，
+      客户把「翻译引擎路径」填成了程序目录 `D:\\StarryVT`，于是 Popen(目录)
+      抛 `PermissionError: [WinError 5]` —— 界面只有一句「拒绝访问」，
+      翻译和启动时的词条导入全都失败，且看不出是设置填错了。
+      现在填目录时先看目录里有没有 finesub.exe；没有就当作没填，继续往下找。
+    """
+    hint = (exe_hint or "").strip().strip('"').strip()
+    if hint:
+        p = Path(hint)
+        if p.is_file():
             return str(p)
-    p = shutil.which(exe_hint or "finesub")
-    if p:
+        if p.is_dir():
+            inside = p / "finesub.exe"
+            if inside.is_file():
+                return str(inside)
+    p = shutil.which(hint or "finesub")
+    if p and Path(p).is_file():
         return p
     # uv 允许把工具的可执行文件放到自定义目录（UV_TOOL_BIN_DIR）；用户设了它、
     # 又没加进 PATH 时，刚装好的引擎会找不到。先看这里，再看两个默认位置。
     tool_bin = os.environ.get("UV_TOOL_BIN_DIR", "").strip()
     if tool_bin:
         c = Path(tool_bin) / "finesub.exe"
-        if c.exists():
+        if c.is_file():
             return str(c)
     for c in (Path.home() / ".local" / "bin" / "finesub.exe",
               BIN_DIR / "finesub.exe"):
-        if c.exists():
+        if c.is_file():
             return str(c)
     return None
 
