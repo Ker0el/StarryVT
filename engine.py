@@ -174,6 +174,25 @@ def _proxy_env(params: dict) -> dict:
     return env
 
 
+def _uv_python_dir(params: dict) -> Path:
+    """uv 的托管 Python 目录 —— `<数据目录>\\runtime\\uv-python`（我们自己的）
+
+    ★ 为什么不能让 uv 用默认的 `%APPDATA%\\uv\\python`（2026-10-25 客户报障）：
+      默认目录里会留下**别的权限级别**建的「小版本别名」junction，uv 在解析
+      `--python 3.12` 时会逐个检查那里的安装，遇到不信任的装入点就**整体失败**
+      （os error 448），连 `uv tool install` 都进不去。这是 uv 0.11/0.13 的行为，
+      上游还没修（astral-sh/uv#19220）。引擎自己的 `finesub setup` 一直设着
+      UV_PYTHON_INSTALL_DIR，所以只有外层装引擎这一步会踩到。
+
+    ⚠️ 不复用引擎的 `runtime\\python-builds`：两边不一定跑同一版 uv
+      （用户 PATH 上那份可能是老的），别让旧 uv 去动引擎运行时共用的目录。
+      多下的这份 3.12 只有 20 多 MB。
+    """
+    home = (params.get("finesub_home") or "").strip()
+    base = Path(home) if home else datadir.default_home()
+    return base / "runtime" / "uv-python"
+
+
 def uv_env(params: dict) -> dict:
     """给 uv 子进程用的环境：代理 + GitHub 加速前缀 + Python 下载镜像 + UTF-8 输出。
 
@@ -183,6 +202,8 @@ def uv_env(params: dict) -> dict:
     env = _proxy_env(params)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
+    # 见 _uv_python_dir：不能让它去扫 %APPDATA%\uv\python 里的坏 junction
+    env["UV_PYTHON_INSTALL_DIR"] = str(_uv_python_dir(params))
     return env
 
 
@@ -570,17 +591,27 @@ def install_finesub(params: dict, job: Job, report) -> str:
         report("engine", None, "使用随包的翻译引擎组件…")
     out = ""
     r = None
+    env = uv_env(params)          # ★ 必须用 uv_env：里面带着 UV_PYTHON_INSTALL_DIR
     for i, cmd in enumerate(tries):
         if i:
             report("engine", None, "换一个下载源重试…")
         r = job.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                    env=_proxy_env(params))
+                    env=env)
         out = ((r.stdout or "") + (r.stderr or "")).strip()
         if r.returncode == 0:
             break
     for line in out.splitlines()[-8:]:
         report("engine", None, line)
     if r is None or r.returncode != 0:
+        if datadir.looks_blocked(out):
+            # 2026-10-25 客户报障：uv 不信 %APPDATA%\uv\python 里的老 junction，
+            # 整个发现过程直接失败。人话讲清楚，别把 uv 的英文原文丢出去。
+            where = env.get("UV_PYTHON_INSTALL_DIR", "")
+            raise RuntimeError(
+                "Windows 拒绝访问引擎的 Python 目录（os error 448 / 不受信任的装入点）。\n"
+                f"目录：{where}\n"
+                "请把该目录加入杀毒软件白名单；如果星译是「以管理员身份运行」启动的，"
+                "改成普通方式启动（或反过来）后，再点一次「一键安装引擎」。")
         raise RuntimeError(f"finesub 安装失败: {out[-400:]}")
 
     fb = find_finesub()

@@ -208,8 +208,13 @@ def junction_ok(directory: Path) -> bool:
     try:
         probe.mkdir(parents=True, exist_ok=True)
         target.mkdir(exist_ok=True)
+        # ⚠ 不要 text=True：cmd 的输出走控制台代码页（中文系统是 GBK），
+        #   而 UTF-8 模式（PYTHONUTF8 / Nuitka 打包后）的解释器会按 UTF-8 去解，
+        #   直接 UnicodeDecodeError —— 被下面的 except 吃掉，于是**每个目录**都被
+        #   判成「建不了目录链接」（2026-10-25 客户报告里七个全打叉的真凶）。
+        #   这里只需要返回码和链接能不能穿过去，字节根本不用解。
         r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
-                           capture_output=True, text=True, **no_window_kwargs())
+                           capture_output=True, **no_window_kwargs())
         # 建得出来、且能穿过去看一眼，才算真能用（有些机器建得出来但走不通）
         ok = r.returncode == 0 and os.path.isdir(link)
     except Exception:  # noqa: BLE001 - 任何异常都视为这个目录不可用
@@ -318,12 +323,25 @@ def ensure(params: dict, report=None, *, exclude=(), force: bool = False,
     return home
 
 
-def describe() -> list[str]:
-    """给诊断报告用：各候选目录能不能用、为什么不能用（只探测，不留痕）"""
+def describe(current: str = "") -> list[str]:
+    """给诊断报告用：各候选目录能不能用、为什么不能用（只探测，不留痕）
+
+    ★ 当前用的那个也必须探（2026-10-25 客户报障）：以前只列默认候选，
+      客户手填的 `D:\\引擎数据目录` 从来没被探测过 —— 报告里七个目录全打叉，
+      看起来像「这台机器哪里都不行」，其实连当前这个能不能用都不知道。
+    """
     out: list[str] = []
-    for p in candidates():
+    current_key = os.path.normcase(str(Path(current).expanduser())) if (current or "").strip() else ""
+    seen: set[str] = set()
+    paths = ([Path(current).expanduser()] if current_key else []) + candidates()
+    for p in paths:
+        key = os.path.normcase(str(p))
+        if key in seen:
+            continue
+        seen.add(key)
         why = unusable_reason(p)
-        out.append(f"{'可用' if not why else '❌ ' + why}: {p}")
+        mark = "当前使用 → " if key == current_key else ""
+        out.append(f"{mark}{'可用' if not why else '❌ ' + why}: {p}")
     bad = bad_homes()
     if bad:
         out.append("这台机器上真报过 os error 448 的目录：" + "；".join(bad))

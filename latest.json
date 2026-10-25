@@ -1,7 +1,7 @@
 {
-  "version": "6.24",
-  "sha256": "0fab80b7efb0d857011383308bb3717ac7448c7c9ace18a49a4df4375ca83f89",
-  "notes": "修「翻译引擎路径」填成目录时每个任务都失败、只显示「拒绝访问」的问题（WinError 5）：现在会识别目录并自动退回 PATH/默认位置，启动时的词条导入也不再失败；引擎安装失败不再被 NameError 掩盖；诊断报告的引擎自检会带上正确的数据目录（不再误报 runtime / ffmpeg missing）",
+  "version": "6.25",
+  "sha256": "a90064a6a76fafa862200dc90c8687c18e7951d46336e8e7655c0f8583a7de6f",
+  "notes": "修引擎装不上（uv 扫到 %APPDATA%\\uv 里不受信任的目录链接，os error 448）：uv 的 Python 目录现在固定在引擎数据目录，不再碰系统里残留的链接；诊断报告的目录链接探测不再在中文本地化下把所有目录误判为不可用，并会探测当前在用的目录",
   "published": "2026-10-25",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.24.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.25.exe"
 }

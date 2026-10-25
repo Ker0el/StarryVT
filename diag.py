@@ -360,7 +360,7 @@ def environment_info(deep: bool = False) -> str:
         if bad:
             lines.append("建过链接失败（已排除）: " + "；".join(bad))
         if deep:
-            lines += datadir.describe()
+            lines += datadir.describe(used)
         else:
             lines.append("(各目录可用性：导出诊断报告时检测)")
     except Exception as e:  # noqa: BLE001
