@@ -2524,8 +2524,12 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     clone_local = bool(params.get("tts_clone")) and params.get("clone_engine") == "local"
     if clone_local:
         import localclone
-        if not localclone.status()["ready"]:
-            report("dub", None, "⚠ 本地语音克隆还没装好（设置 → 配音），这次改用云端克隆")
+        st = localclone.status()
+        if not st["ready"]:
+            why = f"：{st['problem']}" if st.get("problem") else ""
+            report("dub", None,
+                   f"⚠ 本地语音克隆还没装好{why}，这次改用云端克隆"
+                   "（要接着下：设置 → 配音 → 本地语音克隆）")
             clone_local = False
 
     _ck().enter("配音")

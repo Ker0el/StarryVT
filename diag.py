@@ -278,6 +278,16 @@ def environment_info(deep: bool = False) -> str:
     except Exception as e:  # noqa: BLE001
         lines.append(f"(读数据目录失败: {e})")
     try:
+        lines.append("----- 本地语音克隆 -----")
+        import localclone
+        _cl = localclone.status()
+        lines.append(f"状态: {_cl['detail'].splitlines()[0]}")
+        if _cl.get("missing"):
+            lines.append(f"缺文件: {'、'.join(_cl['missing'])}")
+        lines.append(f"位置: {_cl['dir']}")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(读本地语音克隆失败: {e})")
+    try:
         lines.append("----- 引擎模型缓存 -----")
         lines += _hf_cache_report()
     except Exception as e:  # noqa: BLE001

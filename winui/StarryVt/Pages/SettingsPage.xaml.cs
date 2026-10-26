@@ -1205,6 +1205,7 @@ public sealed partial class SettingsPage : Page
     // ---------- 本地语音克隆：状态 / 装 / 删 ----------
 
     bool _cloneReady;
+    bool _cloneInstalled;
     bool _cloneBusy;
 
     async Task RefreshCloneAsync()
@@ -1216,9 +1217,11 @@ public sealed partial class SettingsPage : Page
             return;
         }
         _cloneReady = r.Value.TryGetProperty("ready", out var ok) && ok.ValueKind == JsonValueKind.True;
+        // 运行环境在、模型缺文件（下载中断）时，按钮要说「继续下载」而不是从头再来
+        _cloneInstalled = r.Value.TryGetProperty("installed", out var ins) && ins.ValueKind == JsonValueKind.True;
         CloneInstallBtn.Visibility = _cloneReady ? Visibility.Collapsed : Visibility.Visible;
         CloneRemoveBtn.Visibility = _cloneReady ? Visibility.Visible : Visibility.Collapsed;
-        CloneInstallBtn.Content = _cloneBusy ? "正在下载…" : "下载并启用";
+        CloneInstallBtn.Content = _cloneBusy ? "正在下载…" : (_cloneInstalled ? "继续下载" : "下载并启用");
         CloneInstallBtn.IsEnabled = !_cloneBusy;
         if (!_cloneBusy) SetHint(CloneHint, Str(r.Value, "detail"), _cloneReady ? true : null);
     }
@@ -1229,10 +1232,12 @@ public sealed partial class SettingsPage : Page
         var dlg = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "要下载本地语音克隆吗？",
-            Content = "装在本机、以后不联网也能用，约 15 GB（运行环境 8 G + 模型 7 G），装一次就有。\n"
-                    + "装在软件自己的数据目录里，不影响别的东西；随时可以在这一行删掉，空间会还回来。",
-            PrimaryButtonText = "开始下载",
+            Title = _cloneInstalled ? "接着下载本地语音克隆？" : "要下载本地语音克隆吗？",
+            Content = _cloneInstalled
+                ? "上次没下完，接着把缺的模型补上（已下好的不会重下）。"
+                : "装在本机、以后不联网也能用，约 15 GB（运行环境 8 G + 模型 7 G），装一次就有。\n"
+                  + "装在软件自己的数据目录里，不影响别的东西；随时可以在这一行删掉，空间会还回来。",
+            PrimaryButtonText = _cloneInstalled ? "继续下载" : "开始下载",
             CloseButtonText = "以后再说",
         };
         if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;

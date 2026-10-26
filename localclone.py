@@ -70,6 +70,43 @@ SRC_ZIP = "https://github.com/index-tts/index-tts/archive/refs/heads/main.zip"
 # 情感模型（qwen0.6bemo4-merge，1.1 GB）只有 use_emo_text 用得上，我们不用 —— 别下
 SKIP = ("qwen0.6bemo4-merge/*",)
 
+# 加载模型时**真正会读**的文件（infer_v2_5.py + checkpoints/config.yaml）：
+#   config.yaml / gpt.pth / s2mel.pth / codec.pth / feat1.pt / feat2.pt /
+#   wav2vec2bert_stats.pt / 分词器 tiktoken
+# 少任何一个都会在构造函数里直接抛，不会自己补，所以 ready 必须按这张表判定。
+# 2026-10-26 客户：下载在 s2mel.pth 处断了（SSL 中断），config.yaml + gpt.pth 已落盘；
+# 旧判定只查这两个，把半成品报成「已装好」——界面藏了下载按钮、任务也不走云端兜底，
+# 用户连点三天空闲都失败，日志里只有 FileNotFoundError: …\s2mel.pth。
+MODEL_FILES = (
+    "config.yaml",
+    "gpt.pth",
+    "s2mel.pth",
+    "codec.pth",
+    "feat1.pt",
+    "feat2.pt",
+    "wav2vec2bert_stats.pt",
+    "multilingual_zh_ja_yue_char_del.tiktoken",
+)
+
+
+def missing_model_files() -> list[str]:
+    """checkpoints 里缺的 / 空掉的文件名（顺序跟 MODEL_FILES 一致）"""
+    c = ckpt()
+    miss: list[str] = []
+    for name in MODEL_FILES:
+        p = c / name
+        try:
+            if not p.is_file() or p.stat().st_size <= 0:
+                miss.append(name)
+        except OSError:
+            miss.append(name)
+    return miss
+
+
+def _short(names: list[str], limit: int = 3) -> str:
+    text = "、".join(names[:limit])
+    return text + (f" 等 {len(names)} 个" if len(names) > limit else "")
+
 
 def python_exe() -> Path:
     """克隆环境自己的 python（跟主程序那套是两个世界）"""
@@ -88,25 +125,35 @@ def _dir_size(path: Path) -> int:
 
 
 def status() -> dict:
-    """装到哪一步了：{ready, installed, model_ready, dir, model_gb, detail}"""
+    """装到哪一步了：{ready, installed, model_ready, missing, problem, dir, model_gb, detail}"""
     h, s, c = home(), src(), ckpt()
     env_ok = python_exe().is_file()
-    model_ok = (c / "config.yaml").is_file() and (c / "gpt.pth").is_file()
+    miss = missing_model_files()
+    model_ok = not miss
     gb = round(_dir_size(c) / 1024 ** 3, 1) if c.is_dir() else 0.0
 
     if env_ok and model_ok:
         detail = (f"已装好（模型 {gb} GB），随时可用\n位置：{h}" if gb
                   else f"已装好，随时可用\n位置：{h}")
+        problem = ""
     elif env_ok:
-        detail = f"运行环境装好了，模型还没下完\n位置：{h}"
+        problem = f"模型没下完（缺 {_short(miss)}）" if miss else "模型没下完"
+        if c.is_dir() and len(miss) < len(MODEL_FILES):
+            detail = (f"运行环境装好了，{problem}\n"
+                      f"点右边的按钮接着下，已下好的不会重下\n位置：{h}")
+        else:
+            detail = f"运行环境装好了，模型还没下\n位置：{h}"
     elif s.is_dir():
         detail = f"上次没装完，点右边的按钮接着装\n位置：{h}"
+        problem = "上次没装完"
     else:
         # 实测：运行环境 8.2 GB（torch+CUDA 那一套）+ 模型 ~6.8 GB
         detail = (f"没装（约 15 GB：运行环境 8 G + 模型 7 G）\n将装在：{h}")
+        problem = "还没安装"
 
     return {"ready": env_ok and model_ok, "installed": env_ok, "model_ready": model_ok,
-            "dir": str(h), "model_gb": gb, "detail": detail}
+            "missing": miss, "problem": problem, "dir": str(h), "model_gb": gb,
+            "detail": detail}
 
 
 def _sub_env(params: dict) -> dict:
@@ -205,24 +252,47 @@ def install(params: dict, job: Job, report) -> dict:
 
     # 3) 模型权重（约 4 GB）
     spec = h / "download.json"
-    spec.write_text(json.dumps({"repo": MODEL_REPO, "local_dir": str(c),
-                                "skip": list(SKIP)}, ensure_ascii=False), encoding="utf-8")
-    report("clone", 70, "下载模型权重（约 4 GB，断了再点一次会接着下）…")
     env = _sub_env(params)
     cmd = [str(python_exe()), str(SCRIPT_DIR / "clone_download.py"), str(spec)]
-    try:
-        _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="模型")
-    except RuntimeError:
-        # 镜像（hf_endpoint）上不一定有这个模型，直连官方源再试一次。
-        # 已有下载进度会接着用（snapshot_download 认 local_dir 里的半成品）。
-        job.check()
-        report("clone", 70, "镜像上没找到，改直连官方源再试一次…")
-        env.pop("HF_ENDPOINT", None)
-        _run_streamed(job, cmd, cwd=s, env=env, report=report, stage="clone", tag="模型")
+    miss0 = missing_model_files()
+    if 0 < len(miss0) < len(MODEL_FILES):
+        # 上次下到一半（客户那台就是断了 s2mel.pth）：接着下，别让人以为要重来
+        report("clone", 70,
+               f"继续下载模型（还缺 {_short(miss0)}；已下好的不会重下）…")
+    else:
+        report("clone", 70, "下载模型权重（约 4 GB，断了再点一次会接着下）…")
 
-    st = status()
-    if not st["ready"]:
-        raise RuntimeError("权重下完了，但 checkpoints 里缺文件，看看日志")
+    # 下载源按顺序试：① 设置里的 HF 镜像（有的话） ② HF 官方直连 ③ ModelScope。
+    # 2026-10-26 客户那台：HF 大文件走到 s2mel.pth 就 SSL 断，而 ModelScope 很稳
+    # （引擎自动补 w2v-bert 时 2 GB 全速下完）。clone_download 按 spec 的 source 走。
+    plans: list[tuple[str, dict]] = [("hf", env)]
+    env_direct = dict(env)
+    if (env_direct.pop("HF_ENDPOINT", "") or "").strip():
+        plans.append(("hf", env_direct))
+    plans.append(("modelscope", env_direct))
+    last_err: RuntimeError | None = None
+    for i, (source, env_try) in enumerate(plans):
+        spec.write_text(json.dumps({"repo": MODEL_REPO, "local_dir": str(c),
+                                    "skip": list(SKIP), "source": source},
+                                   ensure_ascii=False), encoding="utf-8")
+        if i:
+            job.check()
+            report("clone", 70,
+                   "HF 上没下完，改从 ModelScope 再试一次…" if source == "modelscope"
+                   else "镜像上没找到，改直连官方源再试一次…")
+        try:
+            _run_streamed(job, cmd, cwd=s, env=env_try,
+                          report=report, stage="clone", tag="模型")
+            last_err = None
+            break
+        except RuntimeError as e:
+            last_err = e
+    if last_err is not None:
+        raise last_err
+
+    miss = missing_model_files()
+    if miss:
+        raise RuntimeError(f"权重下完了，但 checkpoints 里还缺 {_short(miss)}，看看日志")
 
     # 4) 真加载一次：装完就是「能用的状态」，别等用户真跑任务时才发现缺东西
     #    （w2v-bert / campplus / bigvgan 这几个小模型是**加载时**才补下的）
@@ -244,6 +314,7 @@ def install(params: dict, job: Job, report) -> dict:
         except RuntimeError:
             report("clone", 96, "⚠ 试加载没成功（多半是网络），先装上；真跑的时候会自动再试一次")
 
+    st = status()
     report("clone", 100, f"✅ 本地语音克隆装好了（模型 {st['model_gb']} GB）")
     return st
 
@@ -258,6 +329,11 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
     """
     st = status()
     if not st["ready"]:
+        miss = st.get("missing") or []
+        if st.get("installed") and miss:
+            raise RuntimeError(
+                f"本地语音克隆的模型没下完（缺 {_short(miss)}），"
+                "请到 设置 → 配音 → 本地语音克隆，点右边的按钮接着下")
         raise RuntimeError("本地语音克隆还没装好（设置 → 配音 → 本地语音克隆，点「下载并启用」）")
     if not items:
         return {"ok": 0, "fail": 0, "errors": []}
@@ -276,12 +352,13 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
     cmd = [str(python_exe()), str(SCRIPT_DIR / "clone_synth.py"), str(spec_path)]
     diag.write(f"[clone] synth: {len(items)} 句，参考音 {Path(ref).name}", "run")
 
-    def _run(env: dict) -> tuple[int, int, list[str]]:
+    def _run(env: dict) -> tuple[int, int, list[str], str]:
         p = job.spawn(cmd, cwd=str(s), env=env, stdout=subprocess.PIPE,
                       stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                       errors="replace", bufsize=1)
         done = ok = fail = 0
         errs: list[str] = []
+        tail: list[str] = []
         for line in p.stdout or ():
             job.check()
             line = line.rstrip()
@@ -299,14 +376,18 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
             elif line.startswith("DONE"):
                 pass
             else:
-                # 模型加载时的输出（一大坨），只往日志里塞，别刷界面
+                # 模型加载时的输出（一大坨），只往日志里塞，别刷界面；
+                # 最后一行留作「一句都没跑成」时的原因（客户日志里就是那句
+                # FileNotFoundError: …\s2mel.pth，以前被吞掉了）
                 diag.write(f"[clone] {line[:200]}", "run")
+                tail.append(line)
+                tail = tail[-4:]
         code = p.wait()
         if code != 0 and ok + fail == 0:
             diag.write(f"[clone] 子进程退出码 {code}，一句都没跑成", "run")
-        return ok, fail, errs
+        return ok, fail, errs, (tail[-1] if tail else "")
 
-    ok, fail, errors = _run(_sub_env(params))
+    ok, fail, errors, last_line = _run(_sub_env(params))
     if ok + fail == 0:
         # 一句都没跑成：多半是**加载模型时要补下的小模型**（w2v-bert / campplus / bigvgan）
         # 在镜像上找不到 —— 去掉镜像直连官方源再试一次（2026-10-14 实测就是栽在这儿）。
@@ -314,9 +395,11 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
         diag.write("[clone] 第一遍没跑成，去掉 HF 镜像再试一次", "run")
         env2 = _sub_env(params)
         env2.pop("HF_ENDPOINT", None)
-        ok, fail, errors = _run(env2)
+        ok, fail, errors, last_line = _run(env2)
         if ok + fail == 0:
-            raise RuntimeError("本地语音克隆没能开工（模型没加载起来，详细日志见 logs 目录）")
+            why = f"：{last_line[:200]}" if last_line else ""
+            raise RuntimeError(
+                f"本地语音克隆没能开工（模型没加载起来{why}；详细日志见 logs 目录）")
 
     if fail:
         diag.write(f"[clone] {fail} 句失败：" + "；".join(errors[:3]), "run")

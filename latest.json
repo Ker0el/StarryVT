@@ -1,7 +1,7 @@
 {
-  "version": "6.26",
-  "sha256": "5b05f3c4078ee511705068b9e12cb9110c4a3961b3c9909ebd27f83c9e2c7245",
-  "notes": "修「翻译引擎的 Python 丢了」被误报成内存/杀毒/显卡问题（No Python at …，退出码 103）：开工前直接检查启动器背后的解释器，坏了就明确提示重装引擎；内置词条导入与装引擎/开工清理串行，不再误报「后台还有没退干净的引擎进程」；设置里填成目录的引擎路径自动清空；诊断报告补上 AMD/核显的真实型号",
+  "version": "6.27",
+  "sha256": "c86382e52b57207185b08ec35216ea011acb0e94c6a144d91fc0812fd381a77f",
+  "notes": "修本地语音克隆「模型只下了一半」被当成装好、任务只报一句「没能开工」：按加载真正会读的 8 个文件判定就绪，缺文件会写明并给出「继续下载」；模型下载支持断点续下并加 ModelScope 兜底（已下好的不重下）；克隆加载失败带上真正原因；诊断报告新增克隆状态",
   "published": "2026-10-26",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.26.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.27.exe"
 }

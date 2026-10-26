@@ -2,16 +2,22 @@
 # -*- coding: utf-8 -*-
 """把本地语音克隆要用的模型都下到 <克隆目录>/checkpoints。
 
-在**克隆环境**里跑（用它的 huggingface_hub），这样 HF 镜像 / 代理直接吃环境变量：
+在**克隆环境**里跑（用它的 huggingface_hub / modelscope），这样 HF 镜像 / 代理
+直接吃环境变量：
 
     <克隆目录>\\.venv\\Scripts\\python.exe clone_download.py <spec.json>
 
-spec.json：{"repo": "IndexTeam/IndexTTS-2.5", "local_dir": "...", "skip": ["qwen0.6bemo4-merge/*"]}
+spec.json：{"repo": "IndexTeam/IndexTTS-2.5", "local_dir": "...",
+            "skip": ["qwen0.6bemo4-merge/*"], "source": "hf" | "modelscope"}
 
 ⚠️ 除了主模型，还要顺带把**三个辅助模型**下全（w2v-bert / campplus / bigvgan）：
 引擎自己是**加载模型时**才去补它们，而且补完是 `local_files_only` 读本地 ——
 网络一抖就只留下半份，然后每次加载都报缺文件（2026-10-14 实测栽在这）。
 装的时候一次下齐，加载时就完全不碰网络了。
+
+⚠️ 2026-10-26 客户：HF 大文件走到 s2mel.pth 就 SSL 断，三次都失败。ModelScope 上
+有一份完整镜像（IndexTeam/IndexTTS-2.5，文件逐个核对过），所以由外面按
+source 切换下载源；辅助模型里 bigvgan 在 ModelScope 没有镜像，退回 HF。
 """
 from __future__ import annotations
 
@@ -32,6 +38,63 @@ AUX = [
     ("nvidia/bigvgan_v2_22khz_80band_256x", "bigvgan", ["*optimizer*", "*_3msteps*"]),
 ]
 
+# ModelScope 上的同名仓库（引擎那边的 network_detection 用的是同一套映射）
+MODELSCOPE_MAP = {
+    "IndexTeam/IndexTTS-2.5": "IndexTeam/IndexTTS-2.5",
+    "facebook/w2v-bert-2.0": "AI-ModelScope/w2v-bert-2.0",
+    "funasr/campplus": "iic/speech_campplus_sv_zh-cn_16k-common",
+}
+
+
+def _existing_files(dest: str) -> list[str]:
+    """dest 里已经**完整落盘**的文件（下载器只在写完后才用正式文件名，
+    半成品在各自的临时目录里），换下载源时别再下一遍。
+    2026-10-26 客户那台有 3.8 GB 已经下好，少了这一条 ModelScope 会从头再拉。"""
+    try:
+        return [name for name in os.listdir(dest)
+                if os.path.isfile(os.path.join(dest, name))
+                and os.path.getsize(os.path.join(dest, name)) > 0]
+    except OSError:
+        return []
+
+
+def _snapshot(source: str, repo: str, dest: str, ignore: list[str]) -> str:
+    """整仓下载；source=modelscope 时走 ModelScope（没有镜像的仓库退回 HF）"""
+    ignore = list(ignore) + _existing_files(dest)
+    os.makedirs(dest, exist_ok=True)
+    ms_id = MODELSCOPE_MAP.get(repo) if source == "modelscope" else None
+    if ms_id:
+        from modelscope.hub.snapshot_download import snapshot_download as ms_snapshot
+        print(f"ModelScope {ms_id} -> {dest}", flush=True)
+        return ms_snapshot(model_id=ms_id, local_dir=dest,
+                           ignore_patterns=ignore, max_workers=4)
+    if source == "modelscope":
+        # 没有镜像的（bigvgan）：退回 HF，走设置里的镜像/代理
+        print(f"ModelScope 没有 {repo}，退回 HF", flush=True)
+    from huggingface_hub import snapshot_download
+    return snapshot_download(repo_id=repo, local_dir=dest,
+                             ignore_patterns=ignore, max_workers=4)
+
+
+def _campplus(source: str, cache: str) -> None:
+    """campplus 是单文件（加载时按固定文件名找）"""
+    dest = os.path.join(cache, "campplus_cn_common.bin")
+    if os.path.isfile(dest) and os.path.getsize(dest) >= 1024:
+        return
+    os.makedirs(cache, exist_ok=True)
+    if source == "modelscope":
+        from modelscope.hub.file_download import model_file_download
+        got = model_file_download(
+            model_id=MODELSCOPE_MAP["funasr/campplus"],
+            file_path="campplus_cn_common.bin",
+            local_dir=os.path.join(cache, "_campplus"))
+    else:
+        from huggingface_hub import hf_hub_download
+        got = hf_hub_download(repo_id="funasr/campplus", filename="campplus_cn_common.bin",
+                              local_dir=os.path.join(cache, "_campplus"))
+    if os.path.abspath(got) != os.path.abspath(dest):
+        shutil.copy2(got, dest)
+
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -41,15 +104,11 @@ def main() -> int:
     with open(sys.argv[1], encoding="utf-8") as f:
         spec = json.load(f)
 
-    from huggingface_hub import hf_hub_download, snapshot_download
-
+    source = str(spec.get("source") or "hf").lower()
     local_dir = spec["local_dir"]
-    path = snapshot_download(
-        repo_id=spec["repo"],
-        local_dir=local_dir,
-        ignore_patterns=spec.get("skip") or [],
-        max_workers=int(spec.get("workers") or 4),
-    )
+
+    # 主模型：缺哪个补哪个（snapshot_download 认 local_dir 里的半成品，能断点续传）
+    path = _snapshot(source, spec["repo"], local_dir, spec.get("skip") or [])
     print(f"DONE {path}", flush=True)
 
     cache = os.path.join(local_dir, "hf_cache")
@@ -58,8 +117,11 @@ def main() -> int:
         dest = os.path.join(cache, sub)
         # ⚠️ 别在这儿删目录：snapshot_download 认 local_dir，缺什么补什么（能断点续传）；
         #    删一次就等于把上次下好的几个 G 全扔了（2026-10-14 踩过）。
-        print(f"AUX {repo} -> {dest}", flush=True)
-        snapshot_download(repo_id=repo, local_dir=dest, ignore_patterns=skip, max_workers=4)
+        try:
+            _snapshot(source, repo, dest, skip)
+        except Exception as e:  # noqa: BLE001 - 辅助模型不该拖垮主模型的安装
+            # 加载时引擎还会自己再试一次（ensure_models_available），这里只警告
+            print(f"AUX WARN {repo}: {type(e).__name__}: {e}", flush=True)
         # 顺手清掉以前多下的训练遗留（老版本没写 ignore 时下下来的）
         for junk in ("conformer_shaw.pt", "bigvgan_discriminator_optimizer.pt",
                      "bigvgan_discriminator_optimizer_3msteps.pt"):
@@ -72,13 +134,11 @@ def main() -> int:
                         pass
         print(f"AUX DONE {repo}", flush=True)
 
-    # campplus 是单文件（加载时按固定文件名找）
-    campplus = os.path.join(cache, "campplus_cn_common.bin")
-    if not os.path.isfile(campplus) or os.path.getsize(campplus) < 1024:
-        print("AUX funasr/campplus -> campplus_cn_common.bin", flush=True)
-        got = hf_hub_download(repo_id="funasr/campplus", filename="campplus_cn_common.bin",
-                              local_dir=os.path.join(cache, "_campplus"))
-        shutil.copy2(got, campplus)
+    try:
+        _campplus(source, cache)
+    except Exception as e:  # noqa: BLE001
+        print(f"AUX WARN funasr/campplus: {type(e).__name__}: {e}", flush=True)
+    else:
         print("AUX DONE funasr/campplus", flush=True)
 
     print("DONE AUX", flush=True)
