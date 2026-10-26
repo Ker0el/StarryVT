@@ -12,8 +12,10 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
+import threading
 import zipfile
 from pathlib import Path
 
@@ -45,6 +47,14 @@ UV_ZIP_SHA256 = "3b2661a463a5baea7f5076ea2b25ab71d77f36a6c0d809e5350651792f80a67
 TUNA_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
 #: 翻译引擎的版本范围（随包 wheelhouse 和在线安装共用这一个字符串）
 ENGINE_REQ = "finesub>=0.6,<0.7"
+
+#: 引擎 CLI 的串行闸。内置词条导入（一次性几十次 `finesub knowledge …`）不能和
+#: 「装引擎」「任务开工前的残留清理」交叉 —— 否则开工前那次 kill 会把**我们自己**
+#: 刚 spawn 的词条进程当成残留杀掉，紧接着 busy_processes 又看到新进程，
+#: 用户得到的是「后台还有没退干净的引擎进程，请重启电脑」（2026-10-25 客户实测）。
+CLI_LOCK = threading.RLock()
+#: 有翻译任务准备开工时置位；词条导入看到它就在下一条之前收手（见 builtin_kb.ensure）。
+TASK_WAITING = threading.Event()
 
 
 # ---------- 检测 ----------
@@ -125,13 +135,106 @@ def find_finesub(exe_hint: str = "") -> str | None:
     return None
 
 
+_HOME_IN_VENV = re.compile(r"(?im)^\s*home\s*=\s*(.+?)\s*$")
+#: 启动器里内嵌的解释器路径（uv/pip 的 Windows 启动器把 shebang 塞在 zip 尾部）
+_SHEBANG_PY = re.compile(rb"([A-Za-z]:\\[^\x00\r\n\"']{1,300}?\\Scripts\\python\.exe)", re.I)
+#: 启动器 → 工具环境根目录 的解析结果（只缓存 47KB 二进制扫描这一步；
+#: 解释器在不在每次都重新 stat —— 用户可能刚装好 Python，不能一直拿旧结论）
+_VENV_ROOT_CACHE: dict[tuple[str, float, int], Path | None] = {}
+
+
+def _venv_root_of_launcher(exe: Path) -> Path | None:
+    """`finesub.exe` 对应的 Python 工具环境根目录（找不到返回 None）
+
+    两种形态都要认：
+      · `%APPDATA%\\uv\\tools\\finesub\\Scripts\\finesub.exe` —— 上级就是工具环境；
+      · `%USERPROFILE%\\.local\\bin\\finesub.exe` —— 只是启动器的**副本**，
+        真正的工具环境写在它内嵌的 shebang 里（`…\\Scripts\\python.exe`）。
+    """
+    direct = exe.parent.parent / "pyvenv.cfg"
+    if direct.is_file():
+        return exe.parent.parent
+    try:
+        blob = exe.read_bytes()
+    except OSError:
+        return None
+    m = _SHEBANG_PY.search(blob)
+    if not m:
+        return None
+    try:
+        py = Path(os.fsdecode(m.group(1)))
+    except Exception:  # noqa: BLE001
+        return None
+    if py.name.lower() != "python.exe" or py.parent.name.lower() != "scripts":
+        return None
+    root = py.parent.parent
+    return root if (root / "pyvenv.cfg").is_file() else None
+
+
+def shim_problem(exe: str) -> str:
+    """这个 finesub.exe 背后的 Python 还在不在？正常返回 ""，坏了返回人话。
+
+    ★ 2026-10-26 客户报障（Win11 / AMD，装了两天一次没翻成）：
+      uv 生成的 `finesub.exe` 只是个启动器，真正干活的是工具环境里的
+      `Scripts\\python.exe`；而那个 python 又按 `pyvenv.cfg` 的 `home =` 去找
+      uv 托管目录里的解释器。托管目录被清理工具删掉、或者变成「不受信任的装入点」
+      （os error 448）时，启动器只吐一行 `No Python at '…'`，退出码 103 ——
+      界面却按「没有堆栈 = 硬死」提示「内存不够 / 杀毒软件 / 显卡驱动」，
+      客户照着试一整天也好不了。
+
+    这里**不启动引擎**（启动它可能触发下载），只顺着 pyvenv.cfg 查文件在不在。
+    拿不准（不是 venv 启动器 / 读不了）一律当正常，避免误拦能用的机器。
+    """
+    try:
+        p = Path(str(exe))
+        if p.suffix.lower() != ".exe":
+            return ""
+        st = p.stat()
+        key = (str(p).lower(), st.st_mtime, st.st_size)
+        if key in _VENV_ROOT_CACHE:
+            root = _VENV_ROOT_CACHE[key]
+        else:
+            root = _venv_root_of_launcher(p)
+            _VENV_ROOT_CACHE[key] = root
+        if root is None:
+            return ""
+        py = root / "Scripts" / "python.exe"
+        if not py.is_file():
+            return f"翻译引擎的 Python 启动器不完整：找不到 {py}"
+        try:
+            text = (root / "pyvenv.cfg").read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            return f"翻译引擎的 Python 环境读不了（{e.__class__.__name__}: {e}）"
+        m = _HOME_IN_VENV.search(text)
+        if not m:
+            return ""
+        home = m.group(1).strip().strip('"').strip("'")
+        if home:
+            base_py = Path(home) / "python.exe"
+            try:
+                ok = base_py.is_file()
+            except OSError:  # 不受信任的装入点可能直接抛
+                ok = False
+            if not ok:
+                return (f"翻译引擎的 Python 解释器不见了：{base_py}\n"
+                        "（运行库或清理软件删掉了 uv 的托管 Python，或者那个目录成了"
+                        "不可访问的目录链接）")
+        return ""
+    except OSError:
+        return ""
+    except Exception:  # noqa: BLE001 - 检查本身不该影响任何正常流程
+        return ""
+
+
 def status(exe_hint: str = "") -> dict:
-    """引擎状态：{ready, engine_path, uv_path, uv_ready, runtime_ready, bin_dir}
+    """引擎状态：{ready, engine_path, engine_problem, uv_path, uv_ready, ...}
 
     ★ `ready` 必须是「本体 + 运行环境都在」（2026-10-23 客户报障）：
       以前只看 finesub.exe 在不在，于是 `finesub setup` 失败（常见是 GitHub API
       限流导致 ffmpeg 装不上）后，首页照样打勾、按钮变成「进入本地翻译」，
       用户一进去就撞「引擎没装好」。运行环境才是能不能翻译的分界线。
+    ★ 2026-10-26 再补一条：启动器背后的 Python 也算「本体」。文件都在、但
+      解释器被删的机器，以前首页照样显示「已就绪」，一点翻译就失败。
     """
     fb = find_finesub(exe_hint)
     uv = find_uv()
@@ -143,10 +246,13 @@ def status(exe_hint: str = "") -> dict:
         runtime_ok = datadir.runtime_ready(Path(home))
     except Exception:  # noqa: BLE001 - 状态查询不该因为读配置失败而崩
         runtime_ok = False
+    problem = shim_problem(fb) if fb else ""
+    ok = bool(fb) and runtime_ok and not problem
     return {
-        "ready": bool(fb) and runtime_ok,
-        "ok": bool(fb) and runtime_ok,
+        "ready": ok,
+        "ok": ok,
         "engine_path": fb or "",
+        "engine_problem": problem,
         "uv_path": uv or "",
         "uv_ready": bool(uv),
         "runtime_ready": runtime_ok,
@@ -534,6 +640,15 @@ def has_nvidia() -> bool:
 
 def install_finesub(params: dict, job: Job, report) -> str:
     """一键安装：uv → finesub 引擎本体（运行时不在此步，首次跑任务时自动下载）"""
+    # ★ 和内置词条导入串起来（2026-10-25/26 客户报障）：启动时的词条导入会在后台
+    #   连续 spawn `finesub.exe`，下面那次 kill_leftovers 会把它们当残留杀掉，
+    #   紧接着 busy_processes() 又看到新进程 → 安装/开工被无故拦住。
+    #   用 RLock：装完引擎后同一个线程还会调 builtin_kb.ensure（末尾）。
+    with CLI_LOCK:
+        return _install_finesub(params, job, report)
+
+
+def _install_finesub(params: dict, job: Job, report) -> str:
     # 上一次没退干净 / 另一个实例还在翻译时，uv 覆盖引擎目录会撞文件锁，
     # 用户看到的只是一句权限错误。先讲清楚，别让人白等。
     # ★ 2026-10-21：没人管的残留**我们自己收掉**（客户反馈「任务管理器里根本杀不掉」），

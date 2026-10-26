@@ -75,6 +75,11 @@ def _gpu() -> str:
 
     引擎默认按机器有没有 CUDA 设备决定跑 GPU 还是 CPU，而 CPU 转写要慢一两个数量级。
     nvidia-smi 是唯一稳的取法（不装 CUDA 就没有，那也是答案本身）。
+
+    ★ 但 nvidia-smi 只说「有没有 NVIDIA」，说不出「装的是什么卡」
+      （2026-10-26 客户报障：AMD 机器上报告只有一句「没有 NVIDIA 显卡或驱动」，
+      客户以为显卡没被识别）。没有 NVIDIA 时补一行注册表里的真实型号，
+      并明确写清「引擎只支持 NVIDIA CUDA，会用 CPU」。
     """
     import shutil
     import subprocess
@@ -90,6 +95,16 @@ def _gpu() -> str:
             return "；".join(line.strip() for line in out.splitlines() if line.strip())
     except Exception:
         pass
+    try:
+        import tools
+        adapters = tools.display_adapters()
+    except Exception:  # noqa: BLE001
+        adapters = []
+    if adapters:
+        names = "、".join(adapters)
+        if any("nvidia" in a.lower() for a in adapters):
+            return f"{names}（NVIDIA 驱动 / nvidia-smi 不可用，引擎可能回落到 CPU）"
+        return f"{names}（引擎只支持 NVIDIA CUDA，会用 CPU——会明显慢，不是故障）"
     return "(没有 NVIDIA 显卡或驱动，引擎会走 CPU——会明显慢)"
 
 

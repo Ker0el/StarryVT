@@ -132,10 +132,32 @@ def load() -> dict:
             if fixed != val:
                 data[key] = fixed
                 changed = True
+    # 2026-10-26 客户报障：把「翻译引擎路径」填成了程序目录（`D:\StarryVT`）。
+    # v6.24 起解析时会跳过它（先找目录里的 finesub.exe，没有就自动找），但设置页
+    # 一直显示着这个错值、诊断报告也一直标黄，而**修好引擎后它也不会自己回正**。
+    # 无用的值直接清掉（留空 = 自动查找），只在第一次命中时写回文件。
+    exe_val = data.get("finesub_exe")
+    if isinstance(exe_val, str) and exe_val.strip():
+        raw = exe_val.strip().strip('"').strip()
+        if raw and (os.path.isabs(raw) or "\\" in raw or "/" in raw):
+            try:
+                p = Path(raw)
+                if p.is_dir() and not (p / "finesub.exe").is_file():
+                    data["finesub_exe"] = ""
+                    changed = True
+                    try:
+                        import diag
+                        diag.write(f"[settings] 翻译引擎路径填成了目录（{raw}）"
+                                   f"，已改为自动查找", "run")
+                    except Exception:  # noqa: BLE001
+                        pass
+            except OSError:
+                pass
     if changed and not _healed:
         _healed = True
         try:
-            save({k: data[k] for k in PATH_KEYS})
+            save({**{k: data[k] for k in PATH_KEYS},
+                  "finesub_exe": data.get("finesub_exe", "")})
         except Exception:  # noqa: BLE001 - 写不进去也要把长路径给调用方
             pass
     return data

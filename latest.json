@@ -1,7 +1,7 @@
 {
-  "version": "6.25",
-  "sha256": "a90064a6a76fafa862200dc90c8687c18e7951d46336e8e7655c0f8583a7de6f",
-  "notes": "修引擎装不上（uv 扫到 %APPDATA%\\uv 里不受信任的目录链接，os error 448）：uv 的 Python 目录现在固定在引擎数据目录，不再碰系统里残留的链接；诊断报告的目录链接探测不再在中文本地化下把所有目录误判为不可用，并会探测当前在用的目录",
-  "published": "2026-10-25",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.25.exe"
+  "version": "6.26",
+  "sha256": "5b05f3c4078ee511705068b9e12cb9110c4a3961b3c9909ebd27f83c9e2c7245",
+  "notes": "修「翻译引擎的 Python 丢了」被误报成内存/杀毒/显卡问题（No Python at …，退出码 103）：开工前直接检查启动器背后的解释器，坏了就明确提示重装引擎；内置词条导入与装引擎/开工清理串行，不再误报「后台还有没退干净的引擎进程」；设置里填成目录的引擎路径自动清空；诊断报告补上 AMD/核显的真实型号",
+  "published": "2026-10-26",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.26.exe"
 }

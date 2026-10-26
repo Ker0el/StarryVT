@@ -148,6 +148,13 @@ def _engine(c: dict) -> dict:
     st = engine.status(c.get("finesub_exe") or "")
     if st.get("ready"):
         return _item("engine", "翻译引擎", OK, "已就绪")
+    if st.get("engine_problem"):
+        # 启动器背后的 Python 丢了（2026-10-26 客户报障）：重装引擎本体即可，
+        # 运行环境和模型都在，不用重下。
+        return _item("engine", "翻译引擎", BAD,
+                     st["engine_problem"] + "。点右边按钮重新安装一次引擎本体"
+                     "（已下好的运行环境和模型会继续用）。",
+                     "engine", "一键安装引擎")
     if st.get("engine_path"):
         # 本体在、运行环境不在：说清楚是「没装完」，别让用户以为要重装一遍
         return _item("engine", "翻译引擎", WARN,
@@ -236,7 +243,14 @@ def _gpu_info() -> dict:
     now = time.time()
     if _GPU_CACHE["value"] is not None and now - _GPU_CACHE["at"] < 60:
         return _GPU_CACHE["value"]
-    info = {"name": "", "vram_gb": 0.0, "error": ""}
+    info = {"name": "", "vram_gb": 0.0, "error": "", "adapters": []}
+    # 没有 NVIDIA 时至少要说得出装的是什么卡（AMD / 核显），否则用户以为
+    # 软件没认出显卡（2026-10-26 客户报障）。见 tools.display_adapters。
+    try:
+        import tools
+        info["adapters"] = tools.display_adapters()
+    except Exception:  # noqa: BLE001
+        pass
     exe = shutil.which("nvidia-smi") or r"C:\Windows\System32\nvidia-smi.exe"
     try:
         r = subprocess.run(
@@ -304,6 +318,18 @@ def _hardware(c: dict) -> dict:
     name = g["name"]
     vram = g["vram_gb"]
     if not name:
+        adapters = g.get("adapters") or []
+        if adapters:
+            desc = "、".join(adapters)
+            if any("nvidia" in a.lower() for a in adapters):
+                detail = (f"{os_name} x64；检测到 {desc}，但 nvidia-smi 不可用"
+                          f"（驱动没装好？）。装好 NVIDIA 驱动才能用显卡加速，"
+                          f"否则会走 CPU，语音识别会慢很多。")
+            else:
+                detail = (f"{os_name} x64；检测到 {desc}。引擎只支持 NVIDIA CUDA，"
+                          f"这台机器会用 CPU 跑，语音识别会慢很多 —— 能正常出片，"
+                          f"不是故障，也没有开关能启用 AMD / 核显加速。")
+            return _item("hardware", "电脑配置", WARN, detail)
         return _item("hardware", "电脑配置", WARN,
                      f"{os_name} x64；没检测到 NVIDIA 显卡或驱动。能跑，但会走 CPU，"
                      f"语音识别会慢很多。推荐 NVIDIA RTX 20 系以上、显存 4 GB 以上。")

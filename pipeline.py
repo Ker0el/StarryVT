@@ -234,6 +234,25 @@ def _engine_crashed_hint(code: int, tail: list[str]) -> str:
             "请点「设置 → 导出诊断报告」发给我们，报告里带着引擎自己的详细运行记录。")
 
 
+def _engine_broken_hint(code: int, blob: str) -> str:
+    """引擎启动器说「No Python at …」：uv 托管的 Python 没了/访问不了
+
+    2026-10-26 客户报障：`finesub.exe` 只是启动器，背后的 Python 丢了时只打一行
+    `No Python at '…'`、退出码 103。以前被 `_engine_crashed_hint` 的「没有堆栈 =
+    硬死」规则抓走，界面提示「内存不够 / 杀毒软件 / 显卡驱动」—— 客户照做一整天
+    也好不了，因为缺的是一个解释器。
+    """
+    low = (blob or "").lower()
+    if "no python at" in low:
+        return ("翻译引擎的 Python 运行环境丢了（不是内存、杀毒软件或显卡的问题）。\n"
+                "请到「设置 → 翻译引擎」点「一键安装引擎」重新安装一次；"
+                "只重装引擎本体，已经下好的运行环境和模型不会重下。")
+    if code == 103 and not low.strip():
+        return ("翻译引擎没能启动（退出码 103，通常是它的 Python 运行环境丢了）。\n"
+                "请到「设置 → 翻译引擎」点「一键安装引擎」重新安装一次。")
+    return ""
+
+
 def _busy_or_denied_hint(blob: str) -> str:
     """引擎数据目录「被别的进程占着」或「写不进去」时给一句人话
 
@@ -1725,6 +1744,10 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
         hint = _busy_or_denied_hint(blob)
         if hint:
             raise _fail(RuntimeError, hint)
+        # 启动器背后没有 Python（退出码 103）≠ 硬死，别给「内存/杀毒/显卡」那套
+        hint = _engine_broken_hint(code, blob)
+        if hint:
+            raise _fail(RuntimeError, hint)
         # 一声不吭就没了（没有堆栈、退出码是异常码）：也不是网络抖动，别自动重试
         hint = _engine_crashed_hint(code, tail)
         if hint:
@@ -2033,24 +2056,50 @@ def _precheck(params: dict, report) -> None:
     if params.get("download_only"):
         # 只下载视频：不碰引擎、模型、Key，也没有「字幕识别的模型要下」那些提示
         return
+    # ★ 引擎启动器背后的 Python 还在不在（2026-10-26 客户报障）。
+    #   文件都在、解释器被删/变成坏链接的机器，以前会一路跑到引擎退出码 103，
+    #   再被当成「内存不够 / 杀毒软件 / 显卡驱动」—— 客户永远修不好。
+    fb = engine.find_finesub(params.get("finesub_exe") or "")
+    if fb:
+        problem = engine.shim_problem(fb)
+        if problem:
+            raise RuntimeError(
+                problem + "\n请到「设置 → 翻译引擎」点「一键安装引擎」重新安装一次"
+                "（只重装引擎本体，已经下好的运行环境和模型不会重下）。")
     # 上一轮留下的引擎进程还在跑？它握着 uv 缓存锁，再开一轮必然等 300 秒然后失败
     # （2026-10-08 客户实测）。
     # ★ 2026-10-21：没人管的残留直接收掉 —— 客户反馈「任务管理器里根本杀不掉」，
     #   与其让他去折腾，不如开工前我们自己清干净；另一个星译在用的才留着报错。
-    busy = engine.busy_processes()
-    r: dict = {}
-    if busy:
-        report("translate", None, "发现上次没退干净的引擎进程：" + "、".join(busy) + "，正在结束…")
-        r = engine.kill_leftovers(report, stage="translate")
-        busy = engine.busy_processes()
-    if busy:
-        if r.get("skipped") and not r.get("remaining"):
-            raise RuntimeError(
-                "另一个星译窗口正在翻译（" + "、".join(busy) + "）。\n"
-                "等它跑完，或先关掉那个窗口，再重新开始。")
-        raise RuntimeError(
-            "后台还有没退干净的引擎进程在跑：" + "、".join(busy) + "。\n"
-            "已经尝试结束但没成功，它多半卡在驱动或下载上。请重启电脑后再重新开始。")
+    # ★ 2026-10-26：启动时的内置词条导入会在后台连续 spawn `finesub.exe`，以前
+    #   这里会把它当成残留杀掉、转头又看到新进程，报「后台还有没退干净的引擎进程」。
+    #   先置 TASK_WAITING（词条导入看到就收手），再拿 CLI_LOCK 做清理；加锁期间
+    #   不会有词条进程冒出来。
+    engine.TASK_WAITING.set()
+    try:
+        if not engine.CLI_LOCK.acquire(timeout=1.0):
+            report("translate", None,
+                   "正在导入内置术语词条（只做一次），等它收尾后再开始…")
+            engine.CLI_LOCK.acquire()
+        try:
+            busy = engine.busy_processes()
+            r: dict = {}
+            if busy:
+                report("translate", None,
+                       "发现上次没退干净的引擎进程：" + "、".join(busy) + "，正在结束…")
+                r = engine.kill_leftovers(report, stage="translate")
+                busy = engine.busy_processes()
+            if busy:
+                if r.get("skipped") and not r.get("remaining"):
+                    raise RuntimeError(
+                        "另一个星译窗口正在翻译（" + "、".join(busy) + "）。\n"
+                        "等它跑完，或先关掉那个窗口，再重新开始。")
+                raise RuntimeError(
+                    "后台还有没退干净的引擎进程在跑：" + "、".join(busy) + "。\n"
+                    "已经尝试结束但没成功，它多半卡在驱动或下载上。请重启电脑后再重新开始。")
+        finally:
+            engine.CLI_LOCK.release()
+    finally:
+        engine.TASK_WAITING.clear()
     # 第一次翻译要下 1.6GB 的语音识别模型，而引擎在下它的时候**一个字节都不打印**
     # （见 _ModelWatch 的说明）。先把话说在前面，免得用户以为死机了。
     if not _hf_whisper_ready(params):

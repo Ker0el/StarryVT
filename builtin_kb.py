@@ -148,6 +148,13 @@ def ensure(params: dict | None = None, job=None, report=None, *,
     finesub = engine.find_finesub(str(params.get("finesub_exe") or ""))
     if not finesub:
         return {"ok": False, "imported": 0, "count": len(items), "skipped": "引擎还没装"}
+    # ★ 启动器的 Python 丢了时，这 18 条会连着 spawn 36 个必然失败的子进程，
+    #   日志里糊满 `No Python at '…'`，还会和任务开工前的清理互相打架。
+    #   先看一眼，坏了就什么都不跑（重新装引擎后下次启动会自动补上）。
+    problem = engine.shim_problem(finesub)
+    if problem:
+        return {"ok": False, "imported": 0, "count": len(items),
+                "skipped": "引擎的 Python 环境坏了，重新安装引擎后会自动补"}
 
     env = os.environ.copy()
     if params.get("finesub_home"):
@@ -161,31 +168,38 @@ def ensure(params: dict | None = None, job=None, report=None, *,
 
     done = failed = 0
     stopped = False
-    for i, (name, path) in enumerate(items, 1):
-        if job is not None:
-            try:
-                job.check()                          # 用户点了停止就立刻收手
-            except Exception:  # noqa: BLE001
+    # ★ 和「装引擎 / 任务开工前的清理」串行（见 engine.CLI_LOCK 的说明）。
+    #   加锁期间用户点翻译，pipeline._precheck 会先置 TASK_WAITING；这里每条之前
+    #   看一眼，看到就立刻收手（不写版本标记，下次启动接着补）。
+    with engine.CLI_LOCK:
+        for i, (name, path) in enumerate(items, 1):
+            if engine.TASK_WAITING.is_set():
                 stopped = True
                 break
-        code, out = _run(base + ["new", "common", name, "--type", _TYPE,
-                                 "--intro", _intro_of(path)], env, job)
-        if code != 0 and "already exists" not in out and "skipped" not in out:
-            failed += 1
-            diag.write(f"[kb] 建条目失败 {name}: {out[:200]}", "run")
-            continue
-        code, out = _run(base + ["edit", name, "--file", str(path)], env, job)
-        if code != 0:
-            failed += 1
-            diag.write(f"[kb] 写词条失败 {name}: {out[:200]}", "run")
-            continue
-        done += 1
-        if report:
-            report("engine", None, f"  词条 {i}/{len(items)}：{name}"
-                                   + ("（无变化）" if "no change" in out else ""))
+            if job is not None:
+                try:
+                    job.check()                      # 用户点了停止就立刻收手
+                except Exception:  # noqa: BLE001
+                    stopped = True
+                    break
+            code, out = _run(base + ["new", "common", name, "--type", _TYPE,
+                                     "--intro", _intro_of(path)], env, job)
+            if code != 0 and "already exists" not in out and "skipped" not in out:
+                failed += 1
+                diag.write(f"[kb] 建条目失败 {name}: {out[:200]}", "run")
+                continue
+            code, out = _run(base + ["edit", name, "--file", str(path)], env, job)
+            if code != 0:
+                failed += 1
+                diag.write(f"[kb] 写词条失败 {name}: {out[:200]}", "run")
+                continue
+            done += 1
+            if report:
+                report("engine", None, f"  词条 {i}/{len(items)}：{name}"
+                                       + ("（无变化）" if "no change" in out else ""))
 
-    if done:
-        _run(base + ["refresh"], env, job)           # 重建索引（模型读的就是它）
+        if done:
+            _run(base + ["refresh"], env, job)       # 重建索引（模型读的就是它）
 
     if failed and not done:
         if report:

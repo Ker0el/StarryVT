@@ -189,6 +189,46 @@ def refresh() -> None:
     _cache.clear()
 
 
+def display_adapters() -> list[str]:
+    """注册表里的显示适配器名称（毫秒级，不启动 WMI / nvidia-smi）
+
+    ★ 2026-10-26 客户报障：诊断报告与初始化自检只看 nvidia-smi，AMD 显卡 / 核显的
+      机器一律显示「没有 NVIDIA 显卡或驱动」，客户以为显卡没被识别、反复问。
+      nvidia-smi 只能回答「有没有 NVIDIA」，回答不了「装的是什么卡」；这里补上。
+      只读、离线；拿不到就返回空列表，调用方自行退回原文案。
+    """
+    if os.name != "nt":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+    root = (r"SYSTEM\CurrentControlSet\Control\Class"
+            r"\{4d36e968-e325-11ce-bfc1-08002be10318}")
+    names: list[str] = []
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(key, i)
+                except OSError:
+                    break
+                i += 1
+                if not sub.isdigit():          # 0000/0001/… 才是显卡实例
+                    continue
+                try:
+                    with winreg.OpenKey(key, sub) as sk:
+                        desc = str(winreg.QueryValueEx(sk, "DriverDesc")[0]).strip()
+                except OSError:
+                    continue
+                if desc and desc not in names:
+                    names.append(desc)
+    except OSError:
+        return []
+    return names
+
+
 def missing() -> list[str]:
     """自检：返回缺失的程序名列表"""
     return [n for n in REQUIRED if not find(n)]
