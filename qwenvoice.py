@@ -42,7 +42,7 @@ MODEL_FILES = ("config.json", "model.safetensors",
 
 #: --target 安装的依赖（torch 由引擎运行时提供，不在这里）
 _DEPS = ("qwen-tts==0.1.1", "transformers==4.57.3", "tokenizers==0.22.1",
-         "accelerate==1.12.0", "huggingface_hub==0.35.0", "sox")
+         "accelerate==1.12.0", "huggingface_hub==0.35.0", "sox", "requests")
 _INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
 _MS_API = ("https://modelscope.cn/api/v1/models/{repo}/repo/files"
            "?Revision=master&Recursive=true")
@@ -237,9 +237,16 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
     if not (base / "qwen_synth.py").is_file():
         base = Path(__file__).parent
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(site_dir())
+    # ★ 引擎 python 是 venv；某些环境（PYTHONHOME 被父进程改过、pyvenv.cfg 异常）下
+    #   它会读不到自己的 site-packages，于是 huggingface_hub 导入 requests 失败。
+    #   这里显式把引擎的 site-packages 加进 PYTHONPATH，并清掉会改解释器根目录的变量。
+    eng_site = python_exe().parent.parent / "Lib" / "site-packages"
+    paths = [str(site_dir())] + ([str(eng_site)] if eng_site.is_dir() else [])
+    env["PYTHONPATH"] = os.pathsep.join(paths)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONSTARTUP", None)
     env.pop("HTTP_PROXY", None)
     env.pop("HTTPS_PROXY", None)
     env["NO_PROXY"] = "*"

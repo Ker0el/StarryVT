@@ -1,7 +1,7 @@
 {
-  "version": "6.39",
-  "sha256": "3b3d2acc429d6de76604c942939d102e05ca211cb791d310e2ce7758ac733d87",
-  "notes": "初始化页去掉行内「一键安装」按钮：装引擎、下载器、语音克隆引擎都由一键初始化自动执行，行上只显示进度；缺什么写什么大小（Index 约 15 GB + Qwen 约 5 GB）；正常时不显示程序安装位置。包含 6.38 的切页按钮修复。",
+  "version": "6.40",
+  "sha256": "ce0f7d9a49d3a5acba63fcf576ec6bc2167111b0640c538349eea3a10b806829",
+  "notes": "修复 Qwen3-TTS 合成报 huggingface_hub/get_full_repo_name 的 ImportError：子进程显式加入翻译引擎的 site-packages 到 PYTHONPATH，并清掉 PYTHONHOME；requests 加进 Qwen 依赖。不用重下模型，升级后重跑任务即可。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.39.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.40.exe"
 }
