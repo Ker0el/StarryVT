@@ -1,7 +1,7 @@
 {
-  "version": "6.32",
-  "sha256": "d31e56107a8bd98ac6e8457280414ad884977e55d1deb18c61bdd604ee99dd0f",
-  "notes": "新增「快速模式」（设置 → 翻译与配音 → 翻译模式）：跳过人声分离和 AI 纠错翻译，识别后直接 Google 机翻，配音改用微软 edge-tts，免费、不花 DeepSeek/MiMo 费用，但需联网且术语可能不如标准模式准；默认仍是标准模式。用户导入的字幕和视频旁同名字幕仍优先。安装包说明页去掉「怎么使用」整段和两条换盘说明。",
+  "version": "6.33",
+  "sha256": "2abd363f9bfcbe535488d894b5f20e341e8068a995fce6e3806b91b79e7a1e19",
+  "notes": "「翻译模式」文案定为 标准模式（推荐，翻译精准，速度慢）/ 快速模式（全流程免费，Google 机翻 + 微软配音，速度快）。已有中文字幕的视频（视频旁同名字幕或导入的字幕）会自动跳过翻译，直接配音。安装包说明页精简（去掉「怎么使用」整段和两条换盘说明）。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.32.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.33.exe"
 }

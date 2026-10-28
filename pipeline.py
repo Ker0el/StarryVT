@@ -884,6 +884,10 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3,
         try:
             if not stage and (params.get("source_lang") or "") == "zh-en":
                 return _translate_zh_en(video, params, job, report)
+            if not stage:
+                got = _chinese_subtitle(video, params, report)
+                if got is not None:
+                    return got
             if not stage and _is_fast(params):
                 return _fast_translate(video, params, job, report)
             # 用户导入的字幕/文稿只准备一次：放好了就让引擎跳过识别；
@@ -1350,6 +1354,43 @@ def _find_sidecar_subtitle(video: Path) -> Path | None:
         if p.is_file():
             return p
     return None
+
+
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def _looks_chinese(cues: list) -> bool:
+    """字幕正文是不是中文（用来决定「已有中文字幕」时跳过翻译）。
+
+    只数正文里的汉字占比：中文字幕里夹着软件名、英文缩写很正常，阈值取 30%。
+    """
+    text = " ".join(str(t) for _s, _e, t in cues)
+    chars = len(re.sub(r"\s", "", text))
+    cjk = len(_CJK_RE.findall(text))
+    return chars >= 20 and cjk >= chars * 0.3
+
+
+def _chinese_subtitle(video: Path, params: dict, report) -> Path | None:
+    """视频已经有中文（或中文字幕）时：直接拿来配音，不调翻译。
+
+    2026-10-28 用户问「已有中文字幕的视频能跳过翻译直接配音吗」：只要字幕是
+    中文，识别/机翻/纠错全部没必要。用户导入的字幕优先，其次是视频旁同名文件。
+    """
+    path, _side = _subtitle_source(video, params)
+    if path is None:
+        return None
+    work = _work_dir(video, params)
+    cues = _read_user_cues(path, work, report)
+    if not cues or not _looks_chinese(cues):
+        return None
+    work.mkdir(parents=True, exist_ok=True)
+    body = ytsub.to_srt(cues)
+    (work / f"{video.stem}-raw.srt").write_text(body, encoding="utf-8")
+    final = work / f"{video.stem}.srt"
+    final.write_text(body, encoding="utf-8")
+    report("translate", _map("translate", 1.0),
+           f"已有中文字幕（{path.name}，{len(cues)} 条）：跳过翻译，直接配音")
+    return final
 
 
 def _subtitle_source(video: Path, params: dict) -> tuple[Path | None, bool]:

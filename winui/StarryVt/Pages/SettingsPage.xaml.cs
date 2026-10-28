@@ -128,8 +128,8 @@ public sealed partial class SettingsPage : Page
         // 自绘下拉：显示的字 / 给后端用的值
         // 实测云端 4 路并发的克隆明显快于本机；原来写「本机速度快」是错的。
         // 本机赢在免费、离线、不受限。
-        ModeBox.SetItems([("标准模式（推荐）", "standard"),
-                          ("快速模式（Google 机翻 + 微软配音）", "fast")]);
+        ModeBox.SetItems([("标准模式（推荐，翻译精准，速度慢）", "standard"),
+                          ("快速模式（全流程免费，Google 机翻 + 微软配音，速度快）", "fast")]);
         ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
                                  ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
