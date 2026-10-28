@@ -268,8 +268,11 @@ public sealed class SetupStep : System.ComponentModel.INotifyPropertyChanged
     public Microsoft.UI.Xaml.Visibility DotVisibility => _state is "ok" or "warn" or "doing"
         ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
-    public Microsoft.UI.Xaml.Visibility HasAction => string.IsNullOrEmpty(FixLabel)
-        ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+    /// <summary>行内按钮。装引擎 / 更新下载器 / 装语音克隆引擎这些都是**一键初始化自动做**的，
+    /// 不给行内按钮 —— 否则用户会以为要自己点（2026-10-29 用户反馈「初始化就该自动装」）。</summary>
+    public Microsoft.UI.Xaml.Visibility HasAction =>
+        string.IsNullOrEmpty(FixLabel) || Fix is "engine" or "downloader" or "clone"
+            ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 }
 
 /// <summary>「最近完成」里的一行：翻好的成品，点一下就能打开</summary>

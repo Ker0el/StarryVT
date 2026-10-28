@@ -1,7 +1,7 @@
 {
-  "version": "6.38",
-  "sha256": "7133faaa4ca59b49ad1d7f7413a9a1cef53b4ac8df50e803e7fad6b7d4812486",
-  "notes": "初始化页不再显示程序安装位置；语音克隆引擎按缺失项写大小（Index 约 15 GB + Qwen 约 5 GB）。修复安装中切到设置再回来按钮点不动（不再重建列表，提示正在安装）。其余同 6.37：一键初始化装两个克隆引擎、Qwen 复用引擎 torch 安装。",
+  "version": "6.39",
+  "sha256": "3b3d2acc429d6de76604c942939d102e05ca211cb791d310e2ce7758ac733d87",
+  "notes": "初始化页去掉行内「一键安装」按钮：装引擎、下载器、语音克隆引擎都由一键初始化自动执行，行上只显示进度；缺什么写什么大小（Index 约 15 GB + Qwen 约 5 GB）；正常时不显示程序安装位置。包含 6.38 的切页按钮修复。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.38.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.39.exe"
 }
