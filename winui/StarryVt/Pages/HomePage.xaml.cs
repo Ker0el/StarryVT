@@ -52,6 +52,14 @@ public sealed partial class HomePage : Page
             Backend.StatusReceived -= OnBackendStatus;   // 防重复挂
             Backend.StatusReceived += OnBackendStatus;
             await LoadHomeRowAsync();                    // 「装到哪」那行（要读设置）
+            // ⚠️ 正在装东西时切到设置再回来：**不能重建列表** ——
+            //    重建会把「正在安装…」那一行换成自检报告里的「一键安装」，
+            //    而 _busy 还是 true，按钮点了没反应（2026-10-29 用户实测）。
+            if (_busy || _inSetup)
+            {
+                FootHint.Text = "正在安装中，切到设置不会中断；装完会自动刷新";
+                return;
+            }
             await LoadRealEnvAsync();                    // 这条路可能改 _btnAction
             UpdateHomeRow();                             // 所以放它后面
         };
@@ -771,7 +779,12 @@ public sealed partial class HomePage : Page
             case "downloader":
             case "clone":
                 var row = _steps.FirstOrDefault(x => x.Fix == tag);
-                if (!_busy && row is not null) _ = RunFixAsync(tag, row);
+                if (_busy)
+                {
+                    FootHint.Text = "正在安装中，切到设置不会中断；装完会自动刷新";
+                    return;
+                }
+                if (row is not null) _ = RunFixAsync(tag, row);
                 break;
         }
     }

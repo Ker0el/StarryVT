@@ -139,7 +139,9 @@ def _install_dir() -> dict:
                      f"程序装在临时目录里（{base}）。这个目录会被系统清理掉，程序随时可能"
                      f"整个消失，而且版本更新会一直装错地方。请重新运行安装包，"
                      f"把安装位置选到一个正式的目录（比如 D:\\StarryVT）。")
-    return _item("install_dir", "程序安装位置", OK, str(base))
+    # 正常情况不显示这一项（用户 2026-10-29：初始化页没必要看安装路径）；
+    # 只有真的装进临时目录时才报出来。
+    return None
 
 
 def _engine(c: dict) -> dict:
@@ -494,13 +496,15 @@ def _clones(c: dict) -> dict:
                      f"读不到状态：{type(e).__name__}", "clone", "一键安装")
     if a["ready"] and b["ready"]:
         return _item("clones", "语音克隆引擎", OK, "Index / Qwen3-TTS 都已就绪")
-    miss = []
+    miss, size = [], []
     if not a["ready"]:
         miss.append("Index")
+        size.append("Index 约 15 GB")
     if not b["ready"]:
         miss.append("Qwen3-TTS")
+        size.append("Qwen 约 5 GB")
     return _item("clones", "语音克隆引擎", WARN,
-                 f"还没装：{'、'.join(miss)}（约 20 GB，初始化时一并下载）",
+                 f"还没装：{'、'.join(miss)}（{' + '.join(size)}，初始化时一并下载）",
                  "clone", "一键安装")
 
 
@@ -518,6 +522,7 @@ def check(params: dict | None = None, deep: bool = False) -> dict:
     if deep:
         items.append(_net(c))
 
+    items = [i for i in items if i]          # _install_dir() 正常时返回 None
     bad = sum(1 for i in items if i["state"] == BAD)
     warn = sum(1 for i in items if i["state"] == WARN)
     if bad:
