@@ -1,7 +1,7 @@
 {
-  "version": "6.27",
-  "sha256": "c86382e52b57207185b08ec35216ea011acb0e94c6a144d91fc0812fd381a77f",
-  "notes": "修本地语音克隆「模型只下了一半」被当成装好、任务只报一句「没能开工」：按加载真正会读的 8 个文件判定就绪，缺文件会写明并给出「继续下载」；模型下载支持断点续下并加 ModelScope 兜底（已下好的不重下）；克隆加载失败带上真正原因；诊断报告新增克隆状态",
-  "published": "2026-10-26",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.27.exe"
+  "version": "6.28",
+  "sha256": "4c6a70f6ea8b3171571564021dfdb0ed95950e2985d06d015bb159bf97e4adb1",
+  "notes": "长视频翻译提速：15 分钟以上的片子纠错翻译改走窗口并发（44 分钟素材实测 380 秒 → 137 秒），模型目录 rpm 从 -1 改正数（引擎把 -1 当成 1 次/分钟，之前并发会被排队）；下载画质上限从 720p 提到 1080p（源片有 1080p 时成片不再被砍掉一半像素）；配音时显示「已合成 X/Y · 预计剩余 N 分钟」；设置里的本地语音克隆写出耗时预期（约 1.5 倍视频时长，没有 NVIDIA 卡会提示只能走 CPU）；下载加上 yt-dlp 自带重试，YouTube 音频轨抖动时少等几分钟",
+  "published": "2026-10-28",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.28.exe"
 }

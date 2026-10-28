@@ -13,8 +13,8 @@ namespace Starry.Vt.App.Services;
 /// </summary>
 public interface IRunner
 {
-    /// <summary>阶段（download / translate / dub / burn）+ 总百分比</summary>
-    event Action<string, int>? Progress;
+    /// <summary>阶段（download / translate / dub / burn）+ 总百分比 + 最新一行（进度说明）</summary>
+    event Action<string, int, string>? Progress;
 
     event Action<LogLine>? Line;
 
@@ -70,7 +70,7 @@ public sealed class RealRunner : IRunner
               ?? throw new InvalidOperationException("RealRunner 必须在界面线程上创建");
     }
 
-    public event Action<string, int>? Progress;
+    public event Action<string, int, string>? Progress;
     public event Action<LogLine>? Line;
     public event Action? Finished;
     public event Action<IReadOnlyList<QueueItem>>? Queue;
@@ -197,7 +197,7 @@ public sealed class RealRunner : IRunner
 
         // 阶段为空 = 后端刚起来那份空闲状态，别拿它去刷进度条（会把「准备中」顶掉）
         if (stage.Length > 0 && st.TryGetProperty("percent", out var pe) && pe.TryGetInt32(out var pct))
-            Progress?.Invoke(stage, pct);
+            Progress?.Invoke(stage, pct, Str(st, "message"));
 
         if (st.TryGetProperty("queue", out var q) && q.ValueKind == JsonValueKind.Array)
         {

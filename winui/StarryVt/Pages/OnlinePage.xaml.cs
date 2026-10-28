@@ -547,19 +547,21 @@ public sealed partial class OnlinePage : Page
         PlaylistPane.ItemsSource = _items.ToList();
     }
 
-    void OnProgress(string stage, int pct)
+    void OnProgress(string stage, int pct, string detail)
     {
         if (_running && !BusyRing.IsActive) SetBusy(true);
         Bar.Value = pct;
         PctText.Text = pct + "%";
-        StateText.Text = stage switch
-        {
-            "download" => "正在下载…",
-            "translate" => "正在翻译…",
-            "dub" => "正在配音…",
-            "burn" => "正在烧录字幕…",
-            _ => "处理中…",
-        };
+        StateText.Text = stage == "dub" && !string.IsNullOrWhiteSpace(detail)
+            ? detail
+            : stage switch
+            {
+                "download" => "正在下载…",
+                "translate" => "正在翻译…",
+                "dub" => "正在配音…",
+                "burn" => "正在烧录字幕…",
+                _ => "处理中…",
+            };
         StageText.Text = stage switch
         {
             "download" => "下载视频",

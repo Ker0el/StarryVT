@@ -476,7 +476,7 @@ public sealed class MockRunner : IRunner
     readonly string _resultPath;
     int _i;
 
-    public event Action<string, int>? Progress;
+    public event Action<string, int, string>? Progress;
     public event Action<LogLine>? Line;
     public event Action? Finished;
     public event Action<IReadOnlyList<QueueItem>>? Queue;
@@ -524,7 +524,7 @@ public sealed class MockRunner : IRunner
             return;
         }
         var s = _script[_i++];
-        Progress?.Invoke(s.Stage, s.Pct);
+        Progress?.Invoke(s.Stage, s.Pct, s.Text);
         Line?.Invoke(new LogLine { Text = s.Text, Level = s.Level });
     }
 }

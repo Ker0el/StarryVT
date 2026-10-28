@@ -156,6 +156,21 @@ def status() -> dict:
             "detail": detail}
 
 
+def speed_hint(has_nvidia: bool) -> str:
+    """这台机器上本机克隆会不会明显更慢（给设置页直接显示）。
+
+    克隆环境是 torch 2.8+cu128，只有 NVIDIA 卡能上 GPU；AMD / 核显机器上
+    torch 在 Windows 只能走 CPU，同一段素材会慢 5～10 倍。不是故障，但用户
+    选之前应该知道 —— 2026-10-28 一台 4070 Ti 上 23 分钟视频配音花了 39 分钟。
+    """
+    if has_nvidia:
+        return ("本机克隆是逐句串行合成的，配音时间大约是视频时长的 1.5 倍，"
+                "显卡越弱越慢（RTX 4070 Ti 实测：23 分钟的片子约 35 分钟；"
+                "只出字幕、不配音会快很多）。")
+    return ("这台机器没检测到 NVIDIA 显卡，本机克隆只能用 CPU 跑，视频越长越慢"
+            "（23 分钟的片子可能要 1 小时以上）。建议改用云端克隆。")
+
+
 def _sub_env(params: dict) -> dict:
     """跑子进程用的环境：代理 + HF 镜像 + 强制 UTF-8 输出"""
     env = dict(os.environ)
@@ -320,6 +335,10 @@ def install(params: dict, job: Job, report) -> dict:
 
 
 def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_cb=None) -> dict:
+    # ⚠️ 2026-10-28 实测过「两个进程各跑一半」：4070 Ti 12 GB 上单进程峰值
+    #    9.85 GB，两个进程同时加载后显存 11.7/12.3 GB、GPU 100%，6 分钟一句都
+    #    没合成出来（互相抢显存）。所以这里保持单进程串行 —— 想真并行至少要
+    #    24 GB 的卡，不值当为极少数机器加一条分支。
     """整批合成（模型只加载一次）。
 
     items: [(文本, 输出 wav 路径, speed)]，speed 是 IndexTTS 的 duration_factor

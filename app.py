@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.27"
+APP_VERSION = "6.28"
 
 
 def _base_dir() -> Path:
@@ -764,6 +764,17 @@ class Api:
         import localclone
         st = localclone.status()
         st["engine"] = "local" if cfg.load().get("clone_engine") == "local" else "cloud"
+        if st["engine"] == "local":
+            # 没 NVIDIA 卡时本机克隆只能走 CPU（torch cu128 没有 AMD/核显后端）。
+            # 设置页直接显示在提示里，别等用户跑了 40 分钟才发现。
+            try:
+                import doctor
+                hint = localclone.speed_hint(bool((doctor._gpu_info() or {}).get("name")))
+            except Exception:  # noqa: BLE001 - 查不到显卡就别吓人
+                hint = ""
+            if hint:
+                st["detail"] = f"{st.get('detail') or ''}\n{hint}".strip()
+                st["speed_hint"] = hint
         return st
 
     def clone_install(self) -> dict:
@@ -1180,6 +1191,7 @@ class Api:
         #   （2026-10-21 用户报「配音合成卡住」，实际是日志停在第 300 行）。
         with self._lock:
             st = self._status
+            st["message"] = line          # 最新一行：界面横幅显示「已合成 X/Y · 预计剩余」
             st["log"].append(line)
             if len(st["log"]) > 800:
                 dropped = len(st["log"]) - 500      # 是 301 不是 300（第 801 行才触发）

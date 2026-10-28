@@ -599,7 +599,10 @@ function render(st) {
   if (!st) return;
   const pct = st.percent || 0;
   $("bar").style.width = pct + "%";
-  $("stage-text").textContent = STAGE_NAMES[st.stage] || st.stage || "等待开始";
+  // 配音阶段后端会带「已合成 X/Y · 预计剩余」；本机克隆要跑很久，别只给百分比
+  $("stage-text").textContent = (st.stage === "dub" && st.message)
+    ? st.message
+    : (STAGE_NAMES[st.stage] || st.stage || "等待开始");
   $("pct-text").textContent = pct + "%";
 
   // 状态横幅：一眼区分 在跑 / 出错 / 完成

@@ -123,6 +123,53 @@ def resolve_output_base(params: dict, report=None, create: bool = True) -> Path:
 # 各阶段在总进度条上的区间（%）
 SPAN = {"download": (0, 8), "translate": (8, 55), "dub": (55, 85), "burn": (85, 100)}
 
+#: 纠错翻译的窗口并发数 / 触发时长（秒）
+#: 2026-10-27 实测：≥2 个窗口（约 15 分钟素材）时 4 路并发把 44 分钟的 LLM
+#: 阶段从 380 秒压到 137 秒；单窗口时并发反而慢 18%，所以按素材时长闸住。
+PARALLEL_WINDOWS = 4
+PARALLEL_MIN_SEC = 15 * 60
+
+
+def _parallel_windows_for(seconds: float) -> int:
+    """长视频才开窗口并发（短视频并发反而慢，见 PARALLEL_WINDOWS 的注释）"""
+    try:
+        return PARALLEL_WINDOWS if float(seconds) >= PARALLEL_MIN_SEC else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _llm_parallel_args(seconds: float) -> list[str]:
+    """引擎的并发开关。**两个参数必须一起给**：只有 --llm-parallel-windows
+    时引擎仍走串行驱动（continuity 默认 serial，见引擎 pipeline.py 的
+    choices=["serial", "parallel"]），等于白开。
+
+    代价：parallel 不共享窗口之间链式的上下文（引擎文档
+    docs/llm_harness_behavior.md）。2026-10-27 在合成长片上没测到明显变差，
+    但真实素材没有对照过 —— 所以只在 ≥15 分钟的长片上开。
+    """
+    n = _parallel_windows_for(seconds)
+    return (["--llm-continuity", "parallel", "--llm-parallel-windows", str(n)]
+            if n else [])
+
+
+def _dub_eta_text(done: int, total: int, started: float,
+                  now: float | None = None) -> str:
+    """配音进度文本（界面横幅用）：已合成 X/Y 句 + 按当前速度估算的剩余时间。
+
+    2026-10-28 用户反馈「23 分钟的视频快 1 小时了」—— 配音占了 39 分钟，
+    但界面只有一个百分比，看不出还剩多久。这里给一句人话。
+    """
+    total = max(1, int(total))
+    done = max(0, min(int(done), total))
+    base = f"配音合成 {done}/{total}"
+    if done <= 0 or done >= total:
+        return base
+    now = time.monotonic() if now is None else now
+    remain = max(0.0, (now - started) / done * (total - done))
+    if remain >= 60:
+        return f"{base} · 预计剩余 {int(round(remain / 60))} 分钟"
+    return f"{base} · 预计剩余 {int(round(remain))} 秒"
+
 _RE_STAGE = re.compile(r"^\[(\d)/4\]\s*\S+\s*(?:(\d+)%\s*·\s*(\d+)/(\d+))?")
 _RE_SRT_PATH = re.compile(r"([A-Za-z]:\\[^\r\n]*?\.srt)")
 _RE_YTDL = re.compile(r"\[download\]\s+([\d.]+)%")
@@ -376,6 +423,9 @@ def _ytdlp_args(url: str, out_dir: Path, params: dict | None = None) -> list[str
     #   ① YouTube 那种 mp4+m4a 分开的 ② B 站那种 DASH（扩展名可能是 m4s，别挑扩展名）
     #   ③ 已经是合体的单文件 ④ 最后交给 yt-dlp 自己挑最好的
     # —— 原来只写①/③，B 站上①匹配不上、③常常没有 720p，会直接报"没有合适的格式"
+    # ⚠️ 上限从 720 提到 1080（2026-10-28 用户报「成片比原片糊」）：源视频有
+    #    1080p 时，720p 的选择器在**下载阶段**就把像素砍了一半，后面烧字幕再怎么
+    #    编码也补不回来。实测同一条片子 1080p AV1 只比 720p 大 17 MB，不心疼。
     cmd += ["--encoding", "utf-8",           # 中文站的标题/进度按 UTF-8 出来（默认跟系统代码页，会是乱码）
             # ★ 把**最终文件的真实路径**写下来，别再靠「目录里最新的 mp4」猜
             #   （那个目录是整批共用的 `_下载中`，同名视频 yt-dlp 会跳过并返回 0，
@@ -384,9 +434,13 @@ def _ytdlp_args(url: str, out_dir: Path, params: dict | None = None) -> list[str
             #   下载变成「只模拟」，所以必须一起给 --no-simulate。
             "--no-simulate",
             "--print-to-file", "after_move:filepath", str(out_dir / ".last-file"),
-            "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba"
-                   "/b[height<=720]/b",
+            "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba"
+                   "/b[height<=1080]/b",
             "--merge-output-format", "mp4", "--newline",
+            # 连接层的重试交给 yt-dlp 自己做：以前只有外层「整条命令重跑」，
+            # 2026-10-28 实测音频轨连挂两次，每次都要等它超时，7 分钟下载里
+            # 有 3.5 分钟耗在重跑上（分片会续传，但等待是实打实的）。
+            "--retries", "10", "--fragment-retries", "10",
             "--write-thumbnail", "--convert-thumbnails", "jpg",   # 同时下载封面（转 jpg）
             "-o", str(out_dir / "%(title).80s.%(ext)s"), url]
     return cmd
@@ -1624,6 +1678,9 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
         cmd += ["--llm-retrieval", "native" if params.get("web_search") else "none"]
         if params.get("extra_info"):
             cmd += ["--extra-info", params["extra_info"]]
+        # 长视频才开窗口并发（短视频开了反而慢，阈值见 _parallel_windows_for）。
+        # probe 失败（0 秒）时不开，退回到原来的串行路径。
+        cmd += _llm_parallel_args(dubber.probe_dur(video))
         # 要配音时再加一道「配音稿」约束：中文比英语长，不约束长度就只能事后硬加速
         if params.get("do_dub", True):
             cmd += ["--extra-style", _dub_style_rule()]
@@ -2555,6 +2612,7 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     _en_out = (params.get("source_lang") or "") == "zh-en"
     _style = params.get("tts_style") or (dubber.DEFAULT_STYLE_EN if _en_out
                                          else dubber.DEFAULT_STYLE)
+    _dub_t0 = time.monotonic()
     stats = dubber.dub(srt_copy, video, dubbed, api_key=params["mimo_key"],
                        voice=params.get("voice", "冰糖"), job=job,
                        orig_vol=float(params.get("orig_vol", 0.15) or 0.0),
@@ -2562,8 +2620,9 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
                        speed_bias=speed_bias,
                        clone_ref=clone_ref, clone_local=clone_local, params=params,
                        cache_dir=dubber.default_cache_dir(), src_srt=src_srt,
-                       progress_cb=lambda d, t: report("dub", _map("dub", d / max(1, t)),
-                                                       f"配音合成 {d}/{t}"))
+                       progress_cb=lambda d, t: report(
+                           "dub", _map("dub", d / max(1, t)),
+                           _dub_eta_text(d, t, _dub_t0)))
     _spd_note = (f"，整体语速 +{int(round((speed_bias - 1) * 100))}%"
                  if speed_bias > 1.001 else "")
     report("dub", _map("dub", 1.0),
