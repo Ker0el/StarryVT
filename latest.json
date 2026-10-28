@@ -1,7 +1,7 @@
 {
-  "version": "6.34",
-  "sha256": "e1a8dd2778a6c01fe619f21fd19e958ccb04b6d8f7d4960975fee37b1f11ead7",
-  "notes": "快速模式设置联动：音色列表换成微软音色、克隆引擎只留本机、API Key 整块灰掉、试听按钮禁用；切回标准模式恢复。模式文案：标准模式（推荐，Deepseek精翻+Mimo配音，速度慢）/ 快速模式（全流程免费，Google 机翻 + 微软配音，速度快）。已有中文字幕自动跳过翻译直接配音；安装包说明页精简。",
+  "version": "6.35",
+  "sha256": "6680a2192e416a11586d3bee38f5b1963ec9324e3e2db9e644c52a535894e8eb",
+  "notes": "新增 Qwen3-TTS 本机克隆引擎（设置 → 克隆引擎，Index 下面），按需下载约 6 GB，免费本地离线，有 NVIDIA 显卡自动用 GPU；快速模式勾选克隆时可用本地 Index/Qwen（仍跳过分离、Google 机翻），API Key 提示补充「快速模式无需填写」；「翻完就打开成片」改为「启用」；本机克隆耗时提示精简。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.34.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.35.exe"
 }

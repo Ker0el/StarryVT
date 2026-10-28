@@ -132,7 +132,8 @@ public sealed partial class SettingsPage : Page
                           ("快速模式（全流程免费，Google 机翻 + 微软配音，速度快）", "fast")]);
         ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
-                                 ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
+                                 ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
+                                 ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
 
         // 双语字幕：原文那一行放上面还是下面
@@ -305,6 +306,7 @@ public sealed partial class SettingsPage : Page
 
         LoadDub(s);
         await RefreshCloneAsync();
+        await RefreshQwenAsync();
     }
 
     // ============================================================ 配音
@@ -1145,7 +1147,8 @@ public sealed partial class SettingsPage : Page
             KeysHint.Text = "快速模式不需要 API Key（Google 机翻 + 微软配音）";
             VoiceBox.SetItems(EdgeVoices);
             VoiceBox.SelectTag(_edgeVoice, notify: false);
-            CloneEngineBox.SetItems([("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
+            CloneEngineBox.SetItems([("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
+                                     ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
             CloneEngineBox.Select(0, notify: false);
             PreviewVoiceButton.IsEnabled = false;
             ToolTipService.SetToolTip(PreviewVoiceButton, "快速模式用微软音色，暂不支持试听");
@@ -1154,11 +1157,12 @@ public sealed partial class SettingsPage : Page
         {
             KeysCard.Opacity = 1.0;
             KeysCard.IsHitTestVisible = true;
-            KeysHint.Text = "只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。";
+            KeysHint.Text = "只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。（快速模式无需填写）";
             VoiceBox.SetItems(Mock.Voices.Select(v => (v, v)));
             VoiceBox.SelectTag(_voiceStd, notify: false);
             CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
-                                     ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
+                                     ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
+                                     ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
             CloneEngineBox.SelectTag(_cloneEngineStd, notify: false);
             PreviewVoiceButton.IsEnabled = CloneCheck.IsChecked != true;
             ToolTipService.SetToolTip(PreviewVoiceButton, "合成一句样音，听听这个音色");
@@ -1249,6 +1253,9 @@ public sealed partial class SettingsPage : Page
     bool _cloneReady;
     bool _cloneInstalled;
     bool _cloneBusy;
+    bool _qwenReady;
+    bool _qwenInstalled;
+    bool _qwenBusy;
 
     // 快速模式的微软音色（和后端 dubber.EDGE_VOICES 保持一致）
     static readonly (string, string)[] EdgeVoices =
@@ -1383,6 +1390,120 @@ public sealed partial class SettingsPage : Page
             CloneEngineBox.Select(0, notify: false);
         }
         await RefreshCloneAsync();
+    }
+
+    // ---------- Qwen3-TTS（本地，按需下载） ----------
+
+    async Task RefreshQwenAsync()
+    {
+        var r = await Backend.CallAsync("qwen_status", null, 30_000);
+        if (r is null)
+        {
+            SetHint(QwenHint, "读不到 Qwen3-TTS 的状态：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应"), false);
+            return;
+        }
+        _qwenReady = r.Value.TryGetProperty("ready", out var ok) && ok.ValueKind == JsonValueKind.True;
+        _qwenInstalled = r.Value.TryGetProperty("installed", out var ins) && ins.ValueKind == JsonValueKind.True;
+        QwenInstallBtn.Visibility = _qwenReady ? Visibility.Collapsed : Visibility.Visible;
+        QwenRemoveBtn.Visibility = _qwenReady ? Visibility.Visible : Visibility.Collapsed;
+        QwenInstallBtn.Content = _qwenBusy ? "正在下载…" : (_qwenInstalled ? "继续下载" : "下载并启用");
+        QwenInstallBtn.IsEnabled = !_qwenBusy;
+        if (!_qwenBusy) SetHint(QwenHint, Str(r.Value, "detail"), _qwenReady ? true : null);
+    }
+
+    async void QwenInstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (_qwenBusy) return;
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "下载 Qwen3-TTS（本地）？",
+            Content = "约 6 GB：运行环境 + 两个 0.6B 模型。\n"
+                    + "装在本机、以后不联网也能用；有 NVIDIA 显卡会自动用 GPU，没有就走 CPU（会慢很多）。\n"
+                    + "随时可以在这一行删掉，空间会还回来。",
+            PrimaryButtonText = "开始下载",
+            CloseButtonText = "以后再说",
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+
+        _qwenBusy = true;
+        QwenInstallBtn.Content = "正在下载…";
+        QwenInstallBtn.IsEnabled = false;
+        Backend.StatusReceived += OnQwenStatus;
+        SetHint(QwenHint, "正在准备下载…", null);
+
+        var r = await Backend.CallAsync("qwen_install", null, 60_000);
+        bool started = r is not null
+            && (!r.Value.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.False);
+        if (!started)
+        {
+            var err = r is null
+                ? (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应")
+                : Str(r.Value, "error");
+            SetHint(QwenHint, "没能开始：" + (err.Length > 0 ? err : "后端没有响应"), false);
+            Backend.StatusReceived -= OnQwenStatus;
+            _qwenBusy = false;
+            await RefreshQwenAsync();
+        }
+    }
+
+    void OnQwenStatus(JsonElement st)
+    {
+        DispatcherQueue.TryEnqueue(() => HandleQwenStatus(st));
+    }
+
+    async void HandleQwenStatus(JsonElement st)
+    {
+        if (!_qwenBusy) return;
+        bool running = st.TryGetProperty("running", out var run) && run.ValueKind == JsonValueKind.True;
+        string stage = Str(st, "stage");
+        if (!running)
+        {
+            if (stage != "done" && stage != "error" && stage != "cancelled") return;
+            if (stage == "done") SetHint(QwenHint, "Qwen3-TTS 已装好", true);
+            else if (stage == "error")
+            {
+                string err = Str(st, "error");
+                SetHint(QwenHint, "下载失败：" + (err.Length > 0 ? err : "看日志目录里的详细错误"), false);
+            }
+            else SetHint(QwenHint, "已取消", false);
+            Backend.StatusReceived -= OnQwenStatus;
+            _qwenBusy = false;
+            await RefreshQwenAsync();
+            return;
+        }
+        int pct = st.TryGetProperty("percent", out var p) && p.TryGetInt32(out var n) ? n : 0;
+        string line = "";
+        if (st.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.Array
+            && log.GetArrayLength() > 0)
+            line = log[log.GetArrayLength() - 1].GetString() ?? "";
+        SetHint(QwenHint, $"下载中… {pct}%" + (line.Length > 0 ? "\n" + line : ""), null);
+    }
+
+    async void QwenRemove_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "删掉 Qwen3-TTS？",
+            Content = "会把下载的模型和运行环境一起删掉（腾出几个 GB）。以后想用再重新下载。",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "算了",
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+        var r = await Backend.CallAsync("qwen_uninstall", null, 120_000);
+        if (r is null)
+        {
+            SetHint(QwenHint, "删除失败：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应"), false);
+            return;
+        }
+        if (CloneEngineBox.SelectedTag == "qwen")
+        {
+            CloneCheck.IsChecked = false;
+            _cloneEngineStd = "local";
+            CloneEngineBox.SelectTag("local", notify: false);
+        }
+        await RefreshQwenAsync();
     }
 
     /// <summary>填 key 的框失焦了：存一下、顺手验一次（不再需要「测试」按钮）。</summary>

@@ -56,7 +56,7 @@
                         BorderBrush="{ThemeResource PanelStrokeBrush}" Padding="0">
                     <StackPanel>
                         <TextBlock Text="API Key" Style="{StaticResource GroupTitleStyle}" />
-                        <TextBlock x:Name="KeysHint" Text="只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。"
+                        <TextBlock x:Name="KeysHint" Text="只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。（快速模式无需填写）"
                                    FontSize="12.5" Opacity="0.65" Margin="18,4,18,12" TextWrapping="Wrap" />
                         <Border Style="{StaticResource RowDividerStyle}" />
 
@@ -271,6 +271,29 @@
                                 <Button x:Name="CloneInstallBtn" Content="下载并启用" Click="CloneInstall_Click" />
                                 <Button x:Name="CloneRemoveBtn" Content="删除" Visibility="Collapsed"
                                         Click="CloneRemove_Click" />
+                            </StackPanel>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
+                        <!-- Qwen3-TTS（可选，按需下载，约 6 GB） -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Qwen3-TTS（本地）" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Text="免费、本地、离线 · 约 6 GB · 有 NVIDIA 显卡会自动用 GPU"
+                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="QwenHint" FontSize="12.5" Margin="0,4,0,0"
+                                           TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                        VerticalAlignment="Top">
+                                <Button x:Name="QwenInstallBtn" Content="下载并启用" Click="QwenInstall_Click" />
+                                <Button x:Name="QwenRemoveBtn" Content="删除" Visibility="Collapsed"
+                                        Click="QwenRemove_Click" />
                             </StackPanel>
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
@@ -770,7 +793,7 @@
                                 <TextBlock Text="只对单个视频生效，批量翻译不打开"
                                            Style="{StaticResource RowDescStyle}" />
                             </StackPanel>
-                            <CheckBox x:Name="AutoOpenCheck" Grid.Column="1" Content="翻完就打开成片"
+                            <CheckBox x:Name="AutoOpenCheck" Grid.Column="1" Content="启用"
                                       VerticalAlignment="Center" Click="AutoOpen_Changed" />
                         </Grid>
                     </StackPanel>

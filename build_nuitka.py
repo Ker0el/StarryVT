@@ -100,6 +100,8 @@ def main() -> int:
         #   「本地语音克隆」必然失败（先是找不到文件，摆到根目录后就是上面那个 ImportError）。
         "--include-data-file=clone_synth.py=clone/clone_synth.py",
         "--include-data-file=clone_download.py=clone/clone_download.py",
+        "--include-data-file=qwen_synth.py=qwen_synth.py",
+        "--include-data-file=qwen_fetch.py=qwen_fetch.py",
         "--include-raw-dir=.tools/bin=bin",  # ★ 见文件头：这里不能用 include-data-dir
         "--include-data-dir=wheelhouse=wheelhouse",
         "--include-data-dir=engine_whl=engine_whl",  # 翻译引擎本体 + 依赖（离线安装）
@@ -145,6 +147,11 @@ def main() -> int:
     for f in ("clone_synth.py", "clone_download.py"):
         if not (DIST / "clone" / f).is_file():
             print(f"!! 包里缺克隆辅助脚本：clone/{f}（用户点本地语音克隆会报「模型没加载起来」）")
+            return 1
+    # Qwen 的两个脚本放在根目录（qwenvoice.py 用 sys._MEIPASS / __file__ 的同级找）
+    for f in ("qwen_synth.py", "qwen_fetch.py"):
+        if not (DIST / f).is_file():
+            print(f"!! 包里缺 Qwen 辅助脚本：{f}（Qwen3-TTS 会装不上 / 合不成）")
             return 1
 
     size = sum(f.stat().st_size for f in DIST.rglob("*") if f.is_file()) / 1048576

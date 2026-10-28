@@ -552,6 +552,7 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
         progress_cb=None, style: str = DEFAULT_STYLE,
         clone_ref: Path | str | None = None, clone_local: bool = False,
         edge: bool = False, edge_voice: str = EDGE_DEFAULT,
+        qwen_local: bool = False, qwen_voice: str = "",
         params: dict | None = None, src_srt: Path | str | None = None,
         merge_sentences: bool = True, trim_silence: bool = True) -> dict:
     """SRT + 视频 -> 配音成片。返回统计 dict。progress_cb(done, total) 汇报合成进度。
@@ -563,6 +564,8 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     clone_local    True = 本机那套（IndexTTS-2.5，免费不联网，要先下载），
                    False = MiMo 云端克隆（默认）
     edge           True = 快速模式，用微软 edge-tts（免费在线；不克隆音色）
+    qwen_local     True = 本机 Qwen3-TTS（免费离线）；qwen_voice 非空 = 内置音色，
+                   空 = 用 clone_ref 克隆
     src_srt        **源语言**字幕（`<任务名>-raw.srt`）。给上它才能判断「字幕这一行的
                    换行处是不是句子边界」，从而把被切开的半句话并成一次合成。
                    不给就退回「一行一句」，只是听着会比较断。见 `_cont_flags`。
@@ -597,6 +600,12 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
         # 快速模式：不克隆、不走 MiMo；缓存键带上音色名
         voice_key = f"edge:{edge_voice}"
         jobs = EDGE_JOBS
+    if qwen_local:
+        if qwen_voice:
+            voice_key = f"qwen:{qwen_voice}"
+        else:
+            raw = Path(clone_ref).read_bytes() if clone_ref else b""
+            voice_key = "qwen-clone:" + hashlib.sha1(raw).hexdigest()[:8]
     if clone_ref and not edge:
         voice_arg, voice_key = _voice_data_uri(Path(clone_ref))
         model = VOICECLONE_MODEL          # ← 克隆必须换模型名，否则报 Unknown voice
@@ -620,7 +629,21 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     # 克隆那条路更容易撞限流，多给两次重试（每次退避最长 45 秒）
     tries = 6 if clone_ref else 4
     try:
-        if edge:
+        if qwen_local:
+            import qwenvoice
+            items = [(units[i]["text"], paths[i], qwen_voice) for i in todo]
+            base = len(units) - len(todo)
+            res = qwenvoice.synth(
+                items, clone_ref, params or {}, job, work,
+                progress_cb=(lambda d, _t: progress_cb(base + d, len(units)))
+                if progress_cb else None,
+                preset=bool(qwen_voice))
+            if res["fail"]:
+                raise RuntimeError(f"本机 Qwen 配音失败 {res['fail']} 句")
+            done = len(units)
+            if progress_cb:
+                progress_cb(done, len(units))
+        elif edge:
             futs = {ex.submit(synth_edge, units[i]["text"], paths[i], edge_voice): i
                     for i in todo}
             done = len(units) - len(todo)
@@ -741,7 +764,7 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
                 _cache_name(units[i]["text"], voice_key, "_fast", style=FASTER_STYLE))
             if fp2.exists() and fp2.stat().st_size > 500:
                 pass                          # 上次已经合成过，直接用（别重复调 API）
-            elif not clone_local and not edge and synth_mimo(
+            elif not clone_local and not edge and not qwen_local and synth_mimo(
                     units[i]["text"], fp2, api_key, voice_arg,
                     style=FASTER_STYLE, model=model, params=params) is None:
                 resynth += 1

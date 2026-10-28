@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.34"
+APP_VERSION = "6.35"
 
 
 def _base_dir() -> Path:
@@ -829,6 +829,67 @@ class Api:
             cfg.save({"clone_engine": "cloud", "tts_clone": False})
         diag.write("本地语音克隆已删除", "app")
         return {"ok": True, **localclone.status()}
+
+    # ---------------- Qwen3-TTS（本地，可选，约 6 GB） ----------------
+
+    def qwen_status(self) -> dict:
+        import qwenvoice
+        st = qwenvoice.status()
+        st["engine"] = cfg.load().get("clone_engine") or "local"
+        return st
+
+    def qwen_install(self) -> dict:
+        """下载并安装 Qwen3-TTS 运行时 + 两个 0.6B 模型（约 6 GB）。"""
+        with self._lock:
+            if self._status["running"]:
+                return {"ok": False, "error": "有任务正在运行，等它完成后再装"}
+            if getattr(self, "_qwen_installing", False):
+                return {"ok": False, "error": "已经有一个安装在跑了"}
+            self._qwen_installing = True
+            self._status = {"running": True, "stage": "clone", "percent": 0,
+                            "log": ["开始安装本机 Qwen3-TTS…"], "result": None, "error": ""}
+        threading.Thread(target=self._install_qwen, daemon=True).start()
+        return {"ok": True}
+
+    def _install_qwen(self) -> None:
+        import qwenvoice
+        try:
+            params = cfg.load()
+            job = Job()
+            with self._lock:
+                self._job = job
+            st = qwenvoice.install(params, job, self._report)
+            with self._lock:
+                self._status.update(running=False, stage="done", percent=100, result=st)
+            self._report("clone", 100, "Qwen3-TTS 安装完成")
+        except Cancelled:
+            with self._lock:
+                self._status.update(running=False, stage="cancelled")
+            self._report("cancelled", None, "⏹ 已取消（已下好的部分留着，下次接着装）")
+        except Exception as e:  # noqa: BLE001
+            msg = f"{type(e).__name__}: {e}"
+            diag.write_exception(e, "Qwen3-TTS 安装")
+            with self._lock:
+                self._status.update(running=False, stage="error", error=msg)
+            self._report("error", None, f"❌ {msg}（详细日志见 logs 目录）")
+        finally:
+            self._qwen_installing = False
+
+    def qwen_uninstall(self) -> dict:
+        """删掉 Qwen3-TTS（腾空间用）"""
+        import shutil
+        import qwenvoice
+        with self._lock:
+            if self._status["running"]:
+                return {"ok": False, "error": "有任务在跑，先等它完成"}
+        try:
+            shutil.rmtree(qwenvoice.home(), ignore_errors=True)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if cfg.load().get("clone_engine") == "qwen":
+            cfg.save({"clone_engine": "local"})
+        diag.write("Qwen3-TTS 已删除", "app")
+        return {"ok": True, **qwenvoice.status()}
 
     def pick_video(self) -> str:
         r = self._window.create_file_dialog(_DIALOG_OPEN, file_types=VIDEO_TYPES)
