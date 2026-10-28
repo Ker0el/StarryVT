@@ -49,7 +49,7 @@ DEFAULTS: dict = {
     "output_dir": "",                    # 空 = 视频旁边的 output\（链接下载用软件目录）
     # True = 输出目录名和成片文件名用**翻译后的**名字（原文件不改）。
     # 封面之外，文件名/文件夹名也常常是外语；每个视频多一次很短的 DeepSeek 请求。
-    "translate_names": False,
+    "translate_names": True,
     # 用户 2026-10-15：翻完直接打开成片，**默认开**
     # ⚠️ 只对新装机有效 —— save() 会把整份配置写回文件，老用户文件里已经存着 false。
     "auto_open": True,                   # 单个视频翻译完自动用默认播放器打开成片（批量不打开）
@@ -59,7 +59,7 @@ DEFAULTS: dict = {
     "burn_subs": True,
     "download_only": False,              # True = 只下载/输出视频，跳过翻译、配音和压制（由 default_output=download 触发）
     "asr_only": False,                   # True = 只提取原文字幕（ASR），不调 DeepSeek、不配音、不压制
-    "orig_vol": 0.15,                    # 成片里保留的原声音量（0 = 纯中文，1 = 与原声等响）
+    "orig_vol": 0.0,                     # 成片里保留的原声音量（0 = 纯中文，1 = 与原声等响；2026-10-28 默认改为 0%）
     "tts_style": "",                     # 配音「怎么读」的风格指令；空 = 用 dubber.DEFAULT_STYLE
     "tts_speed": "auto",                 # 配音整体语速：auto = 标准语速，只按每句时长自动适配 / 5 = 整体 +5% / 10 = 整体 +10%
     "subtitle_font": "Starry Han Sans Light",  # 烧录字幕字体（随包的思源黑体 Light，见 subtitle_fonts.py）
@@ -68,14 +68,13 @@ DEFAULTS: dict = {
     "subtitle_spacing": 0,               # 字间距（px，负数更紧）
     "subtitle_color": "#FFFFFF",         # 字幕颜色（#RRGGBB）
     "subtitle_outline": 2.2,             # 描边粗细
-    "subtitle_outline_color": "",        # 描边颜色；空 = 自动（浅色字幕配黑描边、深色配白描边）
+    "subtitle_outline_color": "#000000", # 描边颜色；默认黑色（2026-10-28 用户定，界面不再有「自动」）
     "subtitle_margin_v": 30,             # 距画面底部的距离
     # 双语字幕（用户 2026-10-21 要求）：原文 + 中文两行一起烧进视频。
     # 只影响**烧录进成片**的字幕；输出目录里那份 .srt 仍然是纯中文（配音要读它）。
     "subtitle_bilingual": False,
     "subtitle_bilingual_order": "src_top",   # src_top = 原文在上；src_bottom = 原文在下
     "subtitle_bilingual_scale": 80,          # 原文行字号 = 中文字号的百分之多少
-    "auto_subtitle": False,              # True = 视频旁边有同名 .srt/.vtt 时直接拿来翻译，跳过语音识别
     "subtitle_review": False,            # True = 单个视频翻译完成后暂停，双语对照检查译文，改完继续配音/压制
     "tts_clone": False,                  # True = 用原视频里的人声复刻音色来配音（见 clone_engine）
     "clone_engine": "local",             # 音色克隆用哪个引擎：local = 本机 IndexTTS-2.5（默认，免费、不联网，
@@ -90,7 +89,7 @@ DEFAULTS: dict = {
     "auto_update_check": True,           # 启动时自动检查更新
     # 翻译时自动学习术语并写回词条库（引擎 `--knowledge update`；关掉 = 只读不写）。
     # 「越用越准」的来源之一，见 builtin_kb.py。会多花一轮 LLM 调用，所以留了开关。
-    "learn_terms": True,
+    "learn_terms": False,
     "auto_update_downloader": True,      # 启动时自动更新随包的下载器（yt-dlp，见 ytdlp.py）
     "ytdlp_channel": "",                 # 下载器通道：空/stable = 官方稳定版；nightly = 每日构建（反爬自救后自动写入）
     "ytdlp_version": "",                 # 已装下载器版本（更新后写入，界面显示用）
@@ -121,7 +120,7 @@ def load() -> dict:
     # 统一归到随包字体；真正选过字体文件的（有 font_file）原样保留。
     if not (data.get("subtitle_font_file") or "").strip():
         data["subtitle_font"] = "Starry Han Sans Light"
-    # 8.3 短路径（D:\AI_PRO~1\…）在设置里一旦钉住就永远回不来 —— 重启、重装都不改。
+    # 8.3 短路径（D:\PROGRA~1\…）在设置里一旦钉住就永远回不来 —— 重启、重装都不改。
     # 读出来统一换成长路径；第一次命中时顺手把文件也改掉（只做一次，load 是高频调用）。
     global _healed
     changed = False

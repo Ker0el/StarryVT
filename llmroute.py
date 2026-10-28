@@ -63,8 +63,7 @@ _DEEPSEEK_ROWS = (
     # ⚠️ rpm 必须是**正数**：引擎的 rate_limit 把 -1 当成 `max(1, int(-1*0.9))`
     #    = 1 次/分钟（只有 tpm/rpd/tpd 认 -1 是"不限"）。写成 -1 时窗口并发会被
     #    排成每 61 秒一个请求，开了 `--llm-parallel-windows` 也等于没开
-    #    （2026-10-27 实测：44 分钟素材 3 窗口，串行 380 秒 → 并发 137 秒，
-    #      前提正是把 rpm 写成正数）。
+    #    （2026-10-27 实测：多个窗口时并发能快约 2.8 倍，前提正是把 rpm 写成正数）。
     "DeepSeek Flash|deepseek-flash|1000000|384000|1000000|false|false|false|low,low,low|1.0|"
     "60|-1|-1|-1|false|75|false|false||",
     "ds-pro|deepseek|openai_compat|https://api.deepseek.com|FINESUB_KEY_DEEPSEEK|"

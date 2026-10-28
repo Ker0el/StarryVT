@@ -66,7 +66,7 @@ async function boot() {
   // 背景亮度（设置 → 输出与界面）：跟着设置走，默认 55%
   $("set-bgopacity").value = Math.round((s.bg_opacity ?? 0.55) * 100);
   applyBgOpacity();
-  const ov = Math.round((s.orig_vol ?? 0.15) * 100);
+  const ov = Math.round((s.orig_vol ?? 0.0) * 100);
   $("rng-orig").value = ov;
   $("orig-val").textContent = ov + "%";
   fillSlider("rng-orig", ov);

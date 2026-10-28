@@ -124,8 +124,8 @@ def resolve_output_base(params: dict, report=None, create: bool = True) -> Path:
 SPAN = {"download": (0, 8), "translate": (8, 55), "dub": (55, 85), "burn": (85, 100)}
 
 #: 纠错翻译的窗口并发数 / 触发时长（秒）
-#: 2026-10-27 实测：≥2 个窗口（约 15 分钟素材）时 4 路并发把 44 分钟的 LLM
-#: 阶段从 380 秒压到 137 秒；单窗口时并发反而慢 18%，所以按素材时长闸住。
+#: 2026-10-27 实测：≥2 个窗口（约 15 分钟素材）时 4 路并发把 LLM 阶段压缩到
+#: 原来的三分之一左右；单窗口时并发反而慢 18%，所以按素材时长闸住。
 PARALLEL_WINDOWS = 4
 PARALLEL_MIN_SEC = 15 * 60
 
@@ -156,7 +156,7 @@ def _dub_eta_text(done: int, total: int, started: float,
                   now: float | None = None) -> str:
     """配音进度文本（界面横幅用）：已合成 X/Y 句 + 按当前速度估算的剩余时间。
 
-    2026-10-28 用户反馈「23 分钟的视频快 1 小时了」—— 配音占了 39 分钟，
+    2026-10-28 用户反馈「一条长视频快 1 小时了」—— 配音是大头，
     但界面只有一个百分比，看不出还剩多久。这里给一句人话。
     """
     total = max(1, int(total))
@@ -1282,12 +1282,25 @@ def _plant_user_cues(work: Path, video: Path, cues, source: str, report) -> bool
 
 
 def _find_sidecar_subtitle(video: Path) -> Path | None:
-    """视频旁边同名的 .srt / .vtt（设置里开了「自动使用视频旁的字幕」才用）。"""
+    """视频旁边同名的 .srt / .vtt（自动识别，不需要设置开关；2026-10-28 用户定）。"""
     for ext in (".srt", ".vtt"):
         p = video.with_suffix(ext)
         if p.is_file():
             return p
     return None
+
+
+def _subtitle_source(video: Path, params: dict) -> tuple[Path | None, bool]:
+    """用户导入的字幕优先；没有就自动用视频旁的同名 .srt / .vtt。
+
+    返回 (路径, 是否是「视频旁边自动找到的」)。第二个值只用来决定要不要在日志
+    里说一句「发现视频旁的字幕」。
+    """
+    path = _user_subtitle_file(params)
+    if path is not None:
+        return path, False
+    side = _find_sidecar_subtitle(video)
+    return side, side is not None
 
 
 def _prepare_user_subtitle(video: Path, params: dict, job: Job, report) -> bool:
@@ -1297,11 +1310,9 @@ def _prepare_user_subtitle(video: Path, params: dict, job: Job, report) -> bool:
     照常走识别。纯文稿（.txt）没有时间轴，会先让引擎只跑 ASR（--stage raw-srt），
     再把文稿按时间轴摊到识别出来的每一段上。
     """
-    path = _user_subtitle_file(params)
-    if path is None and params.get("auto_subtitle"):
-        path = _find_sidecar_subtitle(video)
-        if path is not None:
-            report("translate", None, f"发现视频旁的字幕：{path.name}，直接用它")
+    path, sidecar = _subtitle_source(video, params)
+    if sidecar and path is not None:
+        report("translate", None, f"发现视频旁的字幕：{path.name}，直接用它")
     if path is None:
         if (params.get("subtitle_file") or "").strip():
             report("translate", None,
@@ -1670,7 +1681,7 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
         # 跑完之后再做一轮「知识更新」，把这次学到的术语写回用户的词条库 —— 这是
         # 「越用越准」的来源（打底那批见 builtin_kb.py）。默认开，设置里可关。
         # 0.6 起三档是 none / read / update（旧的 collect 已改名 read）
-        cmd += ["--knowledge", "update" if params.get("learn_terms", True) else "read"]
+        cmd += ["--knowledge", "update" if params.get("learn_terms", False) else "read"]
         # 默认走纯文本路由：不把音视频上传到 Gemini（免费额度/地区限制下极易 400 失败），
         # 只用文本 LLM 纠错翻译；需要视频语境纠错时可把 settings 的 video_context 设为 True
         cmd += ["--llm-media", "video" if params.get("video_context") else "text"]
@@ -1883,7 +1894,7 @@ def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
         outline=float(p.get("subtitle_outline") or 2.2),
         spacing=float(p.get("subtitle_spacing") or 0),
         color=str(p.get("subtitle_color") or "#FFFFFF"),
-        outline_color=str(p.get("subtitle_outline_color") or ""),
+        outline_color=str(p.get("subtitle_outline_color") or "#000000"),
         bilingual=bool(src_for_ass),
         src_srt=src_for_ass,
         src_order=str(p.get("subtitle_bilingual_order") or "src_top"),
@@ -2615,7 +2626,7 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     _dub_t0 = time.monotonic()
     stats = dubber.dub(srt_copy, video, dubbed, api_key=params["mimo_key"],
                        voice=params.get("voice", "冰糖"), job=job,
-                       orig_vol=float(params.get("orig_vol", 0.15) or 0.0),
+                       orig_vol=float(params.get("orig_vol", 0.0) or 0.0),
                        style=_style,
                        speed_bias=speed_bias,
                        clone_ref=clone_ref, clone_local=clone_local, params=params,

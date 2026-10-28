@@ -43,12 +43,12 @@ _cache: dict[str, str | None] = {}
 
 
 def long_path(p) -> Path:
-    """把 8.3 短路径换成真实长路径（`D:\\AI_PRO~1` → `D:\\AI_Project`）；判不了就原样返回
+    """把 8.3 短路径换成真实长路径（`D:\\PROGRA~1` → `D:\\Program Files`）；判不了就原样返回
 
     ★ 为什么需要（2026-10-24）：Windows 在启用 8dot3 的盘上给每个目录准备了短名，
       而 `sys.executable` 返回的是**进程启动时用的那条路径**。用短路径起的进程，
       `app_dir()` / `paths.app_dir()` 就都是短的；这串再被写进设置（`finesub_home`）
-      就永远回不来了 —— 本机日志里 `data\\engine` 一直是 `D:\\AI_PRO~1\\…`，
+      就永远回不来了 —— 本机日志里 `data\\engine` 一直是 `D:\\PROGRA~1\\…`，
       重启、重装都没用，只有把文件里那串改掉才行。
 
     路径不存在（移动硬盘拔了之类）时 GetLongPathNameW 会失败，这时原样返回，
@@ -83,7 +83,7 @@ def exec_path() -> Path:
 
     ★ 凡是「从 `sys.executable` 推目录」的地方都用这个，别再直接写
       `Path(sys.executable)` —— 用短路径启动时那串会渗进输出目录、任务目录、
-      诊断报告和设置里，用户在界面上看到的就是 `D:\\AI_PRO~1\\…`。
+      诊断报告和设置里，用户在界面上看到的就是 `D:\\PROGRA~1\\…`。
     """
     return long_path(Path(sys.executable))
 
@@ -119,7 +119,7 @@ def is_packaged() -> bool:
 def app_dir() -> Path:
     """程序目录（打包后是 StarryVT.exe 所在目录，开发时是源码目录）
 
-    打包态要过一遍 long_path：程序若是用 8.3 短路径启动的（`D:\\AI_PRO~1\\…`），
+    打包态要过一遍 long_path：程序若是用 8.3 短路径启动的（`D:\\PROGRA~1\\…`），
     `sys.executable` 就是短的，跟着算出来的数据目录也会是短的。见 long_path 的说明。
     """
     if is_packaged():

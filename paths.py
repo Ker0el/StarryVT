@@ -49,7 +49,7 @@ def app_dir() -> Path:
     """程序根目录（打包后是 backend 的上一层；开发时是源码目录）
 
     打包态要先过 long_path：用 8.3 短路径起的进程，`sys.executable` 返回的就是
-    短路径，`<app>\\data\\engine` 会跟着变成 `D:\\AI_PRO~1\\…` 并被写进设置。
+    短路径，`<app>\\data\\engine` 会跟着变成 `D:\\PROGRA~1\\…` 并被写进设置。
     """
     import tools
     if tools.is_packaged():
@@ -113,16 +113,16 @@ def default_root() -> Path:
     global _default_cache
     if _default_cache is not None:
         return _default_cache
-    legacy = legacy_root()
+    legacy = _long(legacy_root())
     if _has_legacy_data(legacy):
         _default_cache = legacy
         return legacy
-    adj = app_data_root()
+    adj = _long(app_data_root())
     if not _in_temp(adj) and _usable_root(adj):
         _default_cache = adj
         return adj
-    _default_cache = legacy
-    return legacy
+    _default_cache = _long(legacy)
+    return _default_cache
 
 
 def custom_root() -> str:
@@ -163,12 +163,26 @@ def root() -> Path:
     raw = _custom()
     if not raw:
         return default_root()
-    p = Path(raw).expanduser()
+    p = _long(Path(raw).expanduser())
     try:
         p.mkdir(parents=True, exist_ok=True)
         return p
     except OSError:
         return default_root()
+
+
+def _long(p: Path) -> Path:
+    r"""换成真实长路径（`D:\PROGRA~1` → `D:\Program Files`）。
+
+    2026-10-28 用户在设置页看到「位置：D:\PROGRA~1\…\data\voiceclone」——
+    数据根目录是跟着程序目录算的，进程若用短路径启动，这条链会一路带短名。
+    tools.long_path 是幂等的：本来就是长路径时原样返回。
+    """
+    try:
+        import tools
+        return tools.long_path(p)
+    except Exception:  # noqa: BLE001 - 取不到就原样用
+        return p
 
 
 def sub(name: str) -> Path:

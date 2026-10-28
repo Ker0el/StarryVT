@@ -209,7 +209,6 @@ def starryvt_translate(
     extra_info: str = "",
     batch: bool = False,
     batch_kind: Literal["folder", "playlist"] = "folder",
-    auto_subtitle: bool = False,
 ) -> dict:
     """在本机启动一个星译翻译任务，立即返回 job_id，不会阻塞到任务结束。
 
@@ -224,7 +223,6 @@ def starryvt_translate(
         extra_info: 给翻译模型的背景信息；可以从 starryvt_probe 的 extra 取。
         batch: 是否批量处理文件夹或合集链接。
         batch_kind: 批量来源类型；文件夹用 folder，YouTube 合集用 playlist。
-        auto_subtitle: 视频旁边有同名 .srt / .vtt 时是否直接拿来翻译。
     """
     source = (source or "").strip()
     if not source:
@@ -271,7 +269,6 @@ def starryvt_translate(
         "tts_style": tts_style,
         "tts_speed": tts_speed,
         "extra_info": extra_info,
-        "auto_subtitle": auto_subtitle,
         # 字幕检查是界面里的暂停点，MCP 调用没有人点「继续」——一律不停，
         # 免得 Agent 的任务卡在等一个不会来的确认。批量本来也不停。
         "subtitle_review": False,

@@ -126,8 +126,8 @@ public sealed partial class SettingsPage : Page
         BuildAccentRow();
 
         // 自绘下拉：显示的字 / 给后端用的值
-        // 2026-10-28 实测：4 路并发的云端克隆 278 句约 4.4 分钟，本机（4070 Ti）
-        // 38.7 分钟 —— 原来写「本机速度快」是错的。本机赢在免费、离线、不受限。
+        // 实测云端 4 路并发的克隆明显快于本机；原来写「本机速度快」是错的。
+        // 本机赢在免费、离线、不受限。
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
                                  ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
@@ -260,9 +260,9 @@ public sealed partial class SettingsPage : Page
             DeepBox.Password = Str(kp, "deepseek");
         }
         OutDirBox.Text = Str(s, "output_dir");
-        TranslateNamesCheck.IsChecked = Flag(s, "translate_names", false);
+        TranslateNamesCheck.IsChecked = Flag(s, "translate_names", true);
         AutoOpenCheck.IsChecked = Flag(s, "auto_open", false);
-        LearnTermsCheck.IsChecked = Flag(s, "learn_terms", true);
+        LearnTermsCheck.IsChecked = Flag(s, "learn_terms", false);
         DeepSeekSearchCheck.IsChecked = Flag(s, "deepseek_web_search", false);
         ProxyBox.Text = Str(s, "proxy");
         MirrorBox.Text = Str(s, "github_mirror");
@@ -323,12 +323,11 @@ public sealed partial class SettingsPage : Page
         _filling = true;
         DefaultOutputBox.SelectTag(Str(s, "default_output") is { Length: > 0 } outMode ? outMode : "final",
                                    notify: false);
-        int ov = (int)Math.Round(Num(s, "orig_vol", 0.15) * 100);
+        int ov = (int)Math.Round(Num(s, "orig_vol", 0.0) * 100);
         OrigSlider.Value = ov;
         OrigText.Text = ov + "%";
         StyleBox.Text = Str(s, "tts_style");
         CloneCheck.IsChecked = Flag(s, "tts_clone", false);
-        AutoSubtitleCheck.IsChecked = Flag(s, "auto_subtitle", false);
         SubtitleReviewCheck.IsChecked = Flag(s, "subtitle_review", false);
         // 设置页可能比主窗口的启动检查先读到配置，这里也同步一次导航栏
         MainWindow.Instance?.SetSubtitleNavVisible(SubtitleReviewCheck.IsChecked == true);
@@ -358,19 +357,12 @@ public sealed partial class SettingsPage : Page
         UpdateSubFontUI();
         var outlineColor = Str(s, "subtitle_outline_color");
         SubOutlineColorPicker.Color = ParseHexColor(outlineColor.Length == 0 ? "#000000" : outlineColor);
-        SubOutlineAutoCheck.IsChecked = outlineColor.Length == 0;
         UpdateSubOutlineUI(outlineColor.Length == 0 ? "#000000" : outlineColor);
         var subColor = Str(s, "subtitle_color") is { Length: > 0 } cc ? cc : "#FFFFFF";
         SubColorPicker.Color = ParseHexColor(subColor);
         UpdateSubColorUI(subColor);
         _filling = was;
         ScheduleSubPreview();
-    }
-
-    async void AutoSubtitle_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_ready || _filling) return;
-        await SaveAsync(new Dictionary<string, object?> { ["auto_subtitle"] = AutoSubtitleCheck.IsChecked == true });
     }
 
     /// <summary>输出目录和成片文件名用翻译后的名字（原文件不改）。</summary>
@@ -864,27 +856,11 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    // ---------------- 描边颜色（自动 / 自选）----------------
-
-    void SubOutlineAuto_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_ready || _filling) return;
-        UpdateSubOutlineUI();
-        ScheduleSubSave();
-        ScheduleSubPreview();
-    }
+    // ---------------- 描边颜色（固定默认黑色）----------------
 
     void SubOutlineColor_Changed(ColorPicker sender, ColorChangedEventArgs args)
     {
         UpdateSubOutlineUI(ToHex(args.NewColor));
-        // 用户动手选了颜色，就自动取消「自动」——不然选了也不生效，很费解
-        if (SubOutlineAutoCheck.IsChecked == true)
-        {
-            _filling = true;
-            SubOutlineAutoCheck.IsChecked = false;
-            _filling = false;
-            UpdateSubOutlineUI(ToHex(args.NewColor));
-        }
         if (!_ready || _filling) return;
         ScheduleSubSave();
         ScheduleSubPreview();
@@ -892,8 +868,6 @@ public sealed partial class SettingsPage : Page
 
     void UpdateSubOutlineUI(string? hex = null)
     {
-        bool auto = SubOutlineAutoCheck.IsChecked == true;
-        SubOutlineColorButton.Visibility = auto ? Visibility.Collapsed : Visibility.Visible;
         if (hex is { Length: 7 })
         {
             var c = ParseHexColor(hex);
@@ -904,7 +878,6 @@ public sealed partial class SettingsPage : Page
 
     string CurrentOutlineColor()
     {
-        if (SubOutlineAutoCheck.IsChecked == true) return "";
         var s = SubOutlineColorText?.Text ?? "";
         return s.Length == 7 && s[0] == '#' ? s : "#000000";
     }

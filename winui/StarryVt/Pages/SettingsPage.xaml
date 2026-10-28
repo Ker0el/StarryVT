@@ -213,19 +213,52 @@
                             </StackPanel>
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
-
+                        <!-- 音色克隆：默认关（声音权 / 深度合成合规，用户 2026-10-13 定） -->
                         <Grid Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="自动使用视频旁的字幕" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="视频旁边有同名 .srt / .vtt 时，直接用来翻译，跳过语音识别"
-                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
+                                <TextBlock Text="用原说话人的音色" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">用原视频里的人声念中文<LineBreak />云端：更快，需联网、按量计费，可能限流<LineBreak />本机：免费、离线，显卡越弱越慢</TextBlock>
                             </StackPanel>
-                            <CheckBox x:Name="AutoSubtitleCheck" Grid.Column="1" Content="启用"
-                                      VerticalAlignment="Center" Click="AutoSubtitle_Changed" />
+                            <StackPanel Grid.Column="1" Spacing="8">
+                                <CheckBox x:Name="CloneCheck" Content="用原视频里的人声念中文"
+                                          Click="Clone_Changed" />
+                                <Grid ColumnSpacing="8" x:Name="CloneEngineRow">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="克隆引擎" FontSize="13"
+                                               VerticalAlignment="Center" Opacity="0.75" />
+                                    <ctl:GlassSelect x:Name="CloneEngineBox" Grid.Column="1" MinWidth="300" />
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
+                        <!-- 本地语音克隆（备用）：默认不装，要用再下 -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="本地语音克隆" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Text="本地语音克隆 · 本机跑，不联网不要 Key · 约 15 GB"
+                                           Style="{StaticResource RowDescStyle}" />
+                                <TextBlock x:Name="CloneHint" FontSize="12.5" Margin="0,4,0,0"
+                                           TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                        VerticalAlignment="Top">
+                                <Button x:Name="CloneInstallBtn" Content="下载并启用" Click="CloneInstall_Click" />
+                                <Button x:Name="CloneRemoveBtn" Content="删除" Visibility="Collapsed"
+                                        Click="CloneRemove_Click" />
+                            </StackPanel>
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
@@ -289,7 +322,7 @@
                                 </Grid.ColumnDefinitions>
                                 <Slider x:Name="OrigSlider" Grid.Column="0" Minimum="0" Maximum="100"
                                         StepFrequency="5" ValueChanged="Orig_ValueChanged" />
-                                <TextBlock x:Name="OrigText" Grid.Column="1" Text="15%" FontSize="14"
+                                <TextBlock x:Name="OrigText" Grid.Column="1" Text="0%" FontSize="14"
                                            VerticalAlignment="Center" TextAlignment="Right"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Grid>
@@ -311,53 +344,6 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <!-- 音色克隆：默认关（声音权 / 深度合成合规，用户 2026-10-13 定） -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="用原说话人的音色" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">用原视频里的人声念中文<LineBreak />云端：限时免费，受网络和限流影响，可能忽快忽慢<LineBreak />本机：免费、不联网，速度快、效果好</TextBlock>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="8">
-                                <CheckBox x:Name="CloneCheck" Content="用原视频里的人声念中文"
-                                          Click="Clone_Changed" />
-                                <Grid ColumnSpacing="8" x:Name="CloneEngineRow">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="克隆引擎" FontSize="13"
-                                               VerticalAlignment="Center" Opacity="0.75" />
-                                    <ctl:GlassSelect x:Name="CloneEngineBox" Grid.Column="1" MinWidth="300" />
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                        <Border Style="{StaticResource RowDividerStyle}" />
-
-                        <!-- 本地语音克隆（备用）：默认不装，要用再下 -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="本地语音克隆" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="本地语音克隆 · 本机跑，不联网不要 Key · 约 15 GB"
-                                           Style="{StaticResource RowDescStyle}" />
-                                <TextBlock x:Name="CloneHint" FontSize="12.5" Margin="0,4,0,0"
-                                           TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
-                                        VerticalAlignment="Top">
-                                <Button x:Name="CloneInstallBtn" Content="下载并启用" Click="CloneInstall_Click" />
-                                <Button x:Name="CloneRemoveBtn" Content="删除" Visibility="Collapsed"
-                                        Click="CloneRemove_Click" />
-                            </StackPanel>
-                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -551,15 +537,12 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="描边颜色" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="自动会根据字幕颜色配黑或白"
+                                <TextBlock Text="默认黑色；点右边可以换颜色"
                                            Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="6">
-                                <CheckBox x:Name="SubOutlineAutoCheck" Content="自动（推荐）"
-                                          Click="SubOutlineAuto_Changed" />
                                 <Button x:Name="SubOutlineColorButton"
-                                        HorizontalAlignment="Left" Padding="10,6"
-                                        Visibility="Collapsed">
+                                        HorizontalAlignment="Left" Padding="10,6">
                                     <Button.Flyout>
                                         <Flyout Placement="Bottom">
                                             <ColorPicker x:Name="SubOutlineColorPicker"
@@ -590,7 +573,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="字幕颜色" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="深色会自动配白色描边"
+                                <TextBlock Text="字幕本身是白色，描边默认黑色"
                                            Style="{StaticResource RowDescStyle}" />
                             </StackPanel>
                             <Button x:Name="SubColorButton" Grid.Column="1"
@@ -677,20 +660,6 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="翻译文件名和文件夹名" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">输出目录和成片文件名用翻译后的中文<LineBreak />原文件不改；翻不了就用原名</TextBlock>
-                            </StackPanel>
-                            <CheckBox x:Name="TranslateNamesCheck" Grid.Column="1" Content="启用"
-                                      VerticalAlignment="Center" Click="TranslateNames_Changed" />
-                        </Grid>
-                        <Border Style="{StaticResource RowDividerStyle}" />
-
                         <!-- 引擎数据目录：2026-10-16 从「高级（一般不用改）」挪出来的 ——
                              首页撤掉换盘按钮之后，这里是**唯一**的换盘入口，
                              不能藏在写着"一般不用改"的折叠里（首页那行的「去设置」就送到这儿）。 -->
@@ -765,6 +734,19 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="翻译文件名和文件夹名" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">输出目录和成片文件名用翻译后的中文<LineBreak />原文件不改；翻不了就用原名</TextBlock>
+                            </StackPanel>
+                            <CheckBox x:Name="TranslateNamesCheck" Grid.Column="1" Content="启用"
+                                      VerticalAlignment="Center" Click="TranslateNames_Changed" />
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
                         <Grid Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
