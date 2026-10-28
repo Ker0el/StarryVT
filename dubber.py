@@ -36,6 +36,57 @@ MIMO_MODEL = "mimo-v2.5-tts"
 #: 报 `Param Incorrect / Unknown voice: data:audio/...`（2026-10-13 实测，一度被 429 掩盖）
 VOICECLONE_MODEL = "mimo-v2.5-tts-voiceclone"
 
+#: 快速模式用的微软在线音色（edge-tts）。默认晓晓，中文讲解最稳。
+EDGE_DEFAULT = "zh-CN-XiaoxiaoNeural"
+EDGE_VOICES = (
+    ("晓晓（女声，推荐）", "zh-CN-XiaoxiaoNeural"),
+    ("云希（男声）", "zh-CN-YunxiNeural"),
+    ("晓伊（女声）", "zh-CN-XiaoyiNeural"),
+    ("云健（男声，偏新闻）", "zh-CN-YunjianNeural"),
+)
+#: edge-tts 的服务端是并发友好的，8 路实测稳定
+EDGE_JOBS = 8
+
+
+def synth_edge(text: str, out_path: Path, voice: str = EDGE_DEFAULT,
+               retries: int = 3) -> str | None:
+    """单句微软 edge-tts。成功返回 None，失败返回错误信息。
+
+    edge-tts 只给 mp3；先落地再转成和 MiMo 一样的 22.05k 单声道 wav，
+    这样后面的裁静音、量时长、语速适配、时间轴装配全部原样复用。
+    """
+    import asyncio
+
+    import edge_tts
+    from job import no_window_kwargs
+
+    mp3 = Path(str(out_path) + ".edge.mp3")
+    last = ""
+    try:
+        for attempt in range(retries):
+            try:
+                asyncio.run(edge_tts.Communicate(text, voice).save(str(mp3)))
+                if not (mp3.exists() and mp3.stat().st_size > 500):
+                    last = "返回空音频"
+                else:
+                    r = subprocess.run(
+                        [tools.path("ffmpeg"), "-v", "error", "-y", "-i", str(mp3),
+                         "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", str(out_path)],
+                        capture_output=True, text=True, **no_window_kwargs())
+                    if r.returncode == 0 and out_path.exists() and out_path.stat().st_size > 500:
+                        return None
+                    last = "转 wav 失败"
+            except Exception as e:  # noqa: BLE001 - 单句失败不拖垮整批
+                last = f"{type(e).__name__}: {e}"[:200]
+            time.sleep(min(5.0, 1.2 ** attempt))
+        return last
+    finally:
+        try:
+            mp3.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 #: 克隆请求的并发上限。2026-10-13 六路并发约一半 429，当时压到了 2；2026-10-28
 #: 复测 4/6 路都没有 429，而 2 路会被服务端偶发的长尾请求拖慢一个数量级。
 #: 限流仍然可能发生，synth_mimo 里的 429 退避照旧兜底，所以取 4。
@@ -500,6 +551,7 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
         cache_dir: Path | str | None = None, job: Job | None = None,
         progress_cb=None, style: str = DEFAULT_STYLE,
         clone_ref: Path | str | None = None, clone_local: bool = False,
+        edge: bool = False, edge_voice: str = EDGE_DEFAULT,
         params: dict | None = None, src_srt: Path | str | None = None,
         merge_sentences: bool = True, trim_silence: bool = True) -> dict:
     """SRT + 视频 -> 配音成片。返回统计 dict。progress_cb(done, total) 汇报合成进度。
@@ -510,6 +562,7 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     clone_ref      人声克隆的参考音；给了就用它复刻的音色读，忽略 voice
     clone_local    True = 本机那套（IndexTTS-2.5，免费不联网，要先下载），
                    False = MiMo 云端克隆（默认）
+    edge           True = 快速模式，用微软 edge-tts（免费在线；不克隆音色）
     src_srt        **源语言**字幕（`<任务名>-raw.srt`）。给上它才能判断「字幕这一行的
                    换行处是不是句子边界」，从而把被切开的半句话并成一次合成。
                    不给就退回「一行一句」，只是听着会比较断。见 `_cont_flags`。
@@ -540,7 +593,11 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
 
     style = (style or "").strip()
     voice_arg, voice_key, model = voice, voice, MIMO_MODEL
-    if clone_ref:
+    if edge:
+        # 快速模式：不克隆、不走 MiMo；缓存键带上音色名
+        voice_key = f"edge:{edge_voice}"
+        jobs = EDGE_JOBS
+    if clone_ref and not edge:
         voice_arg, voice_key = _voice_data_uri(Path(clone_ref))
         model = VOICECLONE_MODEL          # ← 克隆必须换模型名，否则报 Unknown voice
         # 克隆模型的限流比普通音色紧得多（每个请求驮着 130KB 参考音），并发上限
@@ -563,7 +620,20 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     # 克隆那条路更容易撞限流，多给两次重试（每次退避最长 45 秒）
     tries = 6 if clone_ref else 4
     try:
-        if clone_local:
+        if edge:
+            futs = {ex.submit(synth_edge, units[i]["text"], paths[i], edge_voice): i
+                    for i in todo}
+            done = len(units) - len(todo)
+            for fut in as_completed(futs):
+                job.check()
+                i = futs[fut]
+                err = fut.result()
+                if err:
+                    raise RuntimeError(f"第 {i + 1} 段微软配音失败: {err}")
+                done += 1
+                if progress_cb:
+                    progress_cb(done, len(units))
+        elif clone_local:
             # 本机复刻（IndexTTS-2.5）：模型加载一次要十几秒，所以**整批一次跑完** ——
             # 一句起一个进程会慢到没法用。参考音就是原说话人的那一小段。
             if todo:
@@ -671,9 +741,9 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
                 _cache_name(units[i]["text"], voice_key, "_fast", style=FASTER_STYLE))
             if fp2.exists() and fp2.stat().st_size > 500:
                 pass                          # 上次已经合成过，直接用（别重复调 API）
-            elif not clone_local and synth_mimo(units[i]["text"], fp2, api_key, voice_arg,
-                                                style=FASTER_STYLE, model=model,
-                                                params=params) is None:
+            elif not clone_local and not edge and synth_mimo(
+                    units[i]["text"], fp2, api_key, voice_arg,
+                    style=FASTER_STYLE, model=model, params=params) is None:
                 resynth += 1
             if fp2.exists() and fp2.stat().st_size > 500:
                 fp2t = _trimmed(fp2, job) if trim_silence else fp2

@@ -128,6 +128,9 @@ public sealed partial class SettingsPage : Page
         // 自绘下拉：显示的字 / 给后端用的值
         // 实测云端 4 路并发的克隆明显快于本机；原来写「本机速度快」是错的。
         // 本机赢在免费、离线、不受限。
+        ModeBox.SetItems([("标准模式（推荐）", "standard"),
+                          ("快速模式（Google 机翻 + 微软配音）", "fast")]);
+        ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
                                  ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
@@ -323,6 +326,7 @@ public sealed partial class SettingsPage : Page
         _filling = true;
         DefaultOutputBox.SelectTag(Str(s, "default_output") is { Length: > 0 } outMode ? outMode : "final",
                                    notify: false);
+        ModeBox.SelectTag(Str(s, "mode") is { Length: > 0 } mode ? mode : "standard", notify: false);
         int ov = (int)Math.Round(Num(s, "orig_vol", 0.0) * 100);
         OrigSlider.Value = ov;
         OrigText.Text = ov + "%";
@@ -1113,6 +1117,15 @@ public sealed partial class SettingsPage : Page
     async void PreviewVoice_Click(object sender, RoutedEventArgs e)
         => await Services.VoicePreview.PlayAsync(
             VoiceBox.SelectedItem is { Length: > 0 } v ? v : "冰糖", PreviewVoiceButton);
+
+    async Task OnModeChanged()
+    {
+        if (!_ready || _filling) return;
+        await SaveAsync(new Dictionary<string, object?>
+        {
+            ["mode"] = ModeBox.SelectedTag is { Length: > 0 } t ? t : "standard",
+        });
+    }
 
     async void Clone_Changed(object sender, RoutedEventArgs e)
     {

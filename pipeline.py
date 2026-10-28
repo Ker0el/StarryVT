@@ -9,6 +9,7 @@ params 见 settings.DEFAULTS；report(stage, percent, line) 汇报进度与日�
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from job import Job, Cancelled
@@ -122,6 +124,64 @@ def resolve_output_base(params: dict, report=None, create: bool = True) -> Path:
 
 # 各阶段在总进度条上的区间（%）
 SPAN = {"download": (0, 8), "translate": (8, 55), "dub": (55, 85), "burn": (85, 100)}
+
+#: 快速模式：不分离 + Google 机翻 + 微软 edge-tts（2026-10-28 用户定）
+_GOOGLE_URL = "https://translate.googleapis.com/translate_a/single"
+
+
+def _is_fast(params: dict) -> bool:
+    """设置里的「翻译模式」是不是快速模式"""
+    return str(params.get("mode") or "standard").strip().lower() == "fast"
+
+
+def _google_one(text: str, timeout: float = 12.0) -> str:
+    """单条 Google 机翻（gtx 非官方接口）。失败返回空串。"""
+    import urllib.parse
+    import urllib.request
+    q = urllib.parse.quote(text.replace("\n", " "))
+    url = f"{_GOOGLE_URL}?client=gtx&sl=auto&tl=zh-CN&dt=t&q={q}"
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            return "".join(seg[0] for seg in data[0] if seg and seg[0])
+        except Exception:  # noqa: BLE001 - 重试几次就放弃，原文兜底
+            time.sleep(0.4 * (attempt + 1))
+    return ""
+
+
+def _fast_translate(video: Path, params: dict, job: Job, report) -> Path:
+    """快速模式翻译：引擎只跑 ASR（--no-separate），译文走 Google 机翻。"""
+    # 用户导入的字幕/视频旁的同名字幕优先；放好了引擎就会跳过识别
+    if not _prepare_user_subtitle(video, params, job, report):
+        params.pop("subtitle_file", None)
+    raw = _translate_once(video, params, job, report, stage="raw-srt", no_separate=True)
+    cues = dubber.parse_srt(raw)
+    if not cues:
+        raise RuntimeError("快速模式：识别结果为空，没法翻译")
+    texts = [c[2] for c in cues]
+    report("translate", _map("translate", 0.45),
+           f"快速模式：Google 机翻 {len(texts)} 条（不做 AI 纠错）…")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fut = [pool.submit(_google_one, t) for t in texts]
+    zh: list[str] = []
+    miss = 0
+    for i, f in enumerate(fut):
+        job.check()
+        out = f.result()
+        if not out:
+            miss += 1
+            out = texts[i]
+        zh.append(out)
+    out = raw.parent / f"{video.stem}.srt"
+    out.write_text(ytsub.to_srt([(s, e, t) for (s, e, _old), t in zip(cues, zh)]),
+                   encoding="utf-8")
+    if miss:
+        report("translate", None, f"（{miss} 条机翻没返回，保留原文）")
+    report("translate", _map("translate", 1.0),
+           "快速模式翻译完成（Google 机翻，术语可能不如 AI 纠错准）")
+    return out
+
 
 #: 纠错翻译的窗口并发数 / 触发时长（秒）
 #: 2026-10-27 实测：≥2 个窗口（约 15 分钟素材）时 4 路并发把 LLM 阶段压缩到
@@ -809,7 +869,7 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3,
             hint = ("【语言】源语言是德语。请译成自然、通顺的简体中文；"
                     "不要套用日语语气词、敬语或轻小说风格。")
             params["extra_info"] = (hint + ("\n\n" + old if old else "")).strip()
-    if not stage and params.get("deepseek_web_search"):
+    if not stage and params.get("deepseek_web_search") and not _is_fast(params):
         params = dict(params)
         block = _deepseek_web_extra(video, params, report)
         if block:
@@ -824,6 +884,8 @@ def translate(video: Path, params: dict, job: Job, report, attempts: int = 3,
         try:
             if not stage and (params.get("source_lang") or "") == "zh-en":
                 return _translate_zh_en(video, params, job, report)
+            if not stage and _is_fast(params):
+                return _fast_translate(video, params, job, report)
             # 用户导入的字幕/文稿只准备一次：放好了就让引擎跳过识别；
             # 读不了就把这个参数摘掉，后面照常走 YouTube 字幕 / 语音识别。
             if not prepared:
@@ -1599,7 +1661,8 @@ def _asr_language(params: dict) -> str:
     return "zh" if lang == "zh-en" else lang
 
 
-def _translate_once(video: Path, params: dict, job: Job, report, stage: str = "") -> Path:
+def _translate_once(video: Path, params: dict, job: Job, report, stage: str = "",
+                    no_separate: bool = False) -> Path:
     env = _subprocess_env(params)
     if params.get("finesub_home"):        # 留空则用引擎自己的默认数据目录
         env["FINESUB_HOME"] = params["finesub_home"]
@@ -1675,6 +1738,8 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
         # 只跑到指定阶段。目前只给「纯文稿对齐时间轴」用（--stage raw-srt）：
         # 这一步只要识别结果，不要 LLM 纠错翻译，所以下面那些 LLM 参数一个都不加。
         cmd += ["--stage", stage]
+        if no_separate:
+            cmd += ["--no-separate"]       # 快速模式：跳过人声分离
     else:
         cmd += ["--llm-correct-translate"]
         # 词条学习：引擎默认 `collect`（读词条库、**不写回**）。`update` 会在纠错翻译
@@ -2355,7 +2420,8 @@ def _translated_stem(video: Path, params: dict, report=None) -> str:
     """
     stem = (video.stem or "").strip()
     # 只提取原文字幕时**一次 DeepSeek 都不该调**（客户就是为了不花额度才用这个模式）
-    if not stem or not params.get("translate_names") or params.get("asr_only"):
+    if (not stem or not params.get("translate_names") or params.get("asr_only")
+            or _is_fast(params)):
         return video.stem
     target_en = (params.get("source_lang") or "") == "zh-en"
     # 已经是目标语言就别浪费一次请求（中文名翻中文 / 英文名翻英文）
@@ -2588,8 +2654,11 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
         return result
 
     dubbed = out_dir / f"{out_stem}_dubbed.mp4"
+    fast = _is_fast(params)
     # 音色用云端（MiMo，默认）还是本机（IndexTTS-2.5）复刻 —— 后者要先在设置里下载
     clone_local = bool(params.get("tts_clone")) and params.get("clone_engine") == "local"
+    if fast:
+        clone_local = False      # 快速模式不碰克隆，也就别去查克隆装没装
     if clone_local:
         import localclone
         st = localclone.status()
@@ -2601,11 +2670,16 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
             clone_local = False
 
     _ck().enter("配音")
-    report("dub", _map("dub", 0),
-           "开始本机语音克隆配音..." if clone_local else "开始 MiMo 配音合成...")
-    clone_ref = _clone_reference(video, params, out_dir, report)
-    if clone_ref is None:
-        clone_local = False
+    if fast:
+        # 快速模式不克隆、不抽参考音；微软音色代替 MiMo/本机克隆
+        clone_local, clone_ref = False, None
+        report("dub", _map("dub", 0), "开始快速模式配音（微软 edge-tts）…")
+    else:
+        report("dub", _map("dub", 0),
+               "开始本机语音克隆配音..." if clone_local else "开始 MiMo 配音合成...")
+        clone_ref = _clone_reference(video, params, out_dir, report)
+        if clone_ref is None:
+            clone_local = False
     # 源语言字幕：配音要靠它判断「字幕这一行的换行处是不是句子边界」，
     # 从而把被切开的半句话并成一次合成（见 dubber._cont_flags —— 一行一次合成
     # 会让模型把半句话按整句收尾，听着就是一句一句往外蹦）。
@@ -2624,12 +2698,14 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     _style = params.get("tts_style") or (dubber.DEFAULT_STYLE_EN if _en_out
                                          else dubber.DEFAULT_STYLE)
     _dub_t0 = time.monotonic()
-    stats = dubber.dub(srt_copy, video, dubbed, api_key=params["mimo_key"],
+    stats = dubber.dub(srt_copy, video, dubbed,
+                       api_key=str(params.get("mimo_key") or ""),
                        voice=params.get("voice", "冰糖"), job=job,
                        orig_vol=float(params.get("orig_vol", 0.0) or 0.0),
                        style=_style,
                        speed_bias=speed_bias,
-                       clone_ref=clone_ref, clone_local=clone_local, params=params,
+                       clone_ref=clone_ref, clone_local=clone_local,
+                       edge=fast, edge_voice=dubber.EDGE_DEFAULT, params=params,
                        cache_dir=dubber.default_cache_dir(), src_srt=src_srt,
                        progress_cb=lambda d, t: report(
                            "dub", _map("dub", d / max(1, t)),

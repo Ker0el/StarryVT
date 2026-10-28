@@ -155,6 +155,20 @@
                         <TextBlock Text="翻译与配音" Style="{StaticResource GroupTitleStyle}" />
                         <Border Style="{StaticResource RowDividerStyle}" />
 
+                        <!-- 翻译模式：快速模式是 2026-10-28 用户要求加的 -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="翻译模式" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">快速模式跳过人声分离和 AI 纠错翻译，用 Google 机翻 + 微软配音<LineBreak />需联网；不花 API 费用，但术语和专有名词可能不如标准模式准</TextBlock>
+                            </StackPanel>
+                            <ctl:GlassSelect x:Name="ModeBox" Grid.Column="1" MinWidth="300" />
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+
                         <Grid Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />

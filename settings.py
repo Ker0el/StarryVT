@@ -76,6 +76,10 @@ DEFAULTS: dict = {
     "subtitle_bilingual_order": "src_top",   # src_top = 原文在上；src_bottom = 原文在下
     "subtitle_bilingual_scale": 80,          # 原文行字号 = 中文字号的百分之多少
     "subtitle_review": False,            # True = 单个视频翻译完成后暂停，双语对照检查译文，改完继续配音/压制
+    # 翻译模式：standard = 人声分离 + AI 纠错翻译 + MiMo/本机克隆配音；
+    # fast = 快速模式：跳过人声分离，Google 机翻 + 微软 edge-tts（不花 API 费用）
+    "mode": "standard",
+    "edge_voice": "zh-CN-XiaoxiaoNeural",  # 快速模式用的微软音色（见 dubber.EDGE_VOICES）
     "tts_clone": False,                  # True = 用原视频里的人声复刻音色来配音（见 clone_engine）
     "clone_engine": "local",             # 音色克隆用哪个引擎：local = 本机 IndexTTS-2.5（默认，免费、不联网，
                                          # 速度快；没装模型时自动退回云端，见 localclone.py）/

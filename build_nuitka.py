@@ -109,6 +109,8 @@ def main() -> int:
         # MCP 服务（app.py --mcp / --mcp-http）。mcp 的 HTTP 模式会用到 uvicorn/starlette，
         # 只收 stdio 的客户端不需要，但打包时一起带上，避免两条路只有一条能用。
         "--include-package=mcp",
+        # 快速模式的微软 TTS（LGPL-3.0）；它只在这里被懒加载，显式带上最保险
+        "--include-package=edge_tts",
         "--include-module=mcp_server",
         # 统一数据目录（语音克隆 / 缓存都跟着 data_home 走）。显式列出，
         # 免得哪天改成只在函数里 import 被静态分析漏掉。

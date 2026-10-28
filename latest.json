@@ -1,7 +1,7 @@
 {
-  "version": "6.31",
-  "sha256": "1efe0607a6079470a4a341767e325bbe2cb2c3a6ee064a65cd5c02934ef46f78",
-  "notes": "安装包说明页去掉两条容易误导的换盘说明（软件目录/数据目录）；其余同 6.30：术语学习默认关闭、原声音量默认 0%、翻译文件名默认开启并上移、克隆两块移到默认音色下方、旁路字幕改为后台自动识别、描边默认黑色、数据目录显示长路径。",
+  "version": "6.32",
+  "sha256": "d31e56107a8bd98ac6e8457280414ad884977e55d1deb18c61bdd604ee99dd0f",
+  "notes": "新增「快速模式」（设置 → 翻译与配音 → 翻译模式）：跳过人声分离和 AI 纠错翻译，识别后直接 Google 机翻，配音改用微软 edge-tts，免费、不花 DeepSeek/MiMo 费用，但需联网且术语可能不如标准模式准；默认仍是标准模式。用户导入的字幕和视频旁同名字幕仍优先。安装包说明页去掉「怎么使用」整段和两条换盘说明。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.31.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.32.exe"
 }
