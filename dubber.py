@@ -36,6 +36,20 @@ MIMO_MODEL = "mimo-v2.5-tts"
 #: 报 `Param Incorrect / Unknown voice: data:audio/...`（2026-10-13 实测，一度被 429 掩盖）
 VOICECLONE_MODEL = "mimo-v2.5-tts-voiceclone"
 
+#: 克隆请求的并发上限。2026-10-13 六路并发约一半 429，当时压到了 2；2026-10-28
+#: 复测 4/6 路都没有 429（60 句 4 路 56.8 秒，外推 278 句约 4.4 分钟），而 2 路
+#: 因为服务端偶发的长尾请求要 ~40 分钟。限流仍然可能发生，synth_mimo 里的 429
+#: 退避照旧兜底，所以取 4。
+CLONE_JOBS = 4
+
+
+def _clone_jobs(jobs: int) -> int:
+    """克隆路径的并发数（至少 1，最多 CLONE_JOBS）"""
+    try:
+        return max(1, min(int(jobs), CLONE_JOBS))
+    except (TypeError, ValueError):
+        return CLONE_JOBS
+
 
 # ---------- 基础工具 ----------
 
@@ -530,10 +544,9 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     if clone_ref:
         voice_arg, voice_key = _voice_data_uri(Path(clone_ref))
         model = VOICECLONE_MODEL          # ← 克隆必须换模型名，否则报 Unknown voice
-        # 克隆模型的限流比普通音色紧得多：2026-10-13 实测 6 路并发约一半 429
-        # （响应体 `"type": "limitation"`）；每个请求还要驮着 130KB 参考音。
-        # 所以克隆一律压低并发，宁可慢也别把整条流水线卡在重试上。
-        jobs = min(jobs, 2)
+        # 克隆模型的限流比普通音色紧得多（每个请求驮着 130KB 参考音），并发上限
+        # 见 CLONE_JOBS：2026-10-28 复测 4 路稳定，2 路反而被服务端长尾拖到 ~40 分钟。
+        jobs = _clone_jobs(jobs)
 
     # 1) 逐组合成（并发）
     # ⚠️ 2026-10-22 试过「第一遍就按估算时长预加速」，**实测不成立**：

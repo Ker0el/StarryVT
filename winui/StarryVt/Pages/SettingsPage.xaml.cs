@@ -126,8 +126,10 @@ public sealed partial class SettingsPage : Page
         BuildAccentRow();
 
         // 自绘下拉：显示的字 / 给后端用的值
-        CloneEngineBox.SetItems([("云端 MiMo（需联网，可能受限制）", "cloud"),
-                                 ("本机语音克隆（免费，速度快，效果好）", "local")]);
+        // 2026-10-28 实测：4 路并发的云端克隆 278 句约 4.4 分钟，本机（4070 Ti）
+        // 38.7 分钟 —— 原来写「本机速度快」是错的。本机赢在免费、离线、不受限。
+        CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
+                                 ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
 
         // 双语字幕：原文那一行放上面还是下面
