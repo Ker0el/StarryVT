@@ -2697,27 +2697,34 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     dubbed = out_dir / f"{out_stem}_dubbed.mp4"
     fast = _is_fast(params)
     # 音色用云端（MiMo，默认）还是本机（IndexTTS-2.5）复刻 —— 后者要先在设置里下载
-    clone_local = bool(params.get("tts_clone")) and params.get("clone_engine") == "local"
-    if fast:
-        clone_local = False      # 快速模式不碰克隆，也就别去查克隆装没装
+    # 快速模式里克隆只有本机一种（云端 MiMo 不参与），所以只看开没开克隆
+    clone_local = bool(params.get("tts_clone")) and (
+        fast or params.get("clone_engine") == "local")
     if clone_local:
         import localclone
         st = localclone.status()
         if not st["ready"]:
             why = f"：{st['problem']}" if st.get("problem") else ""
             report("dub", None,
-                   f"⚠ 本地语音克隆还没装好{why}，这次改用云端克隆"
-                   "（要接着下：设置 → 配音 → 本地语音克隆）")
+                   f"⚠ 本地语音克隆还没装好{why}，这次改用"
+                   + ("微软配音（设置 → 配音 → 本地语音克隆 可以接着下）"
+                      if fast else
+                      "云端克隆（要接着下：设置 → 配音 → 本地语音克隆）"))
             clone_local = False
 
     _ck().enter("配音")
-    if fast:
-        # 快速模式不克隆、不抽参考音；微软音色代替 MiMo/本机克隆
+    if clone_local:
+        # 本地克隆优先：快速模式也可以只用克隆（不分离 + Google 机翻，只是配音慢）
+        report("dub", _map("dub", 0), "开始本机语音克隆配音...")
+        clone_ref = _clone_reference(video, params, out_dir, report)
+        if clone_ref is None:
+            clone_local = False
+    elif fast:
+        # 快速模式不用 MiMo；微软音色代替
         clone_local, clone_ref = False, None
         report("dub", _map("dub", 0), "开始快速模式配音（微软 edge-tts）…")
     else:
-        report("dub", _map("dub", 0),
-               "开始本机语音克隆配音..." if clone_local else "开始 MiMo 配音合成...")
+        report("dub", _map("dub", 0), "开始 MiMo 配音合成...")
         clone_ref = _clone_reference(video, params, out_dir, report)
         if clone_ref is None:
             clone_local = False
@@ -2746,7 +2753,9 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
                        style=_style,
                        speed_bias=speed_bias,
                        clone_ref=clone_ref, clone_local=clone_local,
-                       edge=fast, edge_voice=dubber.EDGE_DEFAULT, params=params,
+                       edge=fast and not clone_local,
+                       edge_voice=str(params.get("edge_voice") or dubber.EDGE_DEFAULT),
+                       params=params,
                        cache_dir=dubber.default_cache_dir(), src_srt=src_srt,
                        progress_cb=lambda d, t: report(
                            "dub", _map("dub", d / max(1, t)),

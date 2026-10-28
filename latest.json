@@ -1,7 +1,7 @@
 {
-  "version": "6.33",
-  "sha256": "2abd363f9bfcbe535488d894b5f20e341e8068a995fce6e3806b91b79e7a1e19",
-  "notes": "「翻译模式」文案定为 标准模式（推荐，翻译精准，速度慢）/ 快速模式（全流程免费，Google 机翻 + 微软配音，速度快）。已有中文字幕的视频（视频旁同名字幕或导入的字幕）会自动跳过翻译，直接配音。安装包说明页精简（去掉「怎么使用」整段和两条换盘说明）。",
+  "version": "6.34",
+  "sha256": "e1a8dd2778a6c01fe619f21fd19e958ccb04b6d8f7d4960975fee37b1f11ead7",
+  "notes": "快速模式设置联动：音色列表换成微软音色、克隆引擎只留本机、API Key 整块灰掉、试听按钮禁用；切回标准模式恢复。模式文案：标准模式（推荐，Deepseek精翻+Mimo配音，速度慢）/ 快速模式（全流程免费，Google 机翻 + 微软配音，速度快）。已有中文字幕自动跳过翻译直接配音；安装包说明页精简。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.33.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.34.exe"
 }

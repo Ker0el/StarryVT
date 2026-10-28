@@ -128,7 +128,7 @@ public sealed partial class SettingsPage : Page
         // 自绘下拉：显示的字 / 给后端用的值
         // 实测云端 4 路并发的克隆明显快于本机；原来写「本机速度快」是错的。
         // 本机赢在免费、离线、不受限。
-        ModeBox.SetItems([("标准模式（推荐，翻译精准，速度慢）", "standard"),
+        ModeBox.SetItems([("标准模式（推荐，Deepseek精翻+Mimo配音，速度慢）", "standard"),
                           ("快速模式（全流程免费，Google 机翻 + 微软配音，速度快）", "fast")]);
         ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
@@ -161,10 +161,7 @@ public sealed partial class SettingsPage : Page
         }); UpdateLangHint(); };
 
         VoiceBox.SetItems(Mock.Voices.Select(v => (v, v)));
-        VoiceBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
-        {
-            ["voice"] = VoiceBox.SelectedItem is { Length: > 0 } v ? v : "冰糖",
-        }); };
+        VoiceBox.Changed += idx => { _ = OnVoiceChanged(); };
 
         SpeedBox.SetItems([("标准", "auto"), ("+5%", "5"), ("+10%", "10")]);
         SpeedBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
@@ -327,6 +324,9 @@ public sealed partial class SettingsPage : Page
         DefaultOutputBox.SelectTag(Str(s, "default_output") is { Length: > 0 } outMode ? outMode : "final",
                                    notify: false);
         ModeBox.SelectTag(Str(s, "mode") is { Length: > 0 } mode ? mode : "standard", notify: false);
+        _voiceStd = Str(s, "voice") is { Length: > 0 } v0 ? v0 : "冰糖";
+        _edgeVoice = Str(s, "edge_voice") is { Length: > 0 } ev ? ev : "zh-CN-XiaoxiaoNeural";
+        _cloneEngineStd = Str(s, "clone_engine") == "cloud" ? "cloud" : "local";
         int ov = (int)Math.Round(Num(s, "orig_vol", 0.0) * 100);
         OrigSlider.Value = ov;
         OrigText.Text = ov + "%";
@@ -365,6 +365,7 @@ public sealed partial class SettingsPage : Page
         var subColor = Str(s, "subtitle_color") is { Length: > 0 } cc ? cc : "#FFFFFF";
         SubColorPicker.Color = ParseHexColor(subColor);
         UpdateSubColorUI(subColor);
+        ApplyModeUI(ModeBox.SelectedTag is { Length: > 0 } mm ? mm : "standard");
         _filling = was;
         ScheduleSubPreview();
     }
@@ -1114,6 +1115,58 @@ public sealed partial class SettingsPage : Page
         await SaveAsync(new Dictionary<string, object?> { ["tts_style"] = StyleBox.Text.Trim() });
     }
 
+    async Task OnVoiceChanged()
+    {
+        if (!_ready || _filling) return;
+        var tag = VoiceBox.SelectedTag is { Length: > 0 } t ? t : "";
+        if (ModeBox.SelectedTag == "fast")
+        {
+            _edgeVoice = tag.Length > 0 ? tag : _edgeVoice;
+            await SaveAsync(new Dictionary<string, object?> { ["edge_voice"] = _edgeVoice });
+        }
+        else
+        {
+            _voiceStd = tag.Length > 0 ? tag : _voiceStd;
+            await SaveAsync(new Dictionary<string, object?> { ["voice"] = _voiceStd });
+        }
+    }
+
+    /// <summary>按模式换音色列表：标准 = MiMo 音色；快速 = 微软音色 + 只留本地克隆。</summary>
+    void ApplyModeUI(string mode)
+    {
+        bool fast = mode == "fast";
+        var was = _filling;
+        _filling = true;
+        if (fast)
+        {
+            // 快速模式不用任何 API Key：整张卡片灰掉，别让用户以为还得填
+            KeysCard.Opacity = 0.45;
+            KeysCard.IsHitTestVisible = false;
+            KeysHint.Text = "快速模式不需要 API Key（Google 机翻 + 微软配音）";
+            VoiceBox.SetItems(EdgeVoices);
+            VoiceBox.SelectTag(_edgeVoice, notify: false);
+            CloneEngineBox.SetItems([("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
+            CloneEngineBox.Select(0, notify: false);
+            PreviewVoiceButton.IsEnabled = false;
+            ToolTipService.SetToolTip(PreviewVoiceButton, "快速模式用微软音色，暂不支持试听");
+        }
+        else
+        {
+            KeysCard.Opacity = 1.0;
+            KeysCard.IsHitTestVisible = true;
+            KeysHint.Text = "只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。";
+            VoiceBox.SetItems(Mock.Voices.Select(v => (v, v)));
+            VoiceBox.SelectTag(_voiceStd, notify: false);
+            CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
+                                     ("本机语音克隆（免费、离线；显卡越弱越慢）", "local")]);
+            CloneEngineBox.SelectTag(_cloneEngineStd, notify: false);
+            PreviewVoiceButton.IsEnabled = CloneCheck.IsChecked != true;
+            ToolTipService.SetToolTip(PreviewVoiceButton, "合成一句样音，听听这个音色");
+        }
+        _filling = was;
+        UpdateVoiceEnabled();
+    }
+
     async void PreviewVoice_Click(object sender, RoutedEventArgs e)
         => await Services.VoicePreview.PlayAsync(
             VoiceBox.SelectedItem is { Length: > 0 } v ? v : "冰糖", PreviewVoiceButton);
@@ -1121,10 +1174,11 @@ public sealed partial class SettingsPage : Page
     async Task OnModeChanged()
     {
         if (!_ready || _filling) return;
-        await SaveAsync(new Dictionary<string, object?>
-        {
-            ["mode"] = ModeBox.SelectedTag is { Length: > 0 } t ? t : "standard",
-        });
+        var mode = ModeBox.SelectedTag is { Length: > 0 } t ? t : "standard";
+        if (mode == "fast") _voiceStd = VoiceBox.SelectedTag is { Length: > 0 } v ? v : _voiceStd;
+        else _edgeVoice = VoiceBox.SelectedTag is { Length: > 0 } v ? v : _edgeVoice;
+        ApplyModeUI(mode);
+        await SaveAsync(new Dictionary<string, object?> { ["mode"] = mode });
     }
 
     async void Clone_Changed(object sender, RoutedEventArgs e)
@@ -1195,6 +1249,18 @@ public sealed partial class SettingsPage : Page
     bool _cloneReady;
     bool _cloneInstalled;
     bool _cloneBusy;
+
+    // 快速模式的微软音色（和后端 dubber.EDGE_VOICES 保持一致）
+    static readonly (string, string)[] EdgeVoices =
+    [
+        ("晓晓（女声，推荐）", "zh-CN-XiaoxiaoNeural"),
+        ("云希（男声）", "zh-CN-YunxiNeural"),
+        ("晓伊（女声）", "zh-CN-XiaoyiNeural"),
+        ("云健（男声，偏新闻）", "zh-CN-YunjianNeural"),
+    ];
+    string _voiceStd = "冰糖";
+    string _edgeVoice = "zh-CN-XiaoxiaoNeural";
+    string _cloneEngineStd = "local";
 
     async Task RefreshCloneAsync()
     {
