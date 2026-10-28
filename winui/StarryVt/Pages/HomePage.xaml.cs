@@ -476,7 +476,7 @@ public sealed partial class HomePage : Page
             //   ③ 下载过程本来就看得见（进度刷在行上、日志一行行涨），不是背着人下。
             //   安全垫换成了「跑的时候那个按钮变成『停止』」（见 Setup_Click）——
             //   误点、或者在用手机流量的人，随时能停。
-            if (!ok && s.Fix is "engine" or "downloader")
+            if (!ok && s.Fix is "engine" or "downloader" or "clone")
             {
                 s.Detail = detail;
                 (ok, detail) = await RunFixAsync(s.Fix, s, fromSetup: true);
@@ -619,7 +619,12 @@ public sealed partial class HomePage : Page
             SetupLabel.Text = "停止";
         }
         row.State = "doing";
-        row.Detail = kind == "engine" ? "正在安装翻译引擎…" : "正在更新下载器…";
+        row.Detail = kind switch
+        {
+            "engine" => "正在安装翻译引擎…",
+            "clone" => "正在安装语音克隆引擎…",
+            _ => "正在更新下载器…",
+        };
 
         try
         {
@@ -628,7 +633,8 @@ public sealed partial class HomePage : Page
                 return Settle(row, false, "没能开始：" + (Backend.LastError is { Length: > 0 } txt ? txt : "后端没有响应"));
 
             _jobDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (await Task.WhenAny(_jobDone.Task, Task.Delay(45 * 60_000)) != _jobDone.Task)
+            int limitMin = kind == "clone" ? 240 : 45;     // 克隆引擎合计约 20 GB，给足时间
+            if (await Task.WhenAny(_jobDone.Task, Task.Delay(limitMin * 60_000)) != _jobDone.Task)
                 return Settle(row, false, "等太久没动静了，去日志里看看");
 
             if (_jobError.Length > 0) return Settle(row, false, _jobError);
@@ -672,7 +678,7 @@ public sealed partial class HomePage : Page
             if (st.TryGetProperty("running", out var r) && r.ValueKind == JsonValueKind.True)
             {
                 _jobStage = Str(st, "stage");
-                if (_busyRow is not null && _jobStage is "engine" or "ytdlp" or "update")
+                if (_busyRow is not null && _jobStage is "engine" or "ytdlp" or "update" or "clone")
                 {
                     if (st.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.Array
                         && log.GetArrayLength() > 0)
@@ -763,6 +769,7 @@ public sealed partial class HomePage : Page
             // 后端能自己干的：装引擎 / 更新下载器（进度从推送的状态来，见 OnBackendStatus）
             case "engine":
             case "downloader":
+            case "clone":
                 var row = _steps.FirstOrDefault(x => x.Fix == tag);
                 if (!_busy && row is not null) _ = RunFixAsync(tag, row);
                 break;

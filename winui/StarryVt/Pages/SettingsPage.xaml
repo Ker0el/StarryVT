@@ -233,7 +233,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="用原说话人的音色" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Text="语音克隆" Style="{StaticResource RowLabelStyle}" />
                                 <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">用原视频里的人声念中文<LineBreak />云端：更快，需联网、按量计费，可能限流<LineBreak />本机：免费、离线，显卡越弱越慢</TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="8">
@@ -253,7 +253,7 @@
                         <Border Style="{StaticResource RowDividerStyle}" />
 
                         <!-- 本地语音克隆（备用）：默认不装，要用再下 -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid Padding="16,12" ColumnSpacing="20" Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -276,7 +276,7 @@
                         <Border Style="{StaticResource RowDividerStyle}" />
 
                         <!-- Qwen3-TTS（可选，按需下载，约 6 GB） -->
-                        <Grid Padding="16,12" ColumnSpacing="20">
+                        <Grid Padding="16,12" ColumnSpacing="20" Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />

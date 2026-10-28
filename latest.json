@@ -1,7 +1,7 @@
 {
-  "version": "6.35",
-  "sha256": "6680a2192e416a11586d3bee38f5b1963ec9324e3e2db9e644c52a535894e8eb",
-  "notes": "新增 Qwen3-TTS 本机克隆引擎（设置 → 克隆引擎，Index 下面），按需下载约 6 GB，免费本地离线，有 NVIDIA 显卡自动用 GPU；快速模式勾选克隆时可用本地 Index/Qwen（仍跳过分离、Google 机翻），API Key 提示补充「快速模式无需填写」；「翻完就打开成片」改为「启用」；本机克隆耗时提示精简。",
+  "version": "6.37",
+  "sha256": "8d7001de57c1f25143cdca77b2307d1b3eac7e4e7c97679cf23646dbae6635c4",
+  "notes": "一键初始化自动装好两个语音克隆引擎（Index 约 15 GB + Qwen3-TTS 约 5 GB）；设置页两个下载行隐藏；「用原说话人的音色」改名「语音克隆」。Qwen 安装复用翻译引擎的 torch（不再下载 3.4 GB CUDA torch），依赖用 uv --target 隔离，模型从 ModelScope 多线程下载。Qwen 默认批量 6 句合成。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.35.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.37.exe"
 }

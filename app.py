@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.35"
+APP_VERSION = "6.37"
 
 
 def _base_dir() -> Path:
@@ -200,6 +200,8 @@ class Api:
             return self.engine_install()
         if kind == "downloader":
             return self.update_downloader()
+        if kind == "clone":
+            return self.clone_all_install()
         return {"ok": False, "error": "未知的修复项"}
 
     def open_url(self, url: str) -> dict:
@@ -831,6 +833,52 @@ class Api:
         return {"ok": True, **localclone.status()}
 
     # ---------------- Qwen3-TTS（本地，可选，约 6 GB） ----------------
+
+    def clone_all_install(self) -> dict:
+        """一键初始化用：把 Index 和 Qwen3-TTS 两个语音克隆引擎都装上。"""
+        with self._lock:
+            if self._status["running"]:
+                return {"ok": False, "error": "有任务正在运行，等它完成后再装"}
+            if getattr(self, "_clones_installing", False):
+                return {"ok": False, "error": "已经有一个克隆安装任务在跑了"}
+            self._clones_installing = True
+            self._status = {"running": True, "stage": "clone", "percent": 0,
+                            "log": ["开始安装语音克隆引擎…"], "result": None, "error": ""}
+        threading.Thread(target=self._install_clones, daemon=True).start()
+        return {"ok": True}
+
+    def _install_clones(self) -> None:
+        import localclone
+        import qwenvoice
+        try:
+            params = cfg.load()
+            job = Job()
+            with self._lock:
+                self._job = job
+            if not localclone.status()["ready"]:
+                self._report("clone", None, "安装 Index 语音克隆（约 15 GB）…")
+                localclone.install(params, job, self._report)
+            if not qwenvoice.status()["ready"]:
+                if qwenvoice.engine_python():
+                    self._report("clone", None, "安装 Qwen3-TTS（约 5 GB）…")
+                    qwenvoice.install(params, job, self._report)
+                else:
+                    self._report("clone", None, "（翻译引擎还没装，跳过 Qwen3-TTS）")
+            with self._lock:
+                self._status.update(running=False, stage="done", percent=100)
+            self._report("clone", 100, "语音克隆引擎已就绪")
+        except Cancelled:
+            with self._lock:
+                self._status.update(running=False, stage="cancelled")
+            self._report("cancelled", None, "⏹ 已取消（已下好的部分留着）")
+        except Exception as e:  # noqa: BLE001
+            msg = f"{type(e).__name__}: {e}"
+            diag.write_exception(e, "语音克隆引擎安装")
+            with self._lock:
+                self._status.update(running=False, stage="error", error=msg)
+            self._report("error", None, f"❌ {msg}")
+        finally:
+            self._clones_installing = False
 
     def qwen_status(self) -> dict:
         import qwenvoice

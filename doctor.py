@@ -482,6 +482,28 @@ def _net(c: dict) -> dict:
                      "settings", "去设置")
 
 
+def _clones(c: dict) -> dict:
+    """两个本地语音克隆引擎：一键初始化时一起装好。"""
+    try:
+        import localclone
+        import qwenvoice
+        a = localclone.status()
+        b = qwenvoice.status()
+    except Exception as e:  # noqa: BLE001
+        return _item("clones", "语音克隆引擎", WARN,
+                     f"读不到状态：{type(e).__name__}", "clone", "一键安装")
+    if a["ready"] and b["ready"]:
+        return _item("clones", "语音克隆引擎", OK, "Index / Qwen3-TTS 都已就绪")
+    miss = []
+    if not a["ready"]:
+        miss.append("Index")
+    if not b["ready"]:
+        miss.append("Qwen3-TTS")
+    return _item("clones", "语音克隆引擎", WARN,
+                 f"还没装：{'、'.join(miss)}（约 20 GB，初始化时一并下载）",
+                 "clone", "一键安装")
+
+
 # ---------- 汇总 ----------
 
 def check(params: dict | None = None, deep: bool = False) -> dict:
@@ -491,8 +513,8 @@ def check(params: dict | None = None, deep: bool = False) -> dict:
     c.update(params or {})
 
     items = [_hardware(c), _data_dir(c), _install_dir(), _tools(), _downloader(c, deep),
-             _engine(c), _models(c), _keys(c), _llm_route(c), _disk(c), _output(c),
-             _proxy(c), _github(c, deep)]
+             _engine(c), _models(c), _clones(c), _keys(c), _llm_route(c), _disk(c),
+             _output(c), _proxy(c), _github(c, deep)]
     if deep:
         items.append(_net(c))
 

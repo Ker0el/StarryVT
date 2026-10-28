@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """本地 Qwen3-TTS（0.6B）：可选按需安装的配音引擎。
 
-和 IndexTTS（localclone.py）并列，不替代任何现有方案：
-  - 预设音色：Qwen3-TTS-0.6B-CustomVoice 的 9 个内置音色
-  - 声音克隆：Qwen3-TTS-0.6B-Base，3~7 秒参考音（英文参考音也能念中文）
+不替代任何现有方案：克隆引擎里是第三项（云端 MiMo / Index / Qwen）。
 
-为什么单开一套运行时：Qwen3-TTS 要求 transformers 4.57，IndexTTS 只认 4.52，
-装在一起会互相破坏（实测）。所以这里自己一个 venv，按需下载。
+关键设计（2026-10-29 实测后改的）：
+  · Qwen3-TTS 要 transformers 4.57.3，IndexTTS 只认 4.52.1 —— 装同一个 venv 会互相破坏。
+  · 但**翻译引擎自己的 venv 里已经有 torch 2.11+cu128 和 CUDA**（Python 3.12）。
+    所以这里不再下载一份 3.4 GB 的 torch，而是把 qwen-tts 和它要的 transformers
+    用 `uv pip install --target` 装到单独目录，运行时给引擎的 python 加 PYTHONPATH。
+    —— 不改引擎环境，也不重复下 torch；安装只有几十 MB + 两个模型（约 5 GB）。
 """
 from __future__ import annotations
 
@@ -17,6 +19,9 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import diag
@@ -27,15 +32,21 @@ from job import Job, no_window_kwargs
 VOICES = ("aiden", "dylan", "eric", "ono_anna", "ryan",
           "serena", "sohee", "uncle_fu", "vivian")
 
-#: 模型仓库（ModelScope；HF 作为兜底）
 BASE_REPO = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 CUSTOM_REPO = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
-
-BATCH = 6          # 实测 6 句一批最快；18 句会退化
+BATCH = 6                     # 实测 6 句一批最快；18 句会退化
 MODEL_FILES = ("config.json", "model.safetensors",
                "speech_tokenizer/config.json",
                "speech_tokenizer/model.safetensors",
                "speech_tokenizer/preprocessor_config.json")
+
+#: --target 安装的依赖（torch 由引擎运行时提供，不在这里）
+_DEPS = ("qwen-tts==0.1.1", "transformers==4.57.3", "tokenizers==0.22.1",
+         "accelerate==1.12.0", "huggingface_hub==0.35.0", "sox")
+_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
+_MS_API = ("https://modelscope.cn/api/v1/models/{repo}/repo/files"
+           "?Revision=master&Recursive=true")
+_MS_FILE = "https://modelscope.cn/models/{repo}/resolve/master/{path}"
 
 
 def home() -> Path:
@@ -43,32 +54,41 @@ def home() -> Path:
     return Path(raw) if raw else paths.resolve("qwen-tts")
 
 
-def runtime() -> Path:
-    return home() / "runtime"
-
-
-def python_exe() -> Path:
-    return runtime() / "Scripts" / "python.exe"
+def site_dir() -> Path:
+    """--target 安装的依赖目录（运行时加到 PYTHONPATH）"""
+    return home() / "site"
 
 
 def model_dir(kind: str = "base") -> Path:
-    over = (os.environ.get("STARRYVT_QWEN_BASE" if kind == "base" else "STARRYVT_QWEN_CUSTOM") or "").strip()
+    over = (os.environ.get("STARRYVT_QWEN_BASE" if kind == "base"
+                           else "STARRYVT_QWEN_CUSTOM") or "").strip()
     if over:
         return Path(over)
     name = "Qwen3-TTS-0.6B-Base" if kind == "base" else "Qwen3-TTS-0.6B-CustomVoice"
     return home() / "models" / name
 
 
-def _app_dir() -> Path:
-    """辅助脚本所在目录：打包后是 StarryVT.exe 旁边（和 localclone.APP_DIR 一致）"""
-    import tools
-    if tools.is_packaged():
-        return tools.exec_path().parent
-    return Path(__file__).parent
+def _dev_python() -> Path | None:
+    raw = (os.environ.get("STARRYVT_QWEN_PY") or "").strip()
+    p = Path(raw) if raw else None
+    return p if p and p.is_file() else None
 
 
-def _script() -> Path:
-    return _app_dir() / "qwen_synth.py"
+def engine_python() -> Path | None:
+    """翻译引擎运行时里的 python（自带 torch cu128）。"""
+    try:
+        import settings as cfg
+        import datadir
+        params = cfg.load()
+        base = Path((params.get("finesub_home") or "").strip() or datadir.default_home())
+        p = base / "runtime" / "python" / "Scripts" / "python.exe"
+        return p if p.is_file() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def python_exe() -> Path | None:
+    return _dev_python() or engine_python()
 
 
 def _missing(d: Path) -> list[str]:
@@ -76,45 +96,97 @@ def _missing(d: Path) -> list[str]:
 
 
 def status() -> dict:
-    """装到哪一步：{ready, installed, base_ready, custom_ready, missing, detail}"""
-    env_ok = bool(_dev_python()) or python_exe().is_file()
+    py = python_exe()
+    site_ok = (site_dir() / "qwen_tts").is_dir() and (site_dir() / "transformers").is_dir()
     miss_base = _missing(model_dir("base"))
     miss_custom = _missing(model_dir("custom"))
-    base_ok = not miss_base
-    custom_ok = not miss_custom
-    if env_ok and base_ok and custom_ok:
+    base_ok, custom_ok = not miss_base, not miss_custom
+    ready = bool(py) and site_ok and base_ok and custom_ok
+    if ready:
         detail = f"已装好（{home()}）"
-    elif env_ok:
-        miss = miss_base or miss_custom
-        detail = f"运行时好了，模型还缺：{', '.join(miss[:3])}"
+    elif not engine_python() and not _dev_python():
+        detail = "需要先安装翻译引擎（Qwen 复用引擎里的 torch 运行时）"
+    elif not site_ok:
+        detail = f"没装（依赖几十 MB + 两个模型约 5 GB）。将装在：{home()}"
     else:
-        detail = f"没装（约 6 GB：运行时 + 两个 0.6B 模型）。将装在：{home()}"
-    return {"ready": env_ok and base_ok and custom_ok,
-            "installed": env_ok, "base_ready": base_ok,
+        miss = miss_base or miss_custom
+        detail = f"依赖好了，模型还缺：{', '.join(miss[:3])}"
+    return {"ready": ready, "installed": site_ok, "base_ready": base_ok,
             "custom_ready": custom_ok, "missing": miss_base or miss_custom,
             "detail": detail, "dir": str(home())}
 
 
+# ---------------- 下载（ModelScope 直连，多线程分块） ----------------
+
+def _opener() -> urllib.request.OpenerDirector:
+    o = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    o.addheaders = [("User-Agent", "StarryVT/1.0")]
+    return o
+
+
+def _one_range(url: str, part: Path, start: int, end: int) -> None:
+    for attempt in range(5):
+        try:
+            req = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
+            with _opener().open(req, timeout=120) as r:
+                data = r.read()
+            if len(data) != end - start + 1:
+                raise IOError(f"short read {len(data)}")
+            with open(part, "r+b") as f:
+                f.seek(start)
+                f.write(data)
+            return
+        except Exception:  # noqa: BLE001
+            if attempt == 4:
+                raise
+            time.sleep(1.5 * (attempt + 1))
+
+
+def _download(repo: str, path: str, size: int, dest: Path,
+              job: Job, report) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and dest.stat().st_size == size:
+        return
+    part = dest.with_name(dest.name + ".part")
+    url = _MS_FILE.format(repo=repo, path=urllib.parse.quote(path))
+    with open(part, "wb") as f:
+        f.truncate(size)
+    chunk = 8 << 20
+    spans = [(s, min(s + chunk - 1, size - 1)) for s in range(0, size, chunk)]
+    report("clone", None, f"下载 {path}（{size / 1048576:.0f} MB）…")
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        list(ex.map(lambda a: _one_range(url, part, a[0], a[1]), spans))
+    if part.stat().st_size != size:
+        raise RuntimeError(f"{path} 大小不对")
+    os.replace(part, dest)
+
+
+def _fetch_models(repo: str, dest: Path, job: Job, report) -> None:
+    with _opener().open(_MS_API.format(repo=repo), timeout=60) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    files = [f for f in data["Data"]["Files"] if f.get("Type") == "blob"]
+    for f in files:
+        job.check()
+        _download(repo, f["Path"], int(f.get("Size") or 0), dest / f["Path"], job, report)
+
+
+# ---------------- 安装 ----------------
+
 def install(params: dict, job: Job, report) -> dict:
-    """按需安装运行时 + 两个模型（约 6 GB）。"""
-    st = status()
-    if st["ready"]:
-        return st
-    import shutil
-    import subprocess
-
+    py = engine_python()
+    if not py:
+        raise RuntimeError("Qwen3-TTS 复用翻译引擎的 torch 运行时：请先在首页把翻译引擎装好")
     import engine
+    uv = engine.find_uv() or engine.install_uv(params, job, report)
+    if not uv:
+        raise RuntimeError("找不到 uv，安装 Qwen3-TTS 需要它")
 
-    uv = engine.find_uv()
-    if not uv:
-        uv = engine.install_uv(params, job, report)
-    if not uv:
-        raise RuntimeError("找不到 uv，安装 Qwen3-TTS 需要它（点一次「安装翻译引擎」会自动准备好）")
-    home().mkdir(parents=True, exist_ok=True)
-    env = engine.uv_env(params)
-    env["UV_PYTHON_INSTALL_DIR"] = str(home() / "uv-python")
+    site_dir().mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env.pop("HTTP_PROXY", None)
+    env.pop("HTTPS_PROXY", None)
+    env["NO_PROXY"] = "*"
     env["UV_LINK_MODE"] = "copy"
-    from job import no_window_kwargs
 
     def run(cmd: list[str], what: str) -> None:
         job.check()
@@ -126,45 +198,12 @@ def install(params: dict, job: Job, report) -> dict:
             tail = (r.stderr or r.stdout or "")[-600:]
             raise RuntimeError(f"{what}失败：{tail}")
 
-    if not python_exe().is_file():
-        run(["venv", str(runtime()), "--python", "3.12"], "创建 Qwen 运行环境…")
+    if not (site_dir() / "qwen_tts").is_dir():
+        run(["pip", "install", "--target", str(site_dir()), "--no-deps",
+             "--default-index", _INDEX, *_DEPS], "安装 Qwen3-TTS 依赖（约 50 MB）…")
 
-    # 有 NVIDIA 显卡就装 CUDA 版 torch（约 2.5 GB）；否则装 CPU 版
-    try:
-        import doctor
-        has_nv = bool((doctor._gpu_info() or {}).get("name"))
-    except Exception:  # noqa: BLE001
-        has_nv = False
-    if has_nv:
-        run(["pip", "install", "--python", str(python_exe()), "torch", "torchaudio",
-             "--index-url", "https://download.pytorch.org/whl/cu128"],
-            "安装 GPU 运行时（torch cu128，约 2.5 GB）…")
-    else:
-        run(["pip", "install", "--python", str(python_exe()), "torch", "torchaudio"], "安装 CPU 运行时…")
-
-    run(["pip", "install", "--python", str(python_exe()),
-         "qwen-tts==0.1.1", "--no-deps"], "安装 qwen-tts…")
-    run(["pip", "install", "--python", str(python_exe()),
-         "transformers==4.57.3", "tokenizers==0.22.1", "accelerate==1.12.0",
-         "librosa", "soundfile", "sox", "onnxruntime", "einops",
-         "modelscope", "numpy", "huggingface_hub", "tqdm", "requests"],
-        "安装 Qwen3-TTS 依赖…")
-
-    spec = {"repos": [[BASE_REPO, str(model_dir("base"))],
-                      [CUSTOM_REPO, str(model_dir("custom"))]]}
-    spec_path = home() / "fetch.json"
-    spec_path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
-    script = _app_dir() / "qwen_fetch.py"
-    report("clone", None, "下载 Qwen3-TTS 模型（约 5 GB，国内直连）…")
-    env2 = dict(env)
-    env2["NO_PROXY"] = "*"
-    env2.pop("HTTP_PROXY", None)
-    env2.pop("HTTPS_PROXY", None)
-    r = subprocess.run([str(python_exe()), str(script), str(spec_path)],
-                       capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", env=env2, **no_window_kwargs())
-    if r.returncode != 0:
-        raise RuntimeError(f"模型下载失败：{(r.stderr or r.stdout or '')[-600:]}")
+    _fetch_models(BASE_REPO, model_dir("base"), job, report)
+    _fetch_models(CUSTOM_REPO, model_dir("custom"), job, report)
     st = status()
     if not st["ready"]:
         raise RuntimeError(f"装完了但状态不对：{st['detail']}")
@@ -172,29 +211,14 @@ def install(params: dict, job: Job, report) -> dict:
     return st
 
 
-def _dev_python() -> Path | None:
-    """开发/测试用：环境变量指向已有运行时，跳过安装。"""
-    raw = (os.environ.get("STARRYVT_QWEN_PY") or "").strip()
-    p = Path(raw) if raw else None
-    return p if p and p.is_file() else None
-
-
-def _python() -> Path:
-    return _dev_python() or python_exe()
-
+# ---------------- 合成 ----------------
 
 def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
           params: dict, job: Job, work: Path, progress_cb=None,
           preset: bool = False) -> dict:
-    """整批合成。items = [(文本, 输出 wav, speaker)]；preset=True 时用内置音色。
-
-    返回 {"ok": n, "fail": n, "errors": [...]}；失败会抛 RuntimeError。
-    """
     st = status()
-    if not preset and not st["base_ready"]:
-        raise RuntimeError("Qwen3-TTS 的克隆模型还没装好，请到 设置 → 配音 → Qwen3-TTS（本地）下载")
-    if preset and not st["custom_ready"]:
-        raise RuntimeError("Qwen3-TTS 的内置音色模型还没装好，请先下载")
+    if not st["ready"]:
+        raise RuntimeError(f"Qwen3-TTS 还没装好：{st['detail']}")
     if not items:
         return {"ok": 0, "fail": 0, "errors": []}
 
@@ -209,10 +233,17 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
     spec_path = Path(work) / "qwen_jobs.json"
     spec_path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
 
-    cmd = [str(_python()), str(_script()), str(spec_path)]
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    if not (base / "qwen_synth.py").is_file():
+        base = Path(__file__).parent
     env = dict(os.environ)
+    env["PYTHONPATH"] = str(site_dir())
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
+    env.pop("HTTP_PROXY", None)
+    env.pop("HTTPS_PROXY", None)
+    env["NO_PROXY"] = "*"
+    cmd = [str(python_exe()), str(base / "qwen_synth.py"), str(spec_path)]
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   text=True, encoding="utf-8", errors="replace",
                   cwd=str(work), env=env, **no_window_kwargs())
@@ -239,10 +270,7 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
             diag.write(f"[qwen] {line}", "run")
     code = p.wait()
     job.check()
-    fail = total - done
-    if code != 0 and fail == 0:
-        fail = 1
+    if done < total:
         errors.append(tail[-1] if tail else f"退出码 {code}")
-    if fail:
-        raise RuntimeError(f"Qwen3-TTS 合成失败 {fail} 句：{errors[0] if errors else ''}")
+        raise RuntimeError(f"Qwen3-TTS 合成失败 {total - done} 句：{errors[0]}")
     return {"ok": done, "fail": 0, "errors": []}
