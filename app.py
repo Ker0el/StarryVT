@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.48"
+APP_VERSION = "6.49"
 
 
 def _base_dir() -> Path:
@@ -287,8 +287,12 @@ class Api:
     def check_update(self) -> dict:
         """检查是否有新版本"""
         import updater
+        import mirrors
         c = cfg.load()
-        return updater.check(APP_VERSION, c.get("update_url", ""), c.get("proxy", ""))
+        # 设置里没填代理时，用自动检测到的系统代理（否则 GitHub 直连必然超时；
+        # 2026-10-29 用户报「检查更新失败 URLError」，日志里明明已经检测到 7897）
+        proxy = (c.get("proxy") or "").strip() or mirrors.effective_proxy(c)
+        return updater.check(APP_VERSION, c.get("update_url", ""), proxy)
 
     def _busy_message(self, suffix: str = "请等它完成后再更新") -> str:
         """「有任务在跑」这句话要带上**在跑什么**（调用时已持锁）"""
@@ -315,8 +319,10 @@ class Api:
     def _do_update(self, pkg_url: str, sha256: str = ""):
         import updater
         try:
+            import mirrors
             c = cfg.load()
-            pkg = updater.download(pkg_url, c.get("proxy", ""), self._job, self._report, sha256)
+            proxy = (c.get("proxy") or "").strip() or mirrors.effective_proxy(c)
+            pkg = updater.download(pkg_url, proxy, self._job, self._report, sha256)
             self._report("update", 100, "下载完成，正在安装并重启…")
             updater.install_and_restart(pkg, restart=True)
             time.sleep(1.0)

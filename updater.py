@@ -82,15 +82,25 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     last_kind = "未知错误"
     tried: list[str] = []
     configured = (proxy or "").strip()
-    proxy = mirrors.effective_proxy({"proxy": configured})
+    # 用户/系统已经给出代理就直接用，别再探一次：
+    # 探测是 1.5 秒的快速请求，代理稍慢就会被判死，然后整个检查退成直连 → GitHub 超时
+    # （2026-10-29 实测：日志里明明检测到 7897，检查更新却报 URLError）。
+    proxy = configured or mirrors.effective_proxy({"proxy": ""})
     for u in _manifest_urls(url):
         tried.append(u)
-        try:
-            with _opener_for(u, proxy).open(u, timeout=20) as r:
-                info = json.loads(r.read().decode("utf-8"))
-        except Exception as e:  # noqa: BLE001 - 这个源不行就换下一个
-            last_kind = type(e).__name__
-            diag.write(f"检查更新：源 {u} 连不上（{type(e).__name__}: {e}）", "update")
+        info = None
+        # 代理/GitHub 抖动时第一次常握手超时，隔 1 秒再来一次往往就通了
+        for attempt in range(2):
+            try:
+                with _opener_for(u, proxy).open(u, timeout=20) as r:
+                    info = json.loads(r.read().decode("utf-8"))
+                break
+            except Exception as e:  # noqa: BLE001 - 这个源不行就换下一个
+                last_kind = type(e).__name__
+                diag.write(f"检查更新：源 {u} 连不上（第 {attempt + 1} 次，{type(e).__name__}: {e}）", "update")
+                if attempt == 0:
+                    time.sleep(1.0)
+        if info is None:
             continue
         latest = str(info.get("version") or "").strip()
         pkg = str(info.get("url") or "").strip()

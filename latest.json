@@ -1,7 +1,7 @@
 {
-  "version": "6.48",
-  "sha256": "3636a61bb16676aa06e8b0f475985b1aad10e079d443c9997858029a18cac098",
-  "notes": "Qwen3-TTS 下线：初始化只装 Index，克隆引擎/音色列表不再出现 Qwen，旧 qwen 设置自动按 Index 处理。修复克隆引擎切页后变回 Index、Index/Qwen 共用配音缓存键、翻译完留下 _下载中 临时目录。",
+  "version": "6.49",
+  "sha256": "fd7e5a01c7d932d402e56e4a6a0e22762fc093b591ff1ed8617e9cbe81a8fabf",
+  "notes": "修复「检查更新失败 URLError」：不再用 1.5 秒探测把已配置/检测到的代理判死后退回直连；代理抖动时自动重试一次。其余同 6.48：Qwen3-TTS 下线，初始化只装 Index。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.48.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.49.exe"
 }
