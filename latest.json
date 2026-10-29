@@ -1,7 +1,7 @@
 {
-  "version": "6.40",
-  "sha256": "ce0f7d9a49d3a5acba63fcf576ec6bc2167111b0640c538349eea3a10b806829",
-  "notes": "修复 Qwen3-TTS 合成报 huggingface_hub/get_full_repo_name 的 ImportError：子进程显式加入翻译引擎的 site-packages 到 PYTHONPATH，并清掉 PYTHONHOME；requests 加进 Qwen 依赖。不用重下模型，升级后重跑任务即可。",
+  "version": "6.41",
+  "sha256": "e5e448729203e6f4d84e1a36a30ee73e05d274535225b3b0ff51a9853228f59f",
+  "notes": "修复 Qwen3-TTS 合成的 huggingface_hub/get_full_repo_name 报错：子进程自己补齐引擎 site-packages，不再依赖父进程 PYTHONPATH；批量失败自动逐句重试。实测快速模式 95 秒视频 24 条字幕 21 秒出片。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.40.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.41.exe"
 }

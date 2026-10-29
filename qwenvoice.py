@@ -251,6 +251,8 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
     env.pop("HTTPS_PROXY", None)
     env["NO_PROXY"] = "*"
     cmd = [str(python_exe()), str(base / "qwen_synth.py"), str(spec_path)]
+    diag.write(f"[qwen] py={python_exe()} site={site_dir()} "
+               f"eng_site_ok={eng_site.is_dir()} PYTHONPATH={env.get('PYTHONPATH')}", "run")
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   text=True, encoding="utf-8", errors="replace",
                   cwd=str(work), env=env, **no_window_kwargs())
@@ -278,6 +280,7 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
     code = p.wait()
     job.check()
     if done < total:
+        diag.write("[qwen] child tail: " + " | ".join(tail[-12:]), "run")
         errors.append(tail[-1] if tail else f"退出码 {code}")
         raise RuntimeError(f"Qwen3-TTS 合成失败 {total - done} 句：{errors[0]}")
     return {"ok": done, "fail": 0, "errors": []}

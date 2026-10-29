@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""在 Qwen3-TTS 自己的运行环境里跑一批合成。
+r"""在 Qwen3-TTS 自己的运行环境里跑一批合成。
 
 用法：
     <qwen 运行时>\Scripts\python.exe qwen_synth.py <jobs.json>
@@ -26,7 +26,24 @@ import sys
 import time
 
 
+def _add_engine_site() -> None:
+    r"""引擎 venv 的 site-packages 兜底加进 sys.path。
+
+    2026-10-29 客户实测：外层已经设了 PYTHONPATH，但子进程里 requests 仍然找不到，
+    huggingface_hub 只加载一半 → 报 `cannot import name 'get_full_repo_name'`。
+    这里按 sys.executable 自己算一遍（<venv>\Scripts\python.exe → <venv>\Lib\site-packages），
+    不依赖父进程环境。
+    """
+    if os.name != "nt":
+        return
+    venv = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    cand = os.path.join(venv, "Lib", "site-packages")
+    if os.path.isdir(cand) and cand not in sys.path:
+        sys.path.append(cand)          # 放后面：site 里的 transformers 4.57 优先
+
+
 def main() -> int:
+    _add_engine_site()
     if len(sys.argv) < 2:
         print("用法: python qwen_synth.py <jobs.json>", file=sys.stderr)
         return 2
@@ -81,8 +98,23 @@ def main() -> int:
                 ok += 1
             print(f"[{start + len(chunk)}] ok {time.time()-t0:.2f}s", flush=True)
         except Exception as e:  # noqa: BLE001 - 一批失败不拖垮整批任务
-            fail += len(chunk)
-            print(f"[{start + len(chunk)}] fail {type(e).__name__}: {e}", flush=True)
+            # 批量失败先逐句重试：一句坏掉不该连坐同批的另外 5 句
+            print(f"[{start + len(chunk)}] batch fail {type(e).__name__}: {e}; 逐句重试",
+                  flush=True)
+            for j in chunk:
+                try:
+                    if preset:
+                        w1, sr1 = model.generate_custom_voice(
+                            text=[j["text"]], speaker=[j.get("speaker")], language="Chinese")
+                    else:
+                        w1, sr1 = model.generate_voice_clone(
+                            text=[j["text"]], language="Chinese", voice_clone_prompt=prompt)
+                    sf.write(j["out"], w1[0], sr1)
+                    ok += 1
+                    print(f"[1] ok (single retry)", flush=True)
+                except Exception as e2:  # noqa: BLE001
+                    fail += 1
+                    print(f"[1] fail {type(e2).__name__}: {e2}", flush=True)
     print(f"DONE ok={ok} fail={fail}", flush=True)
     return 0 if fail == 0 else 1
 
