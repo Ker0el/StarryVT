@@ -1,7 +1,7 @@
 {
-  "version": "6.49",
-  "sha256": "fd7e5a01c7d932d402e56e4a6a0e22762fc093b591ff1ed8617e9cbe81a8fabf",
-  "notes": "修复「检查更新失败 URLError」：不再用 1.5 秒探测把已配置/检测到的代理判死后退回直连；代理抖动时自动重试一次。其余同 6.48：Qwen3-TTS 下线，初始化只装 Index。",
+  "version": "6.50",
+  "sha256": "0c6c957e3e52cf54e317048c3bb0f214ed279dcda210618ab7c753b44d06d891",
+  "notes": "检查更新在 GitHub 连不上时自动改走 gh-proxy 镜像（直连只等 4 秒，失败立刻换镜像，两轮）；已配置代理直接使用不再二次探测。安装包下载同样支持镜像兜底。其余同 6.49：Qwen 已下线，初始化只装 Index。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.49.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.50.exe"
 }

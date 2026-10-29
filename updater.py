@@ -31,6 +31,23 @@ DEFAULT_UPDATE_URL = "https://github.com/Ker0el/StarryVT/releases/latest/downloa
 SELF_HOSTED_UPDATE_URLS: tuple[str, ...] = ()
 
 
+def _with_mirrors(u: str) -> list[str]:
+    """GitHub 地址再补几条 gh-proxy 镜像（直连优先，失败才用）。
+
+    2026-10-29 实测：同一台机器 github.com 经代理约 2/3 的 TLS 握手超时，
+    而 gh-proxy.org / gh-proxy.com 经代理稳定 200。检查和下载都走这条兜底。
+    """
+    out = [u]
+    if "github.com/" in u:
+        # 只保留实测稳的两条（hk.gh-proxy.com 2026-10-29 经代理超时）
+        picks = [mirrors.CANDIDATES[0]]
+        if len(mirrors.CANDIDATES) > 2:
+            picks.append(mirrors.CANDIDATES[2])
+        for prefix in picks:
+            out.append(prefix.rstrip("/") + "/" + u)
+    return out
+
+
 def _manifest_urls(url: str) -> list[str]:
     """要依次试的更新清单地址：用户自定义 > GitHub Releases。
 
@@ -42,7 +59,7 @@ def _manifest_urls(url: str) -> list[str]:
     if u and u != DEFAULT_UPDATE_URL.rstrip("/"):
         return [u]
     out = [s for s in SELF_HOSTED_UPDATE_URLS if s.strip()]
-    out.append(DEFAULT_UPDATE_URL)
+    out.extend(_with_mirrors(DEFAULT_UPDATE_URL))
     return out
 
 
@@ -86,44 +103,42 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     # 探测是 1.5 秒的快速请求，代理稍慢就会被判死，然后整个检查退成直连 → GitHub 超时
     # （2026-10-29 实测：日志里明明检测到 7897，检查更新却报 URLError）。
     proxy = configured or mirrors.effective_proxy({"proxy": ""})
-    for u in _manifest_urls(url):
-        tried.append(u)
-        info = None
-        # 代理/GitHub 抖动时第一次常握手超时，隔 1 秒再来一次往往就通了
-        for attempt in range(2):
+    urls = _manifest_urls(url)
+    info = None
+    src = ""
+    for _pass in range(2):
+        for u in urls:
+            tried.append(u)
+            # GitHub 直连经常直接握手超时：给它很短的超时，尽快轮到 gh-proxy 镜像
+            tmo = 4.0 if u.startswith("https://github.com/") else 12.0
             try:
-                with _opener_for(u, proxy).open(u, timeout=20) as r:
+                with _opener_for(u, proxy).open(u, timeout=tmo) as r:
                     info = json.loads(r.read().decode("utf-8"))
-                break
+                src = u
             except Exception as e:  # noqa: BLE001 - 这个源不行就换下一个
                 last_kind = type(e).__name__
-                diag.write(f"检查更新：源 {u} 连不上（第 {attempt + 1} 次，{type(e).__name__}: {e}）", "update")
-                if attempt == 0:
-                    time.sleep(1.0)
-        if info is None:
-            continue
-        latest = str(info.get("version") or "").strip()
-        pkg = str(info.get("url") or "").strip()
-        if not latest or not pkg:
-            last_kind = "清单格式不正确"
-            diag.write(f"检查更新：源 {u} 返回的清单缺版本号或下载地址", "update")
-            continue
-        has = _vtuple(latest) > _vtuple(current)
-        diag.write(f"检查更新：当前 v{current}，最新 v{latest}，有更新={has}"
-                   f"（源 {u}，共试了 {len(tried)} 个）", "update")
-        return {"ok": True, "has_update": has, "version": latest, "current": current,
-                "pkg_url": pkg, "notes": str(info.get("notes") or ""),
-                "sha256": str(info.get("sha256") or "").strip().lower(),
-                "published": str(info.get("published") or ""), "source": u}
+                info = None
+                diag.write(f"检查更新：源 {u} 连不上（{type(e).__name__}: {e}）", "update")
+                continue
+            latest = str(info.get("version") or "").strip()
+            pkg = str(info.get("url") or "").strip()
+            if not latest or not pkg:
+                last_kind = "清单格式不正确"
+                info = None
+                diag.write(f"检查更新：源 {u} 返回的清单缺版本号或下载地址", "update")
+                continue
+            has = _vtuple(latest) > _vtuple(current)
+            diag.write(f"检查更新：当前 v{current}，最新 v{latest}，有更新={has}"
+                       f"（源 {u}，共试了 {len(tried)} 个）", "update")
+            return {"ok": True, "has_update": has, "version": latest, "current": current,
+                    "pkg_url": pkg, "notes": str(info.get("notes") or ""),
+                    "sha256": str(info.get("sha256") or "").strip().lower(),
+                    "published": str(info.get("published") or ""), "source": src}
 
     # ★ 每个源失败都写日志：以前只在成功时写，于是客户报「检测不到最新版」时，
     #   诊断报告里一条记录都没有 —— 分不清是「没新版」还是「压根没查成」。
     diag.write(f"检查更新失败（当前 v{current}）：试了 {len(tried)} 个源都不行，"
                f"最后一个是 {last_kind}", "update")
-    if configured and not proxy:
-        return {"ok": False,
-                "error": f"检查更新失败（{last_kind}）——你填的代理 {configured} 连不上，"
-                         f"也没自动检测到本机代理。没开代理软件的话，去设置里把这一栏清空。"}
     return {"ok": False, "error": f"检查更新失败（{last_kind}）——检查网络/代理"}
 
 
@@ -142,7 +157,7 @@ def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
     attempts = 3
     last: Exception | None = None
     # 设置里填的代理可能已经失效；这里和检查更新走同一套「填的能用就用、不能就自动探」
-    proxy = mirrors.effective_proxy({"proxy": proxy})
+    proxy = (proxy or "").strip() or mirrors.effective_proxy({"proxy": ""})
 
     for attempt in range(1, attempts + 1):
         job.check()
@@ -155,8 +170,11 @@ def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
         else:
             report("update", 0, f"下载中断，正在重试（{attempt}/{attempts}）…")
 
+        # 第 1 次直连 GitHub，后面两次换 gh-proxy 镜像
+        urls = _with_mirrors(pkg_url)
+        u = urls[min(attempt - 1, len(urls) - 1)]
         try:
-            with _opener_for(pkg_url, proxy).open(pkg_url, timeout=120) as r, open(dst, "wb") as f:
+            with _opener_for(u, proxy).open(u, timeout=120) as r, open(dst, "wb") as f:
                 total = int(r.headers.get("Content-Length") or 0)
                 got = 0
                 while True:
