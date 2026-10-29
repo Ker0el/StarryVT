@@ -100,8 +100,9 @@ def main() -> int:
         #   「本地语音克隆」必然失败（先是找不到文件，摆到根目录后就是上面那个 ImportError）。
         "--include-data-file=clone_synth.py=clone/clone_synth.py",
         "--include-data-file=clone_download.py=clone/clone_download.py",
-        "--include-data-file=qwen_synth.py=qwen_synth.py",
-        "--include-data-file=qwen_fetch.py=qwen_fetch.py",
+        # ★ 必须放在 qwen/ 子目录：backend 根目录里有不完整的 backports.zstd，
+        #   脚本放在根目录会被 sys.path 带进去，huggingface_hub 加载失败
+        "--include-data-file=qwen/qwen_synth.py=qwen/qwen_synth.py",
         "--include-raw-dir=.tools/bin=bin",  # ★ 见文件头：这里不能用 include-data-dir
         "--include-data-dir=wheelhouse=wheelhouse",
         "--include-data-dir=engine_whl=engine_whl",  # 翻译引擎本体 + 依赖（离线安装）
@@ -148,10 +149,10 @@ def main() -> int:
         if not (DIST / "clone" / f).is_file():
             print(f"!! 包里缺克隆辅助脚本：clone/{f}（用户点本地语音克隆会报「模型没加载起来」）")
             return 1
-    # Qwen 的两个脚本放在根目录（qwenvoice.py 用 sys._MEIPASS / __file__ 的同级找）
-    for f in ("qwen_synth.py", "qwen_fetch.py"):
-        if not (DIST / f).is_file():
-            print(f"!! 包里缺 Qwen 辅助脚本：{f}（Qwen3-TTS 会装不上 / 合不成）")
+    # Qwen 的脚本放在 qwen/ 子目录（根目录的 backports.zstd 会污染 sys.path）
+    for f in ("qwen_synth.py",):
+        if not (DIST / "qwen" / f).is_file():
+            print(f"!! 包里缺 Qwen 辅助脚本：qwen/{f}（Qwen3-TTS 会装不上 / 合不成）")
             return 1
 
     size = sum(f.stat().st_size for f in DIST.rglob("*") if f.is_file()) / 1048576

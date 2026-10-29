@@ -233,9 +233,12 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
     spec_path = Path(work) / "qwen_jobs.json"
     spec_path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
 
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
-    if not (base / "qwen_synth.py").is_file():
-        base = Path(__file__).parent
+    # 脚本必须待在独立子目录（和 clone/ 一样）：脚本所在目录会进 sys.path，
+    # backend 根目录里有一个不完整的 backports.zstd，会把 huggingface_hub 的
+    # hf_api 搞挂（2026-10-29 实测：安装版必现，开发版不出现）。
+    import tools
+    base = tools.exec_path().parent if tools.is_packaged() else Path(__file__).parent
+    base = base / "qwen"
     env = dict(os.environ)
     # ★ 引擎 python 是 venv；某些环境（PYTHONHOME 被父进程改过、pyvenv.cfg 异常）下
     #   它会读不到自己的 site-packages，于是 huggingface_hub 导入 requests 失败。

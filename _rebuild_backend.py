@@ -26,7 +26,7 @@ EXCLUDES = [
 need = [ROOT / "web", ROOT / "assets", ROOT / "icon.png", ROOT / "TERMS.md",
         ROOT / "licenses", BIN_DIR, WHEELHOUSE, ENGINE_WHL, ROOT / "builtin_knowledge",
         ROOT / "clone_synth.py", ROOT / "clone_download.py",
-        ROOT / "qwen_synth.py", ROOT / "qwen_fetch.py"]   # 少了这个用户那边点克隆就报错
+        ROOT / "qwen/qwen_synth.py"]   # 少了这个用户那边点克隆就报错
 miss = [str(p) for p in need if not p.exists()]
 if miss:
     print("!! 缺目录/文件，先别编："); [print("   ", m) for m in miss]; sys.exit(1)
@@ -54,8 +54,7 @@ cmd = [
     #   躺着 python312.dll / _ctypes.pyd，3.11 解释器一 import 就撞车。
     "--add-data", f"{ROOT / 'clone_synth.py'};clone",
     "--add-data", f"{ROOT / 'clone_download.py'};clone",
-    "--add-data", f"{ROOT / 'qwen_synth.py'};.",
-    "--add-data", f"{ROOT / 'qwen_fetch.py'};.",
+    "--add-data", f"{ROOT / 'qwen/qwen_synth.py'};qwen",
     "--add-data", f"{BIN_DIR};bin",
     "--add-data", f"{WHEELHOUSE};wheelhouse",
     "--add-data", f"{ENGINE_WHL};engine_whl",
