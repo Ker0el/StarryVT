@@ -572,6 +572,10 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
     merge_sentences / trim_silence  两个开关都是给排查用的，正常别关
     """
     job = job or Job()
+    if qwen_local:
+        # Qwen 的克隆/音色整体偏慢，很多句会超出字幕窗；1.35 的加速上限不够，
+        # 塞不进去就会和下一句叠在一起（2026-10-29 用户反馈）。给它更高的上限。
+        fit_max = max(fit_max, 1.7)
     segs = parse_srt(srt_path)
     if not segs:
         raise ValueError("字幕为空或解析失败")
@@ -606,7 +610,7 @@ def dub(srt_path: Path | str, video: Path | str, out_path: Path | str, *,
         else:
             raw = Path(clone_ref).read_bytes() if clone_ref else b""
             voice_key = "qwen-clone:" + hashlib.sha1(raw).hexdigest()[:8]
-    if clone_ref and not edge:
+    if clone_ref and not edge and not qwen_local:
         voice_arg, voice_key = _voice_data_uri(Path(clone_ref))
         model = VOICECLONE_MODEL          # ← 克隆必须换模型名，否则报 Unknown voice
         # 克隆模型的限流比普通音色紧得多（每个请求驮着 130KB 参考音），并发上限

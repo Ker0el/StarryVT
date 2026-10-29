@@ -1,7 +1,7 @@
 {
-  "version": "6.42",
-  "sha256": "a06d2bba834b8c8e1ab4316cc737cb63b187429f9ee83f73466ae30537b9bcd0",
-  "notes": "修复 Qwen3-TTS 合成的真正根因：安装版 backend 根目录里不完整的 backports.zstd 污染了脚本 sys.path，导致 huggingface_hub 加载失败；把 qwen_synth.py 移到 backend\\qwen\\ 独立目录。保留子进程 site-packages 兜底与批量失败逐句重试。不用重下模型，升级后重跑即可。",
+  "version": "6.48",
+  "sha256": "3636a61bb16676aa06e8b0f475985b1aad10e079d443c9997858029a18cac098",
+  "notes": "Qwen3-TTS 下线：初始化只装 Index，克隆引擎/音色列表不再出现 Qwen，旧 qwen 设置自动按 Index 处理。修复克隆引擎切页后变回 Index、Index/Qwen 共用配音缓存键、翻译完留下 _下载中 临时目录。",
   "published": "2026-10-28",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.42.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.48.exe"
 }

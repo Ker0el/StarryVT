@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.42"
+APP_VERSION = "6.48"
 
 
 def _base_dir() -> Path:
@@ -835,7 +835,7 @@ class Api:
     # ---------------- Qwen3-TTS（本地，可选，约 6 GB） ----------------
 
     def clone_all_install(self) -> dict:
-        """一键初始化用：把 Index 和 Qwen3-TTS 两个语音克隆引擎都装上。"""
+        """一键初始化用：装 Index 语音克隆引擎（Qwen 已下线）。"""
         with self._lock:
             if self._status["running"]:
                 return {"ok": False, "error": "有任务正在运行，等它完成后再装"}
@@ -849,7 +849,6 @@ class Api:
 
     def _install_clones(self) -> None:
         import localclone
-        import qwenvoice
         try:
             params = cfg.load()
             job = Job()
@@ -858,12 +857,6 @@ class Api:
             if not localclone.status()["ready"]:
                 self._report("clone", None, "安装 Index 语音克隆（约 15 GB）…")
                 localclone.install(params, job, self._report)
-            if not qwenvoice.status()["ready"]:
-                if qwenvoice.engine_python():
-                    self._report("clone", None, "安装 Qwen3-TTS（约 5 GB）…")
-                    qwenvoice.install(params, job, self._report)
-                else:
-                    self._report("clone", None, "（翻译引擎还没装，跳过 Qwen3-TTS）")
             with self._lock:
                 self._status.update(running=False, stage="done", percent=100)
             self._report("clone", 100, "语音克隆引擎已就绪")

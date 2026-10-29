@@ -217,7 +217,8 @@ def synth(items: list[tuple[str, Path, str]], ref: Path | str | None,
           params: dict, job: Job, work: Path, progress_cb=None,
           preset: bool = False) -> dict:
     st = status()
-    if not st["ready"]:
+    ok = st["custom_ready"] if preset else (st["installed"] and st["base_ready"])
+    if not ok:
         raise RuntimeError(f"Qwen3-TTS 还没装好：{st['detail']}")
     if not items:
         return {"ok": 0, "fail": 0, "errors": []}

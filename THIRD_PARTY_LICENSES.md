@@ -7,14 +7,20 @@
 
 | 组件 | 版本 | 许可证 |
 | --- | --- | --- |
+| aiohappyeyeballs | 2.7.1 | PSF-2.0 |
+| aiohttp | 3.14.5 | Apache-2.0 AND MIT |
+| aiosignal | 1.4.0 | Apache 2.0 |
 | annotated-types | 0.8.0 | MIT |
 | anyio | 4.15.1 | MIT |
 | attrs | 26.1.0 | MIT |
 | bottle | 0.13.4 | MIT |
+| certifi | 2026.10.23 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
 | click | 8.5.0 | BSD-3-Clause |
 | clr_loader | 0.3.1 | MIT |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
+| edge-tts | 7.3.1 | GNU Lesser General Public License v3 (LGPLv3) |
+| frozenlist | 1.8.0 | Apache-2.0 |
 | h11 | 0.16.0 | MIT |
 | httpcore2 | 2.16.0 | BSD-3-Clause |
 | httpx2 | 2.16.0 | BSD-3-Clause |
@@ -23,7 +29,9 @@
 | jsonschema-specifications | 2025.9.1 | MIT |
 | mcp | 2.3.0 | MIT |
 | mcp-types | 2.3.0 | MIT |
+| multidict | 7.2.1 | Apache-2.0 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 |
+| propcache | 0.5.4 | Apache-2.0 |
 | proxy_tools | 0.1.0 | MIT |
 | pydantic | 2.14.1 | MIT |
 | pydantic_core | 2.50.1 | MIT |
@@ -36,10 +44,12 @@
 | rpds-py | 2026.9.1 | MIT |
 | sse-starlette | 3.5.0 | BSD-3-Clause |
 | starlette | 1.9.0 | BSD-3-Clause |
+| tabulate | 0.10.0 | MIT |
 | truststore | 0.10.5 | MIT |
 | typing-inspection | 0.4.4 | MIT |
 | typing_extensions | 4.16.0 | PSF-2.0 |
 | uvicorn | 0.54.0 | BSD-3-Clause |
+| yarl | 1.25.1 | Apache-2.0 |
 
 > 完整许可证原文随包放在 `licenses\` 目录里（安装目录下同名文件夹）；各自的官方仓库也能查到（`python -m pip show <包名>` 可看本地元数据）。
 > Python 本体采用 PSF 许可证（`licenses/Python-PSF.txt`）；Python 包（含 MCP 及其依赖）的许可证原文汇总见 `licenses/PYTHON-PACKAGES-LICENSES.txt`；cryptography 为 Apache-2.0 / BSD-3-Clause 双许可（两份原文都在 `licenses\`）。
@@ -164,4 +174,4 @@
 - 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\fonts\OFL.txt`；字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。
 - 若你二次分发本软件，请一并保留本清单与 `licenses\` 目录。
 
-（本清单由 `make_licenses.py` 自动生成，共 33 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）
+（本清单由 `make_licenses.py` 自动生成，共 43 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）

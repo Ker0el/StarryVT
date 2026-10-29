@@ -488,24 +488,14 @@ def _clones(c: dict) -> dict:
     """两个本地语音克隆引擎：一键初始化时一起装好。"""
     try:
         import localclone
-        import qwenvoice
         a = localclone.status()
-        b = qwenvoice.status()
     except Exception as e:  # noqa: BLE001
         return _item("clones", "语音克隆引擎", WARN,
                      f"读不到状态：{type(e).__name__}", "clone", "一键安装")
-    if a["ready"] and b["ready"]:
-        return _item("clones", "语音克隆引擎", OK, "Index / Qwen3-TTS 都已就绪")
-    miss, size = [], []
-    if not a["ready"]:
-        miss.append("Index")
-        size.append("Index 约 15 GB")
-    if not b["ready"]:
-        miss.append("Qwen3-TTS")
-        size.append("Qwen 约 5 GB")
+    if a["ready"]:
+        return _item("clones", "语音克隆引擎", OK, "Index 已就绪")
     return _item("clones", "语音克隆引擎", WARN,
-                 f"还没装：{'、'.join(miss)}（{' + '.join(size)}，初始化时一并下载）",
-                 "clone", "一键安装")
+                 "还没装：Index（约 15 GB，初始化时下载）", "clone", "一键安装")
 
 
 # ---------- 汇总 ----------

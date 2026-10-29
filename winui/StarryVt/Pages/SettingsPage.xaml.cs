@@ -132,8 +132,7 @@ public sealed partial class SettingsPage : Page
                           ("快速模式（全流程免费，Google 机翻 + 微软配音，速度快）", "fast")]);
         ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
-                                 ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
-                                 ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
+                                 ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local")]);
         CloneEngineBox.Changed += idx => { _ = OnCloneEngineChanged(); };
 
         // 双语字幕：原文那一行放上面还是下面
@@ -1121,16 +1120,17 @@ public sealed partial class SettingsPage : Page
     {
         if (!_ready || _filling) return;
         var tag = VoiceBox.SelectedTag is { Length: > 0 } t ? t : "";
-        if (ModeBox.SelectedTag == "fast")
+        if (tag.StartsWith("zh-CN-"))
         {
-            _edgeVoice = tag.Length > 0 ? tag : _edgeVoice;
+            _edgeVoice = tag;
             await SaveAsync(new Dictionary<string, object?> { ["edge_voice"] = _edgeVoice });
         }
-        else
+        else if (tag.Length > 0)
         {
-            _voiceStd = tag.Length > 0 ? tag : _voiceStd;
+            _voiceStd = tag;
             await SaveAsync(new Dictionary<string, object?> { ["voice"] = _voiceStd });
         }
+        ToolTipService.SetToolTip(PreviewVoiceButton, "合成一句样音，听听这个音色");
     }
 
     /// <summary>按模式换音色列表：标准 = MiMo 音色；快速 = 微软音色 + 只留本地克隆。</summary>
@@ -1147,8 +1147,7 @@ public sealed partial class SettingsPage : Page
             KeysHint.Text = "快速模式不需要 API Key（Google 机翻 + 微软配音）";
             VoiceBox.SetItems(EdgeVoices);
             VoiceBox.SelectTag(_edgeVoice, notify: false);
-            CloneEngineBox.SetItems([("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
-                                     ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
+            CloneEngineBox.SetItems([("Index语音克隆（免费、本地、离线；显卡越强越快）", "local")]);
             CloneEngineBox.Select(0, notify: false);
             PreviewVoiceButton.IsEnabled = false;
             ToolTipService.SetToolTip(PreviewVoiceButton, "快速模式用微软音色，暂不支持试听");
@@ -1159,11 +1158,10 @@ public sealed partial class SettingsPage : Page
             KeysCard.IsHitTestVisible = true;
             KeysHint.Text = "只需填下面两个 Key，其他设置保持默认就能用。填完自动保存。（快速模式无需填写）";
             VoiceBox.SetItems(Mock.Voices.Select(v => (v, v)));
-            VoiceBox.SelectTag(_voiceStd, notify: false);
+            VoiceBox.SelectTag(_voiceStd.StartsWith("qwen:") ? "冰糖" : _voiceStd, notify: false);
             CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
-                                     ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local"),
-                                     ("Qwen语音克隆（免费、本地、离线；显卡越强越快）", "qwen")]);
-            CloneEngineBox.SelectTag(_cloneEngineStd, notify: false);
+                                     ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local")]);
+            CloneEngineBox.SelectTag(_cloneEngineStd == "cloud" ? "cloud" : "local", notify: false);
             PreviewVoiceButton.IsEnabled = CloneCheck.IsChecked != true;
             ToolTipService.SetToolTip(PreviewVoiceButton, "合成一句样音，听听这个音色");
         }
@@ -1179,8 +1177,9 @@ public sealed partial class SettingsPage : Page
     {
         if (!_ready || _filling) return;
         var mode = ModeBox.SelectedTag is { Length: > 0 } t ? t : "standard";
-        if (mode == "fast") _voiceStd = VoiceBox.SelectedTag is { Length: > 0 } v ? v : _voiceStd;
-        else _edgeVoice = VoiceBox.SelectedTag is { Length: > 0 } v ? v : _edgeVoice;
+        var cur = VoiceBox.SelectedTag is { Length: > 0 } v ? v : "";
+        if (cur.StartsWith("zh-CN-")) _edgeVoice = cur;
+        else if (cur.Length > 0) _voiceStd = cur;
         ApplyModeUI(mode);
         await SaveAsync(new Dictionary<string, object?> { ["mode"] = mode });
     }
@@ -1241,6 +1240,7 @@ public sealed partial class SettingsPage : Page
     {
         if (!_ready || _filling) return;
         var eng = CloneEngineBox.SelectedTag is { Length: > 0 } t ? t : "local";
+        _cloneEngineStd = eng;          // 切页 / 切模式回来时按它恢复，别再变回 Index
         await SaveAsync(new Dictionary<string, object?> { ["clone_engine"] = eng });
         if (eng == "local" && !_cloneReady)
             SetHint(CloneHint, "本机那套还没装：点右边的「下载并启用」（约 15 GB）", false);

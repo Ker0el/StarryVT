@@ -165,14 +165,30 @@ def _fast_translate(video: Path, params: dict, job: Job, report) -> Path:
     with ThreadPoolExecutor(max_workers=8) as pool:
         fut = [pool.submit(_google_one, t) for t in texts]
     zh: list[str] = []
-    miss = 0
+    miss_idx: list[int] = []
     for i, f in enumerate(fut):
         job.check()
         out = f.result()
         if not out:
-            miss += 1
+            miss_idx.append(i)
             out = texts[i]
         zh.append(out)
+    # 第一遍漏掉的再补一遍：Google 偶尔限流/慢，第二遍多半能回来；
+    # 否则那几行会保留英文，用户看到「有的没翻译」还以为是 Qwen 的问题。
+    if miss_idx:
+        report("translate", None, f"（{len(miss_idx)} 条机翻没返回，正在重试…）")
+        time.sleep(1.0)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            retry = list(pool.map(lambda i: _google_one(texts[i], timeout=15.0), miss_idx))
+        still = 0
+        for i, got in zip(miss_idx, retry):
+            if got:
+                zh[i] = got
+            else:
+                still += 1
+        miss = still
+    else:
+        miss = 0
     out = raw.parent / f"{video.stem}.srt"
     out.write_text(ytsub.to_srt([(s, e, t) for (s, e, _old), t in zip(cues, zh)]),
                    encoding="utf-8")
@@ -2623,6 +2639,11 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
         except Exception:
             pass
 
+    if tmp_dl is not None:
+        # 视频、封面、字幕都搬走了；剩下的 .last-file / 缩略图会把 `_下载中`
+        # 永久留一个空壳（2026-10-29 用户反馈「每次翻译完都有个 _下载中」）。
+        shutil.rmtree(tmp_dl, ignore_errors=True)
+
     if params.get("download_only"):
         # 「下载视频」：链接已经下好并收进任务目录；本地视频复制一份进去。
         # 不跑翻译 / 配音 / 压制，也不需要任何 API Key。
@@ -2698,10 +2719,19 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     fast = _is_fast(params)
     # 音色用云端（MiMo，默认）还是本机（IndexTTS-2.5）复刻 —— 后者要先在设置里下载
     engine = str(params.get("clone_engine") or "local")
+    if engine == "qwen":                 # Qwen 已下线：旧设置按 Index 处理
+        engine = "local"
     clone_on = bool(params.get("tts_clone"))
     # 快速模式里克隆只有本机（云端 MiMo 不参与）
     clone_local = clone_on and engine == "local"
     qwen_local = clone_on and engine == "qwen"
+    # 音色列表里的 Qwen 内置音色：voice = "qwen:<speaker>"
+    # Qwen 已下线：旧的 qwen:xxx 音色不再触发 Qwen，也别拿它去调 MiMo
+    _voice = str(params.get("voice") or "")
+    if _voice.startswith("qwen:"):
+        _voice = "冰糖"
+        params["voice"] = "冰糖"
+    qwen_voice = ""
     if clone_local:
         import localclone
         st = localclone.status()
@@ -2716,19 +2746,25 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     if qwen_local:
         import qwenvoice
         stq = qwenvoice.status()
-        if not stq["ready"]:
+        ok = stq["custom_ready"] if qwen_voice else (stq["installed"] and stq["base_ready"])
+        if not ok:
             report("dub", None,
                    "⚠ Qwen3-TTS 还没装好，这次改用"
                    + ("微软配音" if fast else "云端克隆")
-                   + "（设置 → 配音 → Qwen3-TTS（本地）可以下载）")
+                   + "（初始化里可以下载）")
             qwen_local = False
 
     _ck().enter("配音")
     if qwen_local:
-        report("dub", _map("dub", 0), "开始本机 Qwen3-TTS 克隆配音…")
-        clone_ref = _clone_reference(video, params, out_dir, report)
-        if clone_ref is None:
-            qwen_local = False
+        if qwen_voice:
+            # 内置音色，不需要参考音
+            clone_ref = None
+            report("dub", _map("dub", 0), f"开始本机 Qwen 配音（音色 {qwen_voice}）…")
+        else:
+            report("dub", _map("dub", 0), "开始本机 Qwen3-TTS 克隆配音…")
+            clone_ref = _clone_reference(video, params, out_dir, report)
+            if clone_ref is None:
+                qwen_local = False
     elif clone_local:
         # 本地克隆优先：快速模式也可以只用克隆（不分离 + Google 机翻，只是配音慢）
         report("dub", _map("dub", 0), "开始本机语音克隆配音...")
@@ -2769,7 +2805,7 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
                        style=_style,
                        speed_bias=speed_bias,
                        clone_ref=clone_ref, clone_local=clone_local,
-                       qwen_local=qwen_local, qwen_voice="",
+                       qwen_local=qwen_local, qwen_voice=qwen_voice,
                        edge=fast and not clone_local and not qwen_local,
                        edge_voice=str(params.get("edge_voice") or dubber.EDGE_DEFAULT),
                        params=params,
