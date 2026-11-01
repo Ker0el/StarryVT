@@ -1,6 +1,6 @@
 {
   "version": "6.54",
-  "sha256": "b2f2bb950fdae4ca2d4d6ada4d78acf947c759440d482e3d3ec1c8d4c92d61bc",
+  "sha256": "197af21697b1f9dd8ce45e11853ce7a2efb876f1848c2f430c4dca990ba1d55f",
   "notes": "SideFX 教程页读取更稳（失败自动换线路重试）；官方教程自动认出是 Houdini。",
   "published": "2026-11-01",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.54.exe"
