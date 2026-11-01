@@ -8,7 +8,8 @@ namespace Starry.Vt.App.Services;
 /// <summary>
 /// 音色试听：让后端合成一句样音（同一音色会缓存复用），拿到文件后本地播出来。
 ///
-/// 后端那步是真的 —— `preview_voice` 走的是原程序里的 MiMo 合成，没配 Key 会明确报错。
+/// 后端那步是真的 —— `preview_voice` 按音色分流：标准模式走 MiMo（没配 Key 会明确报错），
+/// 快速模式的 `zh-CN-…` 音色走微软 edge-tts，不需要 Key。
 /// </summary>
 public static class VoicePreview
 {

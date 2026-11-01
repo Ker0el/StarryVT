@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.50"
+APP_VERSION = "6.51"
 
 
 def _base_dir() -> Path:
@@ -508,23 +508,39 @@ class Api:
     # ---------------- 音色试听 ----------------
 
     def preview_voice(self, voice: str) -> dict:
-        """合成一句样音供试听（同一音色 + 同一风格缓存复用），返回可播放的相对文件名"""
+        """合成一句样音供试听（同一音色 + 同一风格缓存复用），返回可播放的相对文件名
+
+        快速模式用的是微软在线音色（`zh-CN-…`），必须走 edge-tts；以前这里一律
+        调 MiMo，会被当成「未知音色」直接 400（客户 2026-11-01 报「微软配音合成
+        失败：服务返回 400」，实际点的是试听按钮）。
+        """
         import hashlib
 
         voice = (voice or "").strip() or "冰糖"
-        key = cfg.resolve_mimo_key()
-        if not key:
-            return {"ok": False, "error": "未配置 MiMo API key（去设置里填写）"}
         import dubber
 
+        # 微软音色不走 MiMo、也不需要任何 Key（旧界面可能把显示名传进来，统一成 ID）
+        edge_id = next((vid for lab, vid in dubber.EDGE_VOICES
+                        if vid == voice or lab == voice), "")
+        if edge_id:
+            voice = edge_id
+        edge = bool(edge_id) or voice.lower().startswith("zh-cn-")
+        if not edge:
+            key = cfg.resolve_mimo_key()
+            if not key:
+                return {"ok": False, "error": "未配置 MiMo API key（去设置里填写）"}
         # 试听要跟成片一个念法：把「配音怎么读」那条风格也用上，改了风格就换一份缓存
         style = (cfg.load().get("tts_style") or "").strip() or dubber.DEFAULT_STYLE
         tag = hashlib.sha1(style.encode("utf-8")).hexdigest()[:6]
         safe = "".join(ch for ch in voice if ch.isalnum() or ch in "_-") or "voice"
         out = WEB_DIR / f"voice_{safe}_{tag}.wav"
         if not (out.exists() and out.stat().st_size > 500):
-            text = f"大家好，这是「{voice}」音色的试听效果，欢迎使用星译。"
-            err = dubber.synth_mimo(text, out, key, voice, style=style)
+            label = next((lab for lab, vid in dubber.EDGE_VOICES if vid == voice), voice)
+            text = f"大家好，这是「{label}」音色的试听效果，欢迎使用星译。"
+            if edge:
+                err = dubber.synth_edge(text, out, voice)
+            else:
+                err = dubber.synth_mimo(text, out, key, voice, style=style)
             if err:
                 diag.write(f"试听合成失败（{voice}）: {err}", "app")
                 return {"ok": False, "error": f"合成失败：{err}"}

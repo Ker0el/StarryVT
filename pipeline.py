@@ -189,6 +189,15 @@ def _fast_translate(video: Path, params: dict, job: Job, report) -> Path:
         miss = still
     else:
         miss = 0
+    # 大半都失败 = 网络根本连不上 Google（国内不开代理就是这样），这时「保留原文」
+    # 等于交出一份外语字幕，而界面还写着「翻译完成」—— 客户 2026-11-01 报的
+    # 「日译中出来两份日语」在快速模式下就是这个形状（双语把同一句原文叠了两行）。
+    # 宁可报错让用户去开代理 / 换标准模式，也别把原文当成品往下烧。
+    if miss > len(texts) // 2:
+        raise RuntimeError(
+            f"快速模式：Google 机翻大部分失败（{miss}/{len(texts)} 条没返回），"
+            "继续下去只会得到一份没翻译的原文。\n"
+            "请检查设置里的网络代理，或把翻译模式改成「标准模式」再试。")
     out = raw.parent / f"{video.stem}.srt"
     out.write_text(ytsub.to_srt([(s, e, t) for (s, e, _old), t in zip(cues, zh)]),
                    encoding="utf-8")
@@ -467,6 +476,9 @@ def _friendly_download_error(blob: str, retried: bool = False) -> str:
         return "YouTube 要求登录验证（人机校验）——建议先手动下载视频，再用「本地文件」模式。"
     if "private video" in b or "video unavailable" in b or "removed" in b or "not available" in b:
         return "视频不可用（可能已删除 / 私享 / 有地区限制）。"
+    if "only works when logged-in" in b:
+        return ("Vimeo 要求登录后才能读取这条视频——请从视频页右上角「分享」复制链接，"
+                "或先手动下载视频，再用「本地文件」模式。")
     if "ssl" in b or "timed out" in b or "timed out" in b or "connection" in b or "temporary failure" in b:
         return "网络连接失败——检查设置里的「网络代理」是否可用（访问 YouTube 通常需要代理）。"
     if "unsupported url" in b or "is not a valid url" in b:
@@ -489,9 +501,44 @@ def _worth_retry(blob: str) -> bool:
     return any(k in b for k in _RETRY_DL)
 
 
+# ---------- 链接规范化 ----------
+
+# Vimeo 2026 年起把网页端的取流接口改成了「必须登录」：yt-dlp 打开
+# vimeo.com/<id> 直接报 "The web client only works when logged-in"。
+# 2026-10-29 实测（下载器 2026.10.21）：三个公开视频全中，跟链接有没有
+# ?fl=pl&fe=cm 这类尾巴无关。播放器地址 player.vimeo.com/video/<id> 走的是
+# 另一条公开接口，不登录就能取到标题 / 封面 / 全部格式（同日实测 1080p 下载、
+# 合并正常），所以能换的链接一律先换成播放器地址再交给 yt-dlp。
+_VIMEO_PAGE = re.compile(
+    r"^https?://(?:www\.|m\.)?vimeo\.com/"
+    # /video/<id>，以及 channels / groups / album / showcase 里嵌着的单集
+    r"(?:(?:video|videos)/|(?:channels|groups|album|showcase)/[^/?#]+/(?:videos?/)?)?"
+    r"(?P<id>\d+)(?:/(?P<h>[0-9a-f]{6,}))?/?(?:[?#].*)?$",
+    re.I)
+
+
+def video_url(url: str) -> str:
+    """把 Vimeo 网页地址换成播放器地址，其它链接原样返回（原因见上面的注释）
+
+    私享视频的哈希有两种写法：路径里的 /<哈希>（分享卡的地址）和查询里的
+    ?h=<哈希>，播放器地址统一收成 ?h=。合集 / 频道 / 展示页这些不是单集的
+    地址不换——换了反而取不到列表。
+    """
+    s = (url or "").strip()
+    m = _VIMEO_PAGE.match(s)
+    if not m:
+        return url
+    h = m.group("h") or ""
+    if not h:
+        hm = re.search(r"[?&]h=([0-9a-f]+)", s, re.I)
+        h = hm.group(1) if hm else ""
+    return f"https://player.vimeo.com/video/{m.group('id')}" + (f"?h={h}" if h else "")
+
+
 def _ytdlp_args(url: str, out_dir: Path, params: dict | None = None) -> list[str]:
     """下载视频用的固定参数（默认 720p mp4，顺带下封面 + 字幕）"""
     params = params or {}
+    url = video_url(url)
     cmd = [tools.path("yt-dlp")]
     if shutil.which("node"):                      # 有 node 就指定，用于解 YouTube 的 JS 挑战
         cmd += ["--js-runtimes", "node"]
@@ -549,7 +596,7 @@ def fetch_subs(url: str, out_dir: Path, params: dict, report) -> int:
             "--sub-langs", f"{lang},{lang}-orig,{lang}-en"]
     if subs == "auto":
         cmd += ["--write-auto-subs"]              # 没有人工轨时退到自动轨
-    cmd += ["-o", str(out_dir / "%(title).80s.%(ext)s"), url]
+    cmd += ["-o", str(out_dir / "%(title).80s.%(ext)s"), video_url(url)]
     try:
         from job import no_window_kwargs
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -583,7 +630,7 @@ def probe_info(url: str, params: dict, timeout: float = 30.0) -> dict:
            "--no-download-archive"]
     if shutil.which("node"):
         cmd += ["--js-runtimes", "node"]
-    cmd.append(url)
+    cmd.append(video_url(url))
     r = None
     # 取元数据偶尔会抽风（B 站实测会回一句 "No video formats found"），隔一下重试一次
     for attempt in (0, 1):
@@ -1373,6 +1420,10 @@ def _find_sidecar_subtitle(video: Path) -> Path | None:
 
 
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_KANA_RE = re.compile(r"[\u3040-\u30ff]")          # 平假名 + 片假名
+_HANGUL_RE = re.compile(r"[\uac00-\ud7af]")
+_CYR_RE = re.compile(r"[\u0400-\u04ff]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
 
 
 def _looks_chinese(cues: list) -> bool:
@@ -1384,6 +1435,58 @@ def _looks_chinese(cues: list) -> bool:
     chars = len(re.sub(r"\s", "", text))
     cjk = len(_CJK_RE.findall(text))
     return chars >= 20 and cjk >= chars * 0.3
+
+
+def _looks_untranslated(cues: list, lang: str) -> bool:
+    """译文是不是整份都还是源语言（翻译被跳过 / 机翻全军覆没时的兜底原文）。
+
+    只认「一眼就是外文」的情况：日语看假名、韩语看谚文、俄语看西里尔字母；
+    英/德看拉丁字母。中文译文里夹英文单词很常见（软件名、术语），所以拉丁语
+    这一档要求「几乎没有汉字」。太短的素材不下结论，交给用户自己判断。
+    """
+    text = " ".join(str(t) for _s, _e, t in cues)
+    chars = len(re.sub(r"\s", "", text))
+    if chars < 20:
+        return False
+
+    def ratio(rx) -> float:
+        return len(rx.findall(text)) / chars
+
+    lang = (lang or "").strip().lower()
+    if lang == "ja":
+        # 规则的译文里禁止夹假名（引擎提示词第 10 条），成片出现假名就是原文
+        return ratio(_KANA_RE) >= 0.10
+    if lang == "ko":
+        return ratio(_HANGUL_RE) >= 0.30
+    if lang == "ru":
+        return ratio(_CYR_RE) >= 0.50
+    if lang in ("en", "de"):
+        return ratio(_LATIN_RE) >= 0.80 and ratio(_CJK_RE) <= 0.10
+    return False
+
+
+def _ensure_translated(srt: Path, params: dict, report) -> None:
+    """成品字幕必须真的是中文，不能把原文当成品交出去。
+
+    双语字幕只是「原文 + 译文」两行的拼接，本身不会把中文变成日语；客户看到
+    两行都是日语，说明拿到的译文文件本身就是日语（翻译被跳过 / 机翻失败后回退
+    原文）。这里在写输出、配音、压制之前拦一道，免得错的东西一路做到成片。
+    """
+    lang = str(params.get("source_lang") or "en")
+    if lang in ("zh", "zh-en"):
+        return                                  # zh 是换音色重配；zh-en 的成品是英文
+    try:
+        cues = dubber.parse_srt(srt)
+    except Exception:                            # noqa: BLE001 - 读不出来交给后续步骤报错
+        return
+    if not _looks_untranslated(cues, lang):
+        return
+    report("translate", None, "⚠ 译文看起来还是原文，没有生成中文字幕")
+    raise RuntimeError(
+        "翻译结果仍是原文，没有中文字幕（这次不会继续配音 / 压制）。\n"
+        "常见原因：① 快速模式下 Google 机翻连不上（检查设置里的网络代理）；"
+        "② 引擎复用了旧任务目录里的中间结果（到数据目录的 tasks 里删掉对应的"
+        "「视频名-哈希」文件夹后重跑）；③ 翻译服务的额度 / Key 用完了。")
 
 
 def _chinese_subtitle(video: Path, params: dict, report) -> Path | None:
@@ -2043,11 +2146,16 @@ def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
             font_dir = None
 
     dur = probe_duration(video) or 1.0
-    # preset 10（2026-10-22 实测，123 秒素材）：比 preset 8 快 2.0×，体积 +2.4%，
-    # PSNR 差 0.01 dB（25.185 → 25.171），肉眼看不出。preset 12 只再快 3% 但体积 +5.9%；
-    # NVENC 只快 1.66× 且体积 +11%，都不如 10 划算。
+    # 画质：preset 9 / crf 28 / tune=0（VQ），2026-11-01 客户报「动画成片从头到尾
+    # 有色块」后改的。原来的 preset 10 + crf 32 在暗部和大片渐变上会压出方块状
+    # 伪影（SVT-AV1 自己也会警告 Non-RTC M10+ … visual artifacts may occur），
+    # preset 10 本来是为「自动化工具」准备的，不适合当成品画质。
+    # 代价（本机 1080p 30 秒实测）：压制耗时约 +45%，文件约 +20%；压制只占整条
+    # 流水线很小一部分（大头是配音），这个取舍得值。tune=0 是主观画质档，
+    # 与 tune=1(PSNR) 同体积下观感更好，速度不变。
     cmd = [tools.path("ffmpeg"), "-v", "error", "-y", "-i", str(video.resolve()),
-           "-vf", vf, "-c:v", "libsvtav1", "-preset", "10", "-crf", "32",
+           "-vf", vf, "-c:v", "libsvtav1", "-preset", "9", "-crf", "28",
+           "-svtav1-params", "tune=0",
            "-c:a", "copy", "-progress", "pipe:1", "-nostats", out_path.name]
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                   text=True, encoding="utf-8", errors="replace", cwd=str(work))
@@ -2108,7 +2216,7 @@ def list_playlist(url: str, params: dict, job: Job, report) -> list[dict]:
             # flat 模式不给每条的 uploader（是 NA），但**合集自己**的作者和名字是有的 ——
             # 拿来当每集的作者，整条列表就都有作者可显示了
             "--print", "%(title)s\t%(url)s\t%(id)s\t%(duration_string)s"
-                       "\t%(uploader)s\t%(playlist_uploader)s\t%(playlist_title)s", url]
+                       "\t%(uploader)s\t%(playlist_uploader)s\t%(playlist_title)s", video_url(url)]
     p = job.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   text=True, encoding="utf-8", errors="replace",
                   env=_subprocess_env(params))
@@ -2670,6 +2778,9 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
 
     _ck().enter("翻译（引擎）")
     srt = translate(video, params, job, report)
+    # 译文必须真的是中文：双语字幕「两行都是外语」的根因就是这一步拿到了原文
+    # （翻译被跳过 / 机翻失败回退），不是双语拼接出了问题。见 _ensure_translated。
+    _ensure_translated(srt, params, report)
     _ck().leave()
     # 把成品字幕放进输出目录
     srt_copy = out_dir / f"{out_stem}.srt"

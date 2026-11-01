@@ -1149,8 +1149,11 @@ public sealed partial class SettingsPage : Page
             VoiceBox.SelectTag(_edgeVoice, notify: false);
             CloneEngineBox.SetItems([("Index语音克隆（免费、本地、离线；显卡越强越快）", "local")]);
             CloneEngineBox.Select(0, notify: false);
-            PreviewVoiceButton.IsEnabled = false;
-            ToolTipService.SetToolTip(PreviewVoiceButton, "快速模式用微软音色，暂不支持试听");
+            // 试听走微软音色（后端按 zh-CN-… 分流到 edge-tts），不再灰掉按钮。
+            // ⚠️ 这里不能写 IsEnabled=false：函数末尾的 UpdateVoiceEnabled() 会按
+            //    「有没有勾音色克隆」重新启用，结果就是快速模式下按钮看着能点、
+            //    点下去却把显示名当 MiMo 音色发出去，报「服务返回 400」（2026-11-01）。
+            ToolTipService.SetToolTip(PreviewVoiceButton, "合成一句样音，听听这个音色");
         }
         else
         {
@@ -1171,7 +1174,9 @@ public sealed partial class SettingsPage : Page
 
     async void PreviewVoice_Click(object sender, RoutedEventArgs e)
         => await Services.VoicePreview.PlayAsync(
-            VoiceBox.SelectedItem is { Length: > 0 } v ? v : "冰糖", PreviewVoiceButton);
+            // 用 SelectedTag（真实音色 ID），不能用 SelectedItem：快速模式下显示的是
+            // 「晓晓（女声，推荐）」这种标签，后端认不出来。
+            VoiceBox.SelectedTag is { Length: > 0 } v ? v : "冰糖", PreviewVoiceButton);
 
     async Task OnModeChanged()
     {
