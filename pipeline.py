@@ -625,21 +625,34 @@ def sidefx_page(url: str, params: dict, timeout: float = 20.0) -> dict:
     if not _SIDEFX_PAGE.match(s):
         return {}
     html = ""
-    for attempt in (0, 1):                   # 偶发 SSL 断开：隔一下再试一次
-        try:
-            import urllib.request
-            req = urllib.request.Request(s, headers={
-                "User-Agent": _SIDEFX_UA, "Accept-Language": "en-US,en;q=0.9"})
-            # 走设置里那个「探通了」的代理；不通就直连（页面本身国内大多能开）
-            with mirrors.opener(params).open(req, timeout=timeout) as r:
-                html = r.read().decode("utf-8", "replace")
-            if html:
-                break
-        except Exception:  # noqa: BLE001 - 取不到就当不支持，让原路去报错
-            html = ""
+    err = ""
+    # 先直连、再走代理，各试两次：
+    #   SideFX 的页面国内直连就能开（实测 3~6 秒），而走代理时常卡到超时或 SSL 断开
+    #   （2026-11-01 实测首次请求 24.8 秒才成功）。取不到页面就等于「链接不支持」，
+    #   用户看到的是「读不出标题」，所以这里宁可多试几次。
+    for direct in (True, False):
+        for attempt in (0, 1):
+            try:
+                import urllib.request
+                req = urllib.request.Request(s, headers={
+                    "User-Agent": _SIDEFX_UA, "Accept-Language": "en-US,en;q=0.9"})
+                with mirrors.opener(params, direct=direct).open(req, timeout=timeout) as r:
+                    html = r.read().decode("utf-8", "replace")
+                if html:
+                    break
+            except Exception as e:  # noqa: BLE001 - 取不到就当不支持，让原路去报错
+                html = ""
+                err = f"{'直连' if direct else '代理'} {type(e).__name__}: {e}"
             if attempt == 0:
-                time.sleep(0.8)
+                time.sleep(0.5)
+        if html:
+            break
     if not html:
+        try:                                  # 查问题用：下次客户说"读不出"能看见原因
+            import diag
+            diag.write(f"SideFX 页面取不到: {s}（{err}）", "sidefx")
+        except Exception:  # noqa: BLE001
+            pass
         return {}
     m = _SIDEFX_PLAYLIST.search(html)
     if not m:
@@ -771,7 +784,10 @@ def probe_info(url: str, params: dict, timeout: float = 30.0) -> dict:
     if page:
         return {"title": page["title"][:200], "uploader": "SideFX",
                 "duration": _sum_duration(page["items"]), "thumb": page["thumb"],
-                "count": len(page["items"])}
+                "count": len(page["items"]),
+                # 标题里往往没有软件名（如 "How to Deform Crowds with ML"），
+                # 但 SideFX 官方教程全是 Houdini —— 给认软件那一步当提示用
+                "hint": "SideFX Houdini"}
     exe = tools.path("yt-dlp")
     if not exe:
         return {}

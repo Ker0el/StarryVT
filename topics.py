@@ -80,13 +80,14 @@ def guess(title: str) -> list[tuple[str, str]]:
     return out
 
 
-def build_extra(title: str, limit: int = 2) -> str:
+def build_extra(title: str, limit: int = 2, hint: str = "") -> str:
     """标题 → 背景信息那一栏该填的话
 
     认不出软件也返回一句——标题本身就是有用的背景，别浪费。
+    hint 只用来认软件（如教程站能确定是 Houdini），不会写进「视频标题：」那行。
     """
     title = (title or "").strip()
-    hits = guess(title)[:limit]
+    hits = guess(f"{title} {hint}".strip())[:limit]
     if not hits:
         return f"视频标题：{title}" if title else ""
     names = "、".join(zh if zh == en else f"{zh}（{en}）" for zh, en in hits)

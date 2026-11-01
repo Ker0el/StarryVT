@@ -1,7 +1,7 @@
 {
-  "version": "6.53",
+  "version": "6.54",
   "sha256": "b2f2bb950fdae4ca2d4d6ada4d78acf947c759440d482e3d3ec1c8d4c92d61bc",
-  "notes": "支持 sidefx.com 教程页链接：自动展开整页视频并切到合集模式批量下载；单集教程页按单个视频处理。",
+  "notes": "SideFX 教程页读取更稳（失败自动换线路重试）；官方教程自动认出是 Houdini。",
   "published": "2026-11-01",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.53.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.54.exe"
 }

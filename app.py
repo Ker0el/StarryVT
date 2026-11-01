@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.53"
+APP_VERSION = "6.54"
 
 
 def _base_dir() -> Path:
@@ -984,8 +984,9 @@ class Api:
                 return {"ok": False, "error": "取不到标题（链接或网络问题）"}
         else:
             title = Path(src).stem
-        apps = [zh for zh, _en in topics.guess(title)]
-        return {"ok": True, "title": title, "extra": topics.build_extra(title),
+        hint = info.get("hint", "")
+        apps = [zh for zh, _en in topics.guess(f"{title} {hint}".strip())]
+        return {"ok": True, "title": title, "extra": topics.build_extra(title, hint=hint),
                 "apps": apps, "thumb": thumb,
                 "uploader": info.get("uploader", ""), "duration": info.get("duration", ""),
                 # 一个页面挂多集（SideFX 教程）时给界面用：>1 就自动切合集模式
