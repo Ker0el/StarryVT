@@ -1,7 +1,7 @@
 {
-  "version": "6.51",
-  "sha256": "4300e5915015aa5f10e225694d91343e8684064924e4a324a960bde0474e86aa",
-  "notes": "动画成片色块：压制改 preset 9 / crf 28 / tune=0；翻译结果仍是原文时不再继续配音压制（日译中双语「两份日语」的成因）；快速模式微软音色试听修复；Vimeo 链接自动换播放器地址。",
+  "version": "6.52",
+  "sha256": "d174310074aa7c9598801b3a234678ca6bce731db25fba6b4b767180ddfca190",
+  "notes": "更新下载：每 15 秒测速，低于 200 KB/s 自动换线路（GitHub → gh-proxy 镜像），并用 Range 断点续传；进度显示实时速度。其余同 6.51。",
   "published": "2026-11-01",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.51.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.52.exe"
 }

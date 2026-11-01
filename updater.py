@@ -142,51 +142,89 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     return {"ok": False, "error": f"检查更新失败（{last_kind}）——检查网络/代理"}
 
 
+#: 下载速度低于这个值（字节/秒）视为「这条线卡住了」，换下一条线路。
+#: 2026-11-01 实测：同一条代理，新连接 10～12 MB/s，旧连接卡在 40 KB/s；
+#: 原来的逻辑只在「报错」时重试，慢但不断线的连接会一直耗下去（207MB 要一小时）。
+DOWNLOAD_SLOW_BPS = 200 * 1024
+#: 判定窗口：先跑满这么久再测速，避免把握手阶段算进去
+DOWNLOAD_SAMPLE_SEC = 15
+
+
 def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
-    """下载安装包到临时目录（支持取消与进度、自动重试）
+    """下载安装包到临时目录（支持取消、断点续传、慢速换线）
 
     下完必须校验：大小对不上（服务端给了 Content-Length）或 sha256 不符，就当场失败。
     半个安装包跑静默安装 = 更新装坏、程序再也起不来——这种事故比"下载失败"难查得多。
 
     ★ 2026-10-21 加重试：GitHub 会 302 到 release-assets.githubusercontent.com，
       那一段 TLS 偶发 EOF（实测过一次，同一时刻 curl 走同样的代理完全正常）。
-      以前一次失败就直接抛，用户看到的是「正在下载新版本…」永远不动。
-      现在最多 3 次，每次重新建连接、从 0 开始（目前没做断点续传）。
+    ★ 2026-11-01 加「慢速换线 + 续传」：代理挑到慢节点时连接是通的、只是 40 KB/s，
+      旧逻辑永远等下去（客户实测 207MB 要一个多小时）。现在每 15 秒测一次速度，
+      低于 200 KB/s 就换下一条线路，并用 Range 从已下载的字节继续，不白下。
     """
     dst = Path(tempfile.gettempdir()) / "StarryVT-Setup-new.exe"
-    attempts = 3
+    urls = _with_mirrors(pkg_url)
+    attempts = len(urls)
     last: Exception | None = None
     # 设置里填的代理可能已经失效；这里和检查更新走同一套「填的能用就用、不能就自动探」
     proxy = (proxy or "").strip() or mirrors.effective_proxy({"proxy": ""})
 
     for attempt in range(1, attempts + 1):
         job.check()
-        try:
-            dst.unlink(missing_ok=True)
-        except OSError:
-            pass
+        resume_from = dst.stat().st_size if dst.exists() else 0
         if attempt == 1:
+            resume_from = 0
+            try:
+                dst.unlink(missing_ok=True)
+            except OSError:
+                pass
             report("update", 0, "正在下载新版本…")
+        elif resume_from > 0:
+            report("update", None,
+                   f"换一条线路续传（已下好 {resume_from // 1048576}MB）…")
         else:
             report("update", 0, f"下载中断，正在重试（{attempt}/{attempts}）…")
 
-        # 第 1 次直连 GitHub，后面两次换 gh-proxy 镜像
-        urls = _with_mirrors(pkg_url)
-        u = urls[min(attempt - 1, len(urls) - 1)]
+        u = urls[attempt - 1]
         try:
-            with _opener_for(u, proxy).open(u, timeout=120) as r, open(dst, "wb") as f:
-                total = int(r.headers.get("Content-Length") or 0)
-                got = 0
-                while True:
-                    job.check()
-                    chunk = r.read(256 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    got += len(chunk)
-                    if total:
-                        report("update", int(got * 100 / total),
-                               f"下载中 {got // 1048576}MB / {total // 1048576}MB")
+            req = urllib.request.Request(u)
+            if resume_from:
+                req.add_header("Range", f"bytes={resume_from}-")
+            with _opener_for(u, proxy).open(req, timeout=45) as r:
+                status = int(getattr(r, "status", 200) or 200)
+                if resume_from and status == 206:
+                    m = re.search(r"/(\d+)", r.headers.get("Content-Range") or "")
+                    total = int(m.group(1)) if m else 0
+                    got = resume_from
+                    mode = "ab"
+                else:
+                    # 服务端不支持续传（或这是第一次）：从头来
+                    resume_from = 0
+                    got = 0
+                    total = int(r.headers.get("Content-Length") or 0)
+                    mode = "wb"
+                with open(dst, mode) as f:
+                    win_t = time.monotonic()
+                    win_bytes = 0
+                    while True:
+                        job.check()
+                        chunk = r.read(256 * 1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        got += len(chunk)
+                        win_bytes += len(chunk)
+                        now = time.monotonic()
+                        if total:
+                            speed = win_bytes / max(0.001, now - win_t)
+                            report("update", int(got * 100 / total),
+                                   f"下载中 {got // 1048576}MB / {total // 1048576}MB"
+                                   f"（{speed / 1048576:.1f} MB/s）")
+                        if now - win_t >= DOWNLOAD_SAMPLE_SEC:
+                            if win_bytes / (now - win_t) < DOWNLOAD_SLOW_BPS:
+                                raise RuntimeError(
+                                    f"这条线路太慢（{win_bytes / (now - win_t) / 1024:.0f} KB/s），换线重试")
+                            win_t, win_bytes = now, 0
 
             size = dst.stat().st_size
             if size < 1024 * 1024:
@@ -210,14 +248,21 @@ def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
         except Exception as e:  # noqa: BLE001 - 网络/校验错误都重试
             last = e
             diag.write(f"下载新版本失败（第 {attempt}/{attempts} 次）：{type(e).__name__}: {e}", "update")
-            try:
-                dst.unlink(missing_ok=True)
-            except OSError:
-                pass
+            # 慢速换线时保留已下载的部分，下一次用 Range 续传；
+            # 尺寸/校验错误说明文件本身不可信，直接删掉重来。
+            if "不完整" in str(e) or "校验失败" in str(e) or "文件太小" in str(e):
+                try:
+                    dst.unlink(missing_ok=True)
+                except OSError:
+                    pass
             if attempt < attempts:
                 time.sleep(2 * attempt)
 
-    raise RuntimeError(f"下载失败（已重试 {attempts} 次）：{type(last).__name__}: {last}")
+    try:
+        dst.unlink(missing_ok=True)
+    except OSError:
+        pass
+    raise RuntimeError(f"下载失败（已试过 {attempts} 条线路）：{type(last).__name__}: {last}")
 
 
 def _sha256(path: Path) -> str:
