@@ -1,6 +1,6 @@
 {
   "version": "6.53",
-  "sha256": "d174310074aa7c9598801b3a234678ca6bce731db25fba6b4b767180ddfca190",
+  "sha256": "b2f2bb950fdae4ca2d4d6ada4d78acf947c759440d482e3d3ec1c8d4c92d61bc",
   "notes": "支持 sidefx.com 教程页链接：自动展开整页视频并切到合集模式批量下载；单集教程页按单个视频处理。",
   "published": "2026-11-01",
   "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.53.exe"
