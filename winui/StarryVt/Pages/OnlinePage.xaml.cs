@@ -179,6 +179,9 @@ public sealed partial class OnlinePage : Page
         if (s.Contains("youtube.com/watch") || s.Contains("youtu.be/")
             || s.Contains("bilibili.com/video/") || s.Contains("b23.tv/")) return false;
 
+        // SideFX 的教程页一个页面里挂着一串内嵌视频（后端 sidefx_page 会展开）
+        if (s.Contains("sidefx.com/tutorials/")) return true;
+
         return s.Contains("/playlist") || s.Contains("list=") || s.Contains("/medialist")
             || s.Contains("space.bilibili.com") || s.Contains("/channel/")
             || s.Contains("/series") || s.Contains("/@") || s.Contains("/c/") || s.Contains("/user/");
@@ -315,6 +318,17 @@ public sealed partial class OnlinePage : Page
             InfoTitle.Text = "❌ 读不出标题：" + (Backend.LastError is { Length: > 0 } e ? e : "链接或网络问题");
             InfoMeta.Text = "照样可以点「开始翻译」，标题只影响背景信息";
             _link = src;                       // 解析失败也能开跑，交给后端去报真正的错
+            return;
+        }
+
+        // 一个页面挂多集（SideFX 教程）：自动切到合集模式，别只下第一集
+        int count = r.Value.TryGetProperty("count", out var cnt) && cnt.ValueKind == JsonValueKind.Number
+            ? cnt.GetInt32() : 0;
+        if (count > 1)
+        {
+            SetMode("batch");
+            Hint($"这是多集教程（共 {count} 集），已切到合集模式");
+            await ReadPlaylistAsync(src);
             return;
         }
 

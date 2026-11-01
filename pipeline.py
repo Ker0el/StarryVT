@@ -482,7 +482,8 @@ def _friendly_download_error(blob: str, retried: bool = False) -> str:
     if "ssl" in b or "timed out" in b or "timed out" in b or "connection" in b or "temporary failure" in b:
         return "网络连接失败——检查设置里的「网络代理」是否可用（访问 YouTube 通常需要代理）。"
     if "unsupported url" in b or "is not a valid url" in b:
-        return "链接格式不对——请粘贴完整的视频链接。"
+        return ("链接格式不对——请粘贴完整的视频链接。"
+                "如果是教程、课程这类一个页面挂多集的地址，请切到「合集」模式再试。")
     return "yt-dlp 下载失败（详见上方日志）。"
 
 
@@ -533,6 +534,150 @@ def video_url(url: str) -> str:
         hm = re.search(r"[?&]h=([0-9a-f]+)", s, re.I)
         h = hm.group(1) if hm else ""
     return f"https://player.vimeo.com/video/{m.group('id')}" + (f"?h={h}" if h else "")
+
+
+# ---------- SideFX 教程页 ----------
+
+# sidefx.com/tutorials/<slug>/ 的播放器由前端脚本渲染，HTML 里没有 <iframe>，
+# yt-dlp 的通用解析器打开就报 Unsupported URL。真正的片子清单写在页面内联脚本里：
+#   window.playlist = [{title, url, backend}, ...]   url 是 YouTube / Vimeo 的嵌入地址
+# 取出来换成普通播放链接，后面照常交给 yt-dlp（单集、合集两条路都能用）。
+_SIDEFX_PAGE = re.compile(
+    r"^https?://(?:www\.)?sidefx\.com/tutorials/(?P<slug>[^/?#]+)/?(?:[?#].*)?$", re.I)
+_SIDEFX_PLAYLIST = re.compile(r"window\.playlist\s*=\s*(\[[\s\S]*?\])\s*;")
+_YT_EMBED = re.compile(
+    r"(?:youtube(?:-nocookie)?\.com/embed/|youtu\.be/)(?P<id>[A-Za-z0-9_-]{6,})", re.I)
+_DUR_TAIL = re.compile(r"\s*[\[(](\d{1,2}:\d{2}(?::\d{2})?)[\])]\s*$")
+
+_SIDEFX_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+
+
+def _sidefx_json(text: str) -> list:
+    """解析页面里的 window.playlist（不是严格 JSON：对象之间带尾逗号）
+
+    字符串里的逗号不能动，所以先扫一遍、只丢「后面紧跟 ] 或 }」的那些。
+    """
+    out: list[str] = []
+    in_str = esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            out.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            continue
+        if ch == ",":
+            j = i + 1
+            while j < len(text) and text[j] in " \t\r\n":
+                j += 1
+            if j < len(text) and text[j] in "]}":
+                continue                     # 尾逗号，丢掉
+        out.append(ch)
+    data = json.loads("".join(out))
+    return data if isinstance(data, list) else []
+
+
+def _sidefx_meta(html: str) -> tuple[str, str]:
+    """页面标题（去掉尾巴上的站名）和 og:image 封面"""
+    title = ""
+    m = re.search(r"<title>(.*?)</title>", html, re.S | re.I)
+    if m:
+        title = re.sub(r"\s*\|\s*SideFX\s*$", "", m.group(1).strip(), flags=re.I)
+    cover = ""
+    m = re.search(r'<meta[^>]+property="og:image"[^>]*content="([^"]+)"', html, re.I)
+    if m:
+        cover = m.group(1).strip()
+    return title, cover
+
+
+def _sum_duration(items: list[dict]) -> str:
+    """把每集的 mm:ss 加起来（给「时长」那一栏用；一集都取不到就返回空串）"""
+    total = 0
+    for it in items:
+        parts = [p for p in str(it.get("dur") or "").split(":") if p.isdigit()]
+        if len(parts) == 2:
+            total += int(parts[0]) * 60 + int(parts[1])
+        elif len(parts) == 3:
+            total += int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    if total <= 0:
+        return ""
+    h, rem = divmod(total, 3600)
+    mnt, sec = divmod(rem, 60)
+    return f"{h}:{mnt:02d}:{sec:02d}" if h else f"{mnt}:{sec:02d}"
+
+
+def sidefx_page(url: str, params: dict, timeout: float = 20.0) -> dict:
+    """读取 sidefx.com 教程页里的播放列表；不是这种页面 / 读不到就返回 {}
+
+    返回 {"title": 教程名, "thumb": 页面封面, "items": [...]}，
+    items 的字段和 list_playlist 的一致（title/src/dur/by/coll/coll_by/thumb）。
+    页面上的每集标题自带时长，如 "1 | Model a Cup [16:08]"，拆成 title + dur。
+    """
+    s = (url or "").strip()
+    if not _SIDEFX_PAGE.match(s):
+        return {}
+    html = ""
+    for attempt in (0, 1):                   # 偶发 SSL 断开：隔一下再试一次
+        try:
+            import urllib.request
+            req = urllib.request.Request(s, headers={
+                "User-Agent": _SIDEFX_UA, "Accept-Language": "en-US,en;q=0.9"})
+            # 走设置里那个「探通了」的代理；不通就直连（页面本身国内大多能开）
+            with mirrors.opener(params).open(req, timeout=timeout) as r:
+                html = r.read().decode("utf-8", "replace")
+            if html:
+                break
+        except Exception:  # noqa: BLE001 - 取不到就当不支持，让原路去报错
+            html = ""
+            if attempt == 0:
+                time.sleep(0.8)
+    if not html:
+        return {}
+    m = _SIDEFX_PLAYLIST.search(html)
+    if not m:
+        return {}
+    try:
+        entries = _sidefx_json(m.group(1))
+    except Exception:  # noqa: BLE001
+        return {}
+    page_title, cover = _sidefx_meta(html)
+    items: list[dict] = []
+    for e in (entries if isinstance(entries, list) else []):
+        if not isinstance(e, dict):
+            continue
+        src = str(e.get("url") or "").strip()
+        if not src:
+            continue
+        thumb = ""
+        ym = _YT_EMBED.search(src)
+        if ym:                                   # YouTube 嵌入地址 -> 普通观看地址
+            vid = ym.group("id")
+            src = f"https://www.youtube.com/watch?v={vid}"
+            thumb = f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg"
+        elif "vimeo.com" in src.lower():
+            src = video_url(src)                 # 网页地址换播放器地址（原因见上）
+        name = str(e.get("title") or "").strip() or src
+        dur = ""
+        dm = _DUR_TAIL.search(name)
+        if dm:                                   # "标题 [12:18]" -> 标题 + 12:18
+            dur = dm.group(1)
+            name = name[:dm.start()].strip()
+        item = {"title": name, "src": src, "dur": dur,
+                "by": "SideFX", "coll": page_title, "coll_by": "SideFX"}
+        if thumb:
+            item["thumb"] = thumb
+        items.append(item)
+    if not items:
+        return {}
+    return {"title": page_title or items[0]["title"], "thumb": cover, "items": items}
 
 
 def _ytdlp_args(url: str, out_dir: Path, params: dict | None = None) -> list[str]:
@@ -622,6 +767,11 @@ def probe_info(url: str, params: dict, timeout: float = 30.0) -> dict:
     合集链接只取第一集——够用来判断讲的是哪款软件了，别为了一句提示去翻整个合集。
     封面用视频 id 直接拼 i.ytimg.com 的地址，省一次网络请求。
     """
+    page = sidefx_page(url, params)
+    if page:
+        return {"title": page["title"][:200], "uploader": "SideFX",
+                "duration": _sum_duration(page["items"]), "thumb": page["thumb"],
+                "count": len(page["items"])}
     exe = tools.path("yt-dlp")
     if not exe:
         return {}
@@ -705,6 +855,13 @@ def download(url: str, out_dir: Path, params: dict, job: Job, report) -> Path:
     所以现在：先原样重跑（多数情况这一次就过了）；还不行就把下载器升到 nightly
     每日构建再试（见 ytdlp.py）；第三次是最后机会。三条都试过才把错误抛给用户。
     """
+    if _SIDEFX_PAGE.match((url or "").strip()):
+        items = (sidefx_page(url, params) or {}).get("items") or []
+        if len(items) == 1:                  # 单集教程页：直接下那一集
+            url = items[0]["src"]
+        elif items:                          # 多集：单集模式装不下，说清楚怎么走
+            raise RuntimeError(f"这是 SideFX 的多集教程（共 {len(items)} 集），"
+                               "请切到「合集」模式整批下载")
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = _ytdlp_args(url, out_dir, params)
     blob, code = "", 0
@@ -2209,6 +2366,10 @@ def list_folder_videos(folder: Path, limit: int = 800) -> list[dict]:
 
 def list_playlist(url: str, params: dict, job: Job, report) -> list[dict]:
     """用 yt-dlp 读取合集/播放列表的所有条目（不下载）"""
+    page = sidefx_page(url, params)
+    if page:
+        report("download", 0, f"合集共 {len(page['items'])} 个视频")
+        return page["items"]
     cmd = [tools.path("yt-dlp")]
     if shutil.which("node"):
         cmd += ["--js-runtimes", "node"]

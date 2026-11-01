@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.52"
+APP_VERSION = "6.53"
 
 
 def _base_dir() -> Path:
@@ -987,7 +987,9 @@ class Api:
         apps = [zh for zh, _en in topics.guess(title)]
         return {"ok": True, "title": title, "extra": topics.build_extra(title),
                 "apps": apps, "thumb": thumb,
-                "uploader": info.get("uploader", ""), "duration": info.get("duration", "")}
+                "uploader": info.get("uploader", ""), "duration": info.get("duration", ""),
+                # 一个页面挂多集（SideFX 教程）时给界面用：>1 就自动切合集模式
+                "count": info.get("count", 0)}
 
     def probe_titles(self, titles: list) -> dict:
         """一批标题（合集的）→ 背景信息：按命中条数挑软件，比只看第一条稳"""

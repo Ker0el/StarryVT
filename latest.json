@@ -1,7 +1,7 @@
 {
-  "version": "6.52",
+  "version": "6.53",
   "sha256": "d174310074aa7c9598801b3a234678ca6bce731db25fba6b4b767180ddfca190",
-  "notes": "更新下载：每 15 秒测速，低于 200 KB/s 自动换线路（GitHub → gh-proxy 镜像），并用 Range 断点续传；进度显示实时速度。其余同 6.51。",
+  "notes": "支持 sidefx.com 教程页链接：自动展开整页视频并切到合集模式批量下载；单集教程页按单个视频处理。",
   "published": "2026-11-01",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.52.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.53.exe"
 }
