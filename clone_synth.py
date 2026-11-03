@@ -29,8 +29,53 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
+
+
+def _ascii_wetext_override() -> str:
+    """路径含中文时，把 wetext 复制到纯英文目录再 import。
+
+    wetext 在 import 阶段就用 kaldifst（C++）打开 fsts/*.fst，而 kaldifst 走的是
+    系统代码页的窄路径：安装目录里只要有中文，就报
+    `Error opening input stream ...traditional_to_simple.fst`，整个克隆引擎起不来
+    （2026-11-03 客户报告，路径 G:\\...\\星译\\...）。
+
+    复制一份到 %PUBLIC%\\StarryVT-wetext（纯英文），再把它插到 sys.path 最前面，
+    import 就会命中这份副本 —— 不用改用户的目录，也不用动那个 venv。
+    返回提示文本（空 = 没做任何事）。
+    """
+    if all(ord(ch) < 128 for ch in os.getcwd()):
+        return ""
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("wetext")
+        if not spec or not spec.origin:
+            return ""
+        src = os.path.dirname(spec.origin)
+        base = os.environ.get("PUBLIC") or os.environ.get("ProgramData") or "C:\\"
+        root = os.path.join(base, "StarryVT-wetext")
+        dest = os.path.join(root, "wetext")
+        marker = os.path.join(root, "stamp.txt")
+        key = os.path.join(src, "constants.py")
+        stamp = f"{src}|{os.path.getmtime(key):.0f}|{os.path.getsize(key)}"
+        old = ""
+        try:
+            with open(marker, encoding="utf-8") as f:
+                old = f.read()
+        except OSError:
+            pass
+        if old != stamp or not os.path.isdir(dest):
+            os.makedirs(root, exist_ok=True)
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(src, dest)
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write(stamp)
+        sys.path.insert(0, root)
+        return f"检测到中文路径，文本前端改用 {dest}"
+    except Exception as e:                       # noqa: BLE001 - 兜底失败就按原样跑
+        return f"文本前端临时目录准备失败（继续按原路径加载）：{e}"
 
 
 def main() -> int:
@@ -47,6 +92,9 @@ def main() -> int:
     #    会落到主程序的工作目录里（实测过，一堆目录凭空多出来）。
     os.chdir(clone_dir)
     sys.path.insert(0, clone_dir)
+    _note = _ascii_wetext_override()
+    if _note:
+        print(f"[wetext] {_note}", flush=True)
 
     from indextts.infer_v2_5 import IndexTTS2  # noqa: E402 - 上面得先切目录
 

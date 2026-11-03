@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -240,6 +241,12 @@ def install(params: dict, job: Job, report) -> dict:
             f"本地语音克隆需要约 15 GB，{h.anchor} 只剩 {free_gb:.1f} GB。"
             f"请换一个空间足够的「数据目录」（设置 → 输出 → 数据目录），或改用云端配音。")
     report("clone", 0, "准备本地语音克隆（IndexTTS-2.5）…")
+    if not str(h).isascii():
+        # 文本前端 wetext 用 C++ 的 kaldifst 打开 .fst，按系统代码页解析路径，
+        # 中文目录会报「Error opening input stream」。clone_synth.py 会自动把
+        # wetext 复制到纯英文目录再加载；这里仍然提醒一句，避免换到别处又踩坑。
+        report("clone", 1, "提示：安装路径含中文，已自动用英文临时目录加载文本前端；"
+                           "如果仍报 Path/OSError，把数据目录换到纯英文路径（如 D:\\StarryVT）")
 
     # 1) 源码（20 多 MB，走 GitHub 加速镜像 —— 和引擎组件同一条路）
     if not (s / "pyproject.toml").is_file():
@@ -332,6 +339,12 @@ def install(params: dict, job: Job, report) -> dict:
     return st
 
 
+#: 子进程的进度行只有这一种形状：`[3] ok 1.24s` / `[4] fail RuntimeError: ...`（也容忍 [3/12]）
+#: ⚠ 以前只判「行首 [ 且中间有 ] 」，kaldifst 的 `[E] Error opening input stream ...`
+#:   被当成一句合成成功（2026-11-03 客户报告：界面显示 1/168，随后 ffmpeg 报找不到 wav）。
+_STATUS_RE = re.compile(r"^\[\d+(?:/\d+)?\] (?:ok|fail)\b")
+
+
 def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_cb=None) -> dict:
     # ⚠️ 2026-10-28 实测过「两个进程各跑一半」：12 GB 的卡上单进程峰值
     #    9.85 GB，两个进程同时加载后显存 11.7/12.3 GB、GPU 100%，6 分钟一句都
@@ -381,7 +394,7 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
             line = line.rstrip()
             if not line:
                 continue
-            if line.startswith("[") and "] " in line:
+            if _STATUS_RE.match(line):
                 done += 1
                 if " fail " in line:
                     fail += 1
@@ -417,6 +430,22 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
             why = f"：{last_line[:200]}" if last_line else ""
             raise RuntimeError(
                 f"本地语音克隆没能开工（模型没加载起来{why}；详细日志见 logs 目录）")
+
+    # 子进程说「跑完了」不算数：以音频真的落盘为准。少了任何一句，装配阶段就会
+    # 报一句看不懂的「ffmpeg 找不到 wav」，整条任务白跑（2026-11-03 客户报告）。
+    missing = []
+    for _text, _out, _speed in items:
+        _p = Path(_out)
+        try:
+            if not _p.is_file() or _p.stat().st_size <= 500:
+                missing.append(_p.name)
+        except OSError:
+            missing.append(_p.name)
+    if missing:
+        diag.write(f"[clone] {len(missing)} 句没有生成音频（如 {missing[0]}）", "run")
+        ok = max(0, len(items) - len(missing))
+        fail = len(missing)
+        errors = [f"{len(missing)} 句没有生成音频（如 {missing[0]}）"] + errors
 
     if fail:
         diag.write(f"[clone] {fail} 句失败：" + "；".join(errors[:3]), "run")

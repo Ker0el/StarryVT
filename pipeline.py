@@ -1662,6 +1662,23 @@ def _ensure_translated(srt: Path, params: dict, report) -> None:
         "「视频名-哈希」文件夹后重跑）；③ 翻译服务的额度 / Key 用完了。")
 
 
+def _english_only_lines(cues: list) -> list[int]:
+    """成品字幕里「整行还是外文」的行号（1 起），只用于提示，不拦截。
+
+    引擎按窗口翻译，个别行会被 LLM 原样返回；整份仍是原文时 `_ensure_translated`
+    会拦下，但零星几行会漏过去 —— 它们随后被中文音色照着英文念，客户听到的就是
+    「成片里混着英文，没配音出来」。
+    """
+    out: list[int] = []
+    for i, (_s, _e, t) in enumerate(cues, 1):
+        t = str(t or "").strip()
+        if not t or _CJK_RE.search(t):
+            continue
+        if len(_LATIN_RE.findall(t)) >= 8 and len(t.split()) >= 3:
+            out.append(i)
+    return out
+
+
 def _chinese_subtitle(video: Path, params: dict, report) -> Path | None:
     """视频已经有中文（或中文字幕）时：直接拿来配音，不调翻译。
 
@@ -1753,6 +1770,44 @@ def _dub_style_rule() -> str:
             "去掉口头禅、重复和书面语，用适合朗读的口语。")
 
 
+def _find_vocal(video: Path, params: dict) -> Path | None:
+    """这条视频的人声轨：先看当前任务目录，再按视频名去别的任务目录兜底。
+
+    ⚠ 任务目录名带着「会影响产物的设置」的哈希，设置变过一次就会换目录。
+    2026-11-03 客户报告：19:49 的引擎日志里人声分离明明跑完了，19:57 配音却说
+    「没找到人声轨」—— 旧目录里那条 vocal 还在，新目录里没有。
+    """
+    def _in(work: Path) -> Path | None:
+        p = work / f"{video.stem}-vocal.ogg"
+        return p if p.is_file() else None
+
+    hit = _in(_work_dir(video, params))
+    if hit:
+        return hit
+    if (params.get("source_lang") or "") == "zh-en":
+        # 中文→英语的识别是在 source_lang=zh 的工作目录里跑的，人声轨也在那边
+        asr_params = dict(params)
+        asr_params["source_lang"] = "zh"
+        hit = _in(_work_dir(video, asr_params))
+        if hit:
+            return hit
+    # 同名任务目录里挑最新的一条（同一个视频重跑出来的都在这下面）
+    try:
+        prefix = f"{video.stem}-"
+        cands = []
+        for d in _tasks_root(params).iterdir():
+            if not d.is_dir() or not d.name.startswith(prefix):
+                continue
+            p = d / f"{video.stem}-vocal.ogg"
+            if p.is_file():
+                cands.append(p)
+        if cands:
+            return max(cands, key=lambda p: p.stat().st_mtime)
+    except OSError:
+        pass
+    return None
+
+
 def _clone_reference(video: Path, params: dict, out_dir: Path, report) -> Path | None:
     """从引擎分离出的人声轨里剪一段参考音，给 MiMo 做音色克隆
 
@@ -1761,13 +1816,8 @@ def _clone_reference(video: Path, params: dict, out_dir: Path, report) -> Path |
     """
     if not params.get("tts_clone"):
         return None
-    vocal = _work_dir(video, params) / f"{video.stem}-vocal.ogg"
-    if not vocal.is_file() and (params.get("source_lang") or "") == "zh-en":
-        # 中文→英语的识别是在 source_lang=zh 的工作目录里跑的，人声轨也在那边
-        asr_params = dict(params)
-        asr_params["source_lang"] = "zh"
-        vocal = _work_dir(video, asr_params) / f"{video.stem}-vocal.ogg"
-    if not vocal.is_file():
+    vocal = _find_vocal(video, params)
+    if vocal is None:
         report("dub", None, "（没找到人声轨，音色克隆用不上，改用所选音色）")
         return None
     dest = out_dir / "tts_cache" / "克隆参考音.wav"
@@ -3085,6 +3135,14 @@ def _run_pipeline(params: dict, job: Job, report) -> dict:
     _en_out = (params.get("source_lang") or "") == "zh-en"
     _style = params.get("tts_style") or (dubber.DEFAULT_STYLE_EN if _en_out
                                          else dubber.DEFAULT_STYLE)
+    try:
+        _eng = _english_only_lines(dubber.parse_srt(srt_copy))
+    except Exception:                            # noqa: BLE001 - 只是提示，读不出来就算了
+        _eng = []
+    if _eng:
+        report("dub", None,
+               f"⚠ 有 {len(_eng)} 行字幕还是英文（如第 {_eng[0]} 行），配音会照着念；"
+               "要全中文就把这些行的译文补上后重跑")
     _dub_t0 = time.monotonic()
     stats = dubber.dub(srt_copy, video, dubbed,
                        api_key=str(params.get("mimo_key") or ""),

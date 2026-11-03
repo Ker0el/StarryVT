@@ -500,6 +500,13 @@ def _assemble(video: Path, use_paths: list[Path], segs: list, out_path: Path, *,
     所以：① wav 用工作目录里的相对名；② 句数太多时分批混成整条时间轴的分轨再合并。
     """
     video = Path(video)
+    # 装配依赖每一句的 wav 都在。缺了就提前给一句人话，别让 ffmpeg 抛
+    # 「Error opening input file xxx.wav」（2026-11-03 客户报告的那条崩溃）。
+    missing = [Path(p).name for p in use_paths if not Path(p).is_file()]
+    if missing:
+        raise RuntimeError(
+            f"配音音频缺了 {len(missing)} 句（如 {missing[0]}），这次没有出片。"
+            "多半是配音缓存被清理或磁盘空间不足；重跑一次会重新合成。")
     names = [_rel(work, p) for p in use_paths]
     starts = [s for s, _e, _t in segs]
     if len(segs) <= _ONE_SHOT_MAX:

@@ -1,7 +1,7 @@
 {
-  "version": "6.54",
-  "sha256": "197af21697b1f9dd8ce45e11853ce7a2efb876f1848c2f430c4dca990ba1d55f",
-  "notes": "SideFX 教程页读取更稳（失败自动换线路重试）；官方教程自动认出是 Houdini。",
-  "published": "2026-11-01",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.54.exe"
+  "version": "6.55",
+  "sha256": "1096b3f3b9e4528bd0a6c5465ae23e700bc7c09c80761e01aa01d10ff9028308",
+  "notes": "配音更稳：本地语音克隆在中文路径下可用；合成失败不再误判；字幕残留英文会提前提示。",
+  "published": "2026-11-03",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.55.exe"
 }
