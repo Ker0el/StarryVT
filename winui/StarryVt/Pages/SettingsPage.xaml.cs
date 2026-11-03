@@ -128,8 +128,8 @@ public sealed partial class SettingsPage : Page
         // 自绘下拉：显示的字 / 给后端用的值
         // 实测云端 4 路并发的克隆明显快于本机；原来写「本机速度快」是错的。
         // 本机赢在免费、离线、不受限。
-        ModeBox.SetItems([("标准模式（推荐，Deepseek精翻+Mimo配音，速度慢）", "standard"),
-                          ("快速模式（全流程免费，Google 机翻 + 微软配音，速度快）", "fast")]);
+        ModeBox.SetItems([("精翻模式（推荐，DeepSeek 精翻 + MiMo 配音，速度慢）", "standard"),
+                          ("快速模式（免费，Google机翻 + 微软配音，速度快）", "fast")]);
         ModeBox.Changed += idx => { _ = OnModeChanged(); };
         CloneEngineBox.SetItems([("云端 MiMo（更快；需联网、按量计费，可能限流）", "cloud"),
                                  ("Index语音克隆（免费、本地、离线；显卡越强越快）", "local")]);
@@ -141,10 +141,10 @@ public sealed partial class SettingsPage : Page
         SubBilingualOrderBox.Changed += idx => { _ = SubBilingualOrderChangedAsync(); };
 
         // 工作页的默认值：这里改的是「默认」，单个任务里还能临时改
-        DefaultOutputBox.SetItems([("出完整成片", "final"), ("只加字幕（保留原声）", "subs-burn"),
+        DefaultOutputBox.SetItems([("出完整视频成片", "final"), ("只加字幕（保留原声）", "subs-burn"),
                                    ("只出配音", "dub"), ("只出字幕", "subs"),
                                    ("只提取原文字幕（不翻译）", "subs-src"),
-                                   ("下载视频", "download")]);
+                                   ("只下载视频", "download")]);
         DefaultOutputBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
         {
             ["default_output"] = DefaultOutputBox.SelectedTag is { Length: > 0 } t ? t : "final",
@@ -153,8 +153,7 @@ public sealed partial class SettingsPage : Page
         LangBox.SetItems([("英语 → 中文", "en"), ("日语 → 中文", "ja"),
                           ("韩语 → 中文", "ko"), ("俄语 → 中文", "ru"),
                           ("德语 → 中文", "de"),
-                          ("中文 → 英语", "zh-en"),
-                          ("中文（换音色重配）", "zh")]);
+                          ("中文 → 英语", "zh-en")]);
         LangBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
         {
             ["source_lang"] = LangBox.SelectedTag is { Length: > 0 } t ? t : "en",
@@ -163,19 +162,6 @@ public sealed partial class SettingsPage : Page
         VoiceBox.SetItems(Mock.Voices.Select(v => (v, v)));
         VoiceBox.Changed += idx => { _ = OnVoiceChanged(); };
 
-        SpeedBox.SetItems([("标准", "auto"), ("+5%", "5"), ("+10%", "10")]);
-        SpeedBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
-        {
-            ["tts_speed"] = SpeedBox.SelectedTag is { Length: > 0 } t ? t : "auto",
-        }); };
-
-        SubsBox.SetItems([("优先用创作者字幕", "manual"),
-                          ("字幕优先，自动字幕也认", "auto"),
-                          ("不用字幕，一律语音识别", "off")]);
-        SubsBox.Changed += idx => { _ = SaveAsync(new Dictionary<string, object?>
-        {
-            ["yt_subs"] = SubsBox.SelectedTag is { Length: > 0 } t ? t : "manual",
-        }); };
         LoadWallpaper();          // 壁纸那行（动图/静态、换一张、钉住）——不用等后端
         _ready = true;
         Loaded += async (_, _) => await LoadAsync();
@@ -338,11 +324,13 @@ public sealed partial class SettingsPage : Page
         MainWindow.Instance?.SetSubtitleNavVisible(SubtitleReviewCheck.IsChecked == true);
         UpdateVoiceEnabled();
         CloneEngineBox.Select(Str(s, "clone_engine") == "cloud" ? 0 : 1, notify: false);
-        SubsBox.SelectTag(Str(s, "yt_subs") is { Length: > 0 } subs ? subs : "manual", notify: false);
+        // 「优先用创作者字幕」现在是固定行为，不再放进设置里
         LangBox.SelectTag(Str(s, "source_lang") is { Length: > 0 } lang ? lang : "en", notify: false);
         UpdateLangHint();
         VoiceBox.SelectTag(Str(s, "voice") is { Length: > 0 } voice ? voice : "冰糖", notify: false);
-        SpeedBox.SelectTag(Str(s, "tts_speed") is { Length: > 0 } spd ? spd : "auto", notify: false);
+        // 「中文（换音色重配）」已下线：旧配置落到英文→中文，别让它停在看不见的模式上
+        if (Str(s, "source_lang") == "zh")
+            _ = SaveAsync(new Dictionary<string, object?> { ["source_lang"] = "en" });
         SubSizeSlider.Value = Num(s, "subtitle_size", 42);
         SubSpacingSlider.Value = Num(s, "subtitle_spacing", 0);
         SubOutlineSlider.Value = Num(s, "subtitle_outline", 2.2);

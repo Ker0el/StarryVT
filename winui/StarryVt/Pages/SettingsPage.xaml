@@ -320,34 +320,6 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="配音语速" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="默认标准语速；每句仍会自动贴合时长"
-                                           Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
-                            </StackPanel>
-                            <ctl:GlassSelect x:Name="SpeedBox" Grid.Column="1" MinWidth="220" />
-                        </Grid>
-                        <Border Style="{StaticResource RowDividerStyle}" />
-
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="YouTube 字幕" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="有创作者字幕就直接拿来翻译，更准也更快"
-                                           Style="{StaticResource RowDescStyle}" />
-                            </StackPanel>
-                            <ctl:GlassSelect x:Name="SubsBox" Grid.Column="1" MinWidth="220" />
-                        </Grid>
-                        <Border Style="{StaticResource RowDividerStyle}" />
-
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
                                 <TextBlock Text="原声音量" Style="{StaticResource RowLabelStyle}" />
                                 <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">成片里留一点原声当底噪<LineBreak />0 = 纯中文</TextBlock>
                             </StackPanel>
@@ -572,6 +544,28 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
+                                <TextBlock Text="底部距离" Style="{StaticResource RowLabelStyle}" />
+                                <TextBlock Text="字幕离画面底部多远" Style="{StaticResource RowDescStyle}" />
+                            </StackPanel>
+                            <Grid Grid.Column="1" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <Slider x:Name="SubMarginSlider" Grid.Column="0" Minimum="10" Maximum="120"
+                                        StepFrequency="1" ValueChanged="SubMargin_ValueChanged" />
+                                <TextBlock x:Name="SubMarginText" Grid.Column="1" FontSize="14"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Grid>
+                        <Border Style="{StaticResource RowDividerStyle}" />
+                        <Grid Padding="16,12" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
                                 <TextBlock Text="描边颜色" Style="{StaticResource RowLabelStyle}" />
                                 <TextBlock Text="默认黑色；点右边可以换颜色"
                                            Style="{StaticResource RowDescStyle}" TextWrapping="Wrap" />
@@ -636,28 +630,6 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <Grid Padding="16,12" ColumnSpacing="20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="底部距离" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Text="字幕离画面底部多远" Style="{StaticResource RowDescStyle}" />
-                            </StackPanel>
-                            <Grid Grid.Column="1" ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="56" />
-                                </Grid.ColumnDefinitions>
-                                <Slider x:Name="SubMarginSlider" Grid.Column="0" Minimum="10" Maximum="120"
-                                        StepFrequency="1" ValueChanged="SubMargin_ValueChanged" />
-                                <TextBlock x:Name="SubMarginText" Grid.Column="1" FontSize="14"
-                                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </Grid>
-                        </Grid>
-                        <Border Style="{StaticResource RowDividerStyle}" />
                         <Grid Padding="16,12">
                             <Button Content="全部恢复默认" Click="ResetSubtitleStyle_Click"
                                     HorizontalAlignment="Left" />
