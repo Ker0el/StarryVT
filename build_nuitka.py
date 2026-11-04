@@ -31,6 +31,7 @@ ROOT = Path(__file__).parent
 BIN_DIR = ROOT / ".tools" / "bin"
 WHEELHOUSE = ROOT / "wheelhouse"
 ENGINE_WHL = ROOT / "engine_whl"      # 翻译引擎本体 + 它的 Python 依赖（离线装引擎用）
+BUNDLE_RUNTIME = ROOT / "bundle_runtime"   # uv / tokcount / MinGit 的随包 zip
 OUT = ROOT / "dist-nuitka"
 DIST = OUT / "app.dist"
 
@@ -72,6 +73,17 @@ def main() -> int:
     print(f"    OK: engine_whl {len(engine_wheels)} 个包，"
           f"{sum(f.stat().st_size for f in engine_wheels) / 1048576:.0f} MB")
 
+    # bundle_runtime\：uv / tokcount / MinGit 的随包 zip（fetch_tools.build_bundle_runtime）
+    # 缺了不拦构建 —— ffmpeg 复用 .tools\bin，不依赖这里；只是新用户会退回联网下载。
+    BUNDLE_RUNTIME.mkdir(parents=True, exist_ok=True)
+    _bundles = sorted(BUNDLE_RUNTIME.glob("*.zip"))
+    if _bundles:
+        print(f"    OK: bundle_runtime {len(_bundles)} 个包，"
+              f"{sum(f.stat().st_size for f in _bundles) / 1048576:.0f} MB")
+    else:
+        print("    !! bundle_runtime\\ 是空的：uv / tokcount / MinGit 会退回联网下载")
+        print("       需要随包的话先运行  python fetch_tools.py")
+
     print("=== [1/2] Nuitka 构建（几分钟，第一次会下载 depends.exe）===")
     shutil.rmtree(OUT, ignore_errors=True)
     cmd = [
@@ -106,6 +118,9 @@ def main() -> int:
         "--include-raw-dir=.tools/bin=bin",  # ★ 见文件头：这里不能用 include-data-dir
         "--include-data-dir=wheelhouse=wheelhouse",
         "--include-data-dir=engine_whl=engine_whl",  # 翻译引擎本体 + 依赖（离线安装）
+        # 引擎运行环境里的随包资源（uv / tokcount / MinGit 的原始 zip）。
+        # ffmpeg 不在这里 —— 它复用 .tools\bin 那份（同一个构建 commit）。
+        "--include-raw-dir=bundle_runtime=bundle_runtime",
         "--include-data-dir=licenses=licenses",
         # 内置术语词条（builtin_kb.py 导入用户的词条库用；装引擎那步和启动兜底都读它）
         "--include-data-dir=builtin_knowledge=builtin_knowledge",
@@ -139,10 +154,15 @@ def main() -> int:
         print(f"!! 包里缺随包程序：{', '.join(miss)}")
         print("   八成是又把 .tools/bin 写成 --include-data-dir 了，改回 --include-raw-dir")
         return 1
-    for d in ("web", "assets", "licenses", "wheelhouse", "engine_whl", "builtin_knowledge"):
+    for d in ("web", "assets", "licenses", "wheelhouse", "engine_whl",
+              "builtin_knowledge"):
         if not (DIST / d).is_dir():
             print(f"!! 包里缺目录：{d}")
             return 1
+    # 随包 zip：有源就要求落地（include-raw-dir 是唯一能把 .zip 带进去的方式）
+    if _bundles and not any((DIST / "bundle_runtime").glob("*.zip")):
+        print("!! bundle_runtime\\ 里的 zip 没进包（检查 --include-raw-dir）")
+        return 1
     # ★ 克隆辅助脚本必须落在 exe 旁边的 clone/ 子目录里 —— 漏了不会报错，只会在用户点
     #   「本地语音克隆」时报一句「模型没加载起来」，完全指不到真正的原因
     for f in ("clone_synth.py", "clone_download.py"):

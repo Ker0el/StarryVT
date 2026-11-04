@@ -397,6 +397,28 @@ def environment_info(deep: bool = False) -> str:
         lines.append("----- 外网依赖（GitHub）-----")
         lines += mirrors.describe(cfg_now or {})
         lines += wheels.describe()
+        # 引擎运行环境的三条路线（2026-11-05 新用户集中报「运行环境还没准备好」）：
+        # ffmpeg 是 setup 里唯一的硬依赖，也是唯一要问 api.github.com 的东西。
+        try:
+            import runtime_pin
+            st = runtime_pin.status()
+            home = str((cfg_now or {}).get("finesub_home") or "").strip()
+            if not home:
+                import datadir
+                home = str(datadir.default_home())
+            ready = runtime_pin.ffmpeg_ready({"finesub_home": home})
+            if ready:
+                lines.append("ffmpeg 下载路线: 已就绪（随包预置／已下载，setup 不需要再下）")
+            elif not st["files"]:
+                lines.append("ffmpeg 下载路线: 找不到引擎清单（引擎还没装好）")
+            elif any(f.get("pinned") for f in st["files"]):
+                lines.append("ffmpeg 下载路线: 已钉死到日期构建（不问 GitHub API，只下载文件）")
+            else:
+                lines.append("ffmpeg 下载路线: 未钉死 —— 会请求 GitHub API（限流时会装不上）")
+            lines.append("引擎 ffmpeg 已就绪: " +
+                         ("是" if ready else "否（setup 时仍需下载 194MB）"))
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"(检测 ffmpeg 路线失败: {e})")
     except Exception as e:  # noqa: BLE001
         lines.append(f"(检测外网依赖失败: {e})")
     try:

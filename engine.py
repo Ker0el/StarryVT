@@ -334,13 +334,20 @@ def install_uv(params: dict, job: Job, report) -> str:
 
     BIN_DIR.mkdir(parents=True, exist_ok=True)
     zip_path = BIN_DIR / "uv.zip"
-    # uv 本体放在 GitHub 上：直接走 GitHub，失败时再试公共加速镜像
-    # （顺序由 mirrors._candidate_urls 决定）。
-    # ⚠️ validate 必须传：镜像限流时是**用 200 回一个 HTML 错误页**的，不验就会
-    #    拿网页去解压 —— 用户看到的只有一句 `BadZipFile: File is not a zip file`，
-    #    完全看不出是镜像的问题（2026-10-15 客户报障）。
-    mirrors.fetch(UV_ZIP_URL, zip_path, params, report, stage="engine", timeout=180,
-                  sha256=UV_ZIP_SHA256, validate=zipfile.is_zipfile)
+    # 随包优先（2026-11-05）：bundle_runtime\uv.zip 是打包时预下载的同一份 uv。
+    # 没代理的新用户走到这里是安装流程的第一步，能不出网就不出网。
+    bundled_uv = tools.bundle_dir() / "bundle_runtime" / "uv.zip"
+    if bundled_uv.is_file() and bundled_uv.stat().st_size > 0:
+        shutil.copy2(bundled_uv, zip_path)
+        report("engine", None, "使用随包的 uv")
+    else:
+        # uv 本体放在 GitHub 上：直接走 GitHub，失败时再试公共加速镜像
+        # （顺序由 mirrors._candidate_urls 决定）。
+        # ⚠️ validate 必须传：镜像限流时是**用 200 回一个 HTML 错误页**的，不验就会
+        #    拿网页去解压 —— 用户看到的只有一句 `BadZipFile: File is not a zip file`，
+        #    完全看不出是镜像的问题（2026-10-15 客户报障）。
+        mirrors.fetch(UV_ZIP_URL, zip_path, params, report, stage="engine", timeout=180,
+                      sha256=UV_ZIP_SHA256, validate=zipfile.is_zipfile)
 
     try:
         with zipfile.ZipFile(zip_path) as z:
@@ -942,9 +949,46 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
         env["FINESUB_HOME"] = params["finesub_home"]
     env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
     env["PYTHONIOENCODING"] = "utf-8"
+
+    # ★ 2026-11-05：先把引擎的必装资源（ffmpeg / tokcount / git）放到磁盘上。
+    #   `finesub setup` 里只有 ffmpeg 是硬依赖，而它是整个流程里**唯一**还要问
+    #   api.github.com 要 sha256、并且只能走单个镜像前缀下载的东西 —— 没代理的新用户
+    #   就是卡在这一步。随包自带同一构建的 ffmpeg 后，这一步连网络都不碰。
+    try:
+        import runtime_pin as _pin
+        ready = _pin.prefetch(params, report)
+        if not ready.get("ffmpeg"):
+            report("engine", None, "（随包 ffmpeg 没用上，改由引擎自己下载）")
+    except Exception as e:  # noqa: BLE001 - 预置是加分项，不能拦住安装
+        report("engine", None, f"（随包资源预置跳过：{e}）")
+
     tail: list[str] = []
     try:
         code = _stream(job, [finesub, "setup"], env, report, tail=tail)
+        # ★ 失败后换一条路再试一次（2026-11-05）：最常见的原因是**选中的镜像
+        #   已经不回字节了**，而 mirrors.pick 的结果会缓存 6 小时。重探一遍镜像、
+        #   或把钉死的 ffmpeg 回退成引擎默认路径，往往这一把就过了。
+        #   明显的非网络失败（VC++ / c10.dll）不重试，重试也只会再耗几分钟。
+        retries = 0
+        while code != 0 and retries < 2 and not any(
+                ("1114" in s) or ("c10.dll" in s) for s in tail):
+            action = _retry_route(params, report)
+            if not action:
+                break
+            retries += 1
+            report("engine", None, f"运行环境没装好，{action}后重试一次…")
+            env = _proxy_env(params)
+            if params.get("finesub_home"):
+                env["FINESUB_HOME"] = params["finesub_home"]
+            env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
+            env["PYTHONIOENCODING"] = "utf-8"
+            try:
+                import runtime_pin as _pin
+                _pin.prefetch(params, report)
+            except Exception:  # noqa: BLE001
+                pass
+            tail.clear()
+            code = _stream(job, [finesub, "setup"], env, report, tail=tail)
     except Cancelled:
         raise
     except Exception as e:  # noqa: BLE001
@@ -967,3 +1011,27 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
            f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"
            f"如果一直失败，请把诊断报告发给我们。")
     return False
+
+
+def _retry_route(params: dict, report) -> str:
+    """运行环境失败后换一条路走。返回一句人话；空串 = 没有可换的路。
+
+    两种可换的路（2026-11-05 客户集中报障后加的）：
+      1. 钉死的 ffmpeg 下不动 → 还原成引擎原来的清单（下次预置会按新布局重新放文件）；
+      2. 选中的 GitHub 加速镜像已经死了 → 强制重探一遍，换一个还活着的。
+    `mirrors.pick` 的结果会缓存 6 小时，不强制重探的话第二次跑还是同一个死镜像。
+    """
+    try:
+        import runtime_pin as _pin
+        if not _pin.ffmpeg_ready(params) and _pin.restore():
+            return "把 ffmpeg 改回引擎默认下载路径"
+    except Exception:  # noqa: BLE001 - 换路失败就按没得换处理
+        pass
+    try:
+        old = mirrors.pick(params)
+        new = mirrors.pick(params, force=True)
+        if new != old:
+            return f"换下载镜像（{new or '官方源'}）"
+    except Exception:  # noqa: BLE001
+        pass
+    return ""

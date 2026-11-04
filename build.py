@@ -93,6 +93,8 @@ def main() -> int:
 
     if USE_PYINSTALLER:
         print("=== [1/4] PyInstaller 构建（--pyinstaller）===")
+        # --add-data 的目录必须存在；没跑过 fetch_tools 时给个空目录（只是不随包）
+        (ROOT / "bundle_runtime").mkdir(exist_ok=True)
         # ⚠️⚠️ **别把 dist/ 整个 rmtree 掉** —— 用户的成品视频就在
         #    `dist\StarryVT\output\` 里，那是他跑出来的东西、**不在任何仓库里**，
         #    删了就真没了（`_rebuild_backend.py` 上已经因为同类问题丢过一次，
@@ -119,6 +121,7 @@ def main() -> int:
             "--add-data", ".tools/bin;bin",  # ffmpeg/ffprobe/yt-dlp：随包分发，用户不必自己装
             "--add-data", "wheelhouse;wheelhouse",  # 只放在 GitHub 上的 Python 包（无代理用户离线装运行时用）
             "--add-data", "engine_whl;engine_whl",  # 翻译引擎本体 + 依赖（离线安装引擎用）
+            "--add-data", "bundle_runtime;bundle_runtime",  # uv / tokcount / MinGit 随包 zip
             "--add-data", "licenses;licenses", # 上面那些程序的许可证原文（LGPL/GPL/Unlicense）
             "--collect-submodules", "mcp",     # MCP 服务（app.py --mcp / --mcp-http）
             "--hidden-import", "mcp_server",

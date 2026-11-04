@@ -79,6 +79,35 @@ BUNDLED_WHEELS = [
     },
 ]
 
+# 随包分发的引擎运行环境资源（bundle_runtime/，见 fetch_tools.build_bundle_runtime）。
+# 2026-11-05 起随包：这些工具只发布在 GitHub 上，没有代理的新用户装运行环境时下不动。
+BUNDLED_ENGINE_RESOURCES = [
+    {
+        "name": "uv（uv.zip）",
+        "version": "见安装包内 zip 的目录名",
+        "license": "Apache-2.0 / MIT",
+        "note": ("**随本软件分发**（程序目录 `bundle_runtime\\uv.zip`）。安装翻译引擎时用于创建 "
+                 "Python 运行环境；原样未改。上游 <https://github.com/astral-sh/uv>，"
+                 "许可证原文见 `licenses/Apache-2.0.txt`。"),
+    },
+    {
+        "name": "MinGit（git.zip）",
+        "version": "2.55.0.3",
+        "license": "GPL-2.0",
+        "note": ("**随本软件分发**（程序目录 `bundle_runtime\\git.zip`）。翻译引擎的可选依赖；"
+                 "原样未改，作为独立程序调用。上游 <https://github.com/git-for-windows/git>，"
+                 "许可证原文见 `licenses/GPL-2.0.txt`；对应源码同上仓库。"),
+    },
+    {
+        "name": "tokcount（tokcount.zip）",
+        "version": "1.62.0-0",
+        "license": "GPL-3.0",
+        "note": ("**随本软件分发**（程序目录 `bundle_runtime\\tokcount.zip`）。翻译引擎离线统计 "
+                 "token 数用；原样未改，作为独立程序调用。上游 <https://github.com/caca2331/finesub>，"
+                 "许可证原文见 `licenses/GPL-3.0.txt`。"),
+    },
+]
+
 # 随包分发的字体（位于 assets/fonts/）
 BUNDLED_FONTS = [
     {
@@ -169,14 +198,16 @@ RUNTIME_NOTES = [
      "由翻译引擎在首次使用时自动下载，本软件不分发。"),
     ("uv（引擎运行时用）", "Apache-2.0 / MIT",
      "引擎本体随包时已带一份 uv 0.11.32（见上面的引擎依赖清单，随包分发）；"
-     "运行时另外用到的 uv 由引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。"),
-    ("FFmpeg（引擎运行时用，GPL 构建）", "GPL-3.0",
-     "由翻译引擎从上游 GitHub（BtbN/FFmpeg-Builds）下载，本软件不镜像、不分发。"
-     "**与随包那个 LGPL 构建不是同一份文件**。"),
+     "装引擎用的 uv 0.13.1 也随包提供（`bundle_runtime\\uv.zip`，见第二节）。"
+     "只有引擎自己重建运行环境时才会另外从上游 GitHub 下载。"),
+    ("FFmpeg（引擎运行时用）", "LGPL-3.0-or-later",
+     "2026-11-05 起引擎复用随包那份 LGPL 构建（见第二节），不再从 GitHub 下载 194MB "
+     "GPL 构建，也不再请求 GitHub API。"
+     "引擎只在「多模态视频片段」里用到 libx264，而本软件的模型目录把视频能力关掉了。"),
     ("MinGit（引擎运行时用）", "GPL-2.0",
-     "由翻译引擎从上游 GitHub（git-for-windows/git）下载，本软件不镜像、不分发。"),
+     "随包提供（`bundle_runtime\\git.zip`，见第二节）；只有随包那份缺失时引擎才会从上游下载。"),
     ("tokcount（引擎的本地分词器）", "随 finesub（GPL-3.0-or-later）",
-     "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"),
+     "随包提供（`bundle_runtime\\tokcount.zip`，见第二节）；只有随包那份缺失时引擎才会从上游下载。"),
     ("BS-Roformer 人声分离模型（权重与 .yaml）", "MIT（依 UVR 的模型声明）",
      "由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。"
      "模型作者为 Anjok07、aufr33、viperx；代码架构来自 lucidrains/BS-Roformer（MIT）。"
@@ -499,6 +530,19 @@ def main() -> int:
         for it in BUNDLED_WHEELS:
             lines.append(f"| {it['name']} | {_wheel_version(it)} | {it['license']} |")
         for it in BUNDLED_WHEELS:
+            lines.append(f"- **{it['name']}**：{it['note']}")
+    if BUNDLED_ENGINE_RESOURCES:
+        lines += [
+            "",
+            "翻译引擎的运行环境还要下载几个只发布在 GitHub 上的工具；没有代理的机器下不动，",
+            "所以随安装包各带一份原样压缩包（位于程序目录的 `bundle_runtime\\`），装引擎时直接解出来：",
+            "",
+            "| 组件 | 版本 | 许可证 |",
+            "| --- | --- | --- |",
+        ]
+        for it in BUNDLED_ENGINE_RESOURCES:
+            lines.append(f"| {it['name']} | {it['version']} | {it['license']} |")
+        for it in BUNDLED_ENGINE_RESOURCES:
             lines.append(f"- **{it['name']}**：{it['note']}")
     if engine_rows:
         lines += [

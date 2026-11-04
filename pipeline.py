@@ -2655,6 +2655,9 @@ def _precheck(params: dict, report) -> None:
         # ffmpeg 资源缺失时改用钉死的日期构建，避免临时打 GitHub API（限流）。
         import runtime_pin
         runtime_pin.apply(params, report)
+        # 随包自带的同一构建 ffmpeg 直接放到位：引擎就不会在任务中途去 GitHub 下
+        # 194MB（2026-11-05 新用户「运行环境还没准备好」的根因）。已就绪时只是几次 stat。
+        runtime_pin.prefetch(params, report)
     except Exception as e:  # noqa: BLE001 - 预检尽力而为，不影响开工
         report("engine", None, f"（外网依赖预检跳过：{e}）")
 

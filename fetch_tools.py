@@ -8,6 +8,11 @@
   1. FFmpeg（BtbN 的 win64 **LGPL** 共享库构建）—— ffmpeg.exe / ffprobe.exe + av*.dll
   2. yt-dlp 独立可执行文件（官方 release 的 yt-dlp.exe）
 
+另外还会生成 bundle_runtime\\（uv / MinGit / tokcount 的原样压缩包）：
+翻译引擎装运行环境时本来要去 GitHub 下这几样，没有代理的新用户下不动
+（2026-11-05「运行环境还没准备好」的根因）。ffmpeg 不用另带 —— 引擎直接复用
+.tools\\bin 这份（与钉死的构建是同一个 commit）。
+
 为什么用 LGPL 构建而不用最常见的 GPL 构建：
   本软件闭源商用。GPL 构建（带 x264/x265）随包分发要一并履行 GPL 的源码提供义务；
   LGPL 构建只要求附许可证、允许替换库文件——发布时干净得多。
@@ -25,10 +30,14 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import hashlib
+import json
+
 import mirrors
 
 ROOT = Path(__file__).parent
 BIN_DIR = ROOT / ".tools" / "bin"
+BUNDLE_RUNTIME = ROOT / "bundle_runtime"     # 引擎运行环境的随包资源（uv / tokcount / MinGit）
 
 # 用 **稳定分支** 的 LGPL 共享库构建，不要用 master 每日构建：
 # 2026-09-27 实测 BtbN 的 ffmpeg-master-latest（N-126889）有音频滤镜回归——
@@ -179,6 +188,77 @@ def fetch_engine_wheels(proxy: str) -> None:
     print(f"  {out}  {len(wheels)} 个包 / {sum(w.stat().st_size for w in wheels) / 1048576:.0f} MB")
 
 
+def _manifest_from_engine_wheel() -> dict:
+    """从 engine_whl 里的 finesub wheel 读出 runtime-manifest.json（引擎要下哪些资源）"""
+    wheels = sorted((ROOT / "engine_whl").glob("finesub-*.whl"))
+    if not wheels:
+        return {}
+    name = "finesub_cli/_vendor/src/finesub_bootstrap/runtime-manifest.json"
+    try:
+        with zipfile.ZipFile(wheels[-1]) as z:
+            return json.loads(z.read(name))
+    except (KeyError, OSError, ValueError):
+        return {}
+
+
+def _download_verified(opener, url: str, dest: Path, sha256: str = "") -> None:
+    """下载到 dest，可选 sha256 校验（随包文件一旦被镜像换成 HTML 就是灾难）"""
+    if dest.is_file() and dest.stat().st_size > 0 and sha256:
+        h = hashlib.sha256()
+        with open(dest, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest().lower() == sha256.lower():
+            print(f"  已有 {dest.name}（校验通过），跳过")
+            return
+    _download(opener, url, dest)
+    if sha256:
+        h = hashlib.sha256()
+        with open(dest, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest().lower() != sha256.lower():
+            dest.unlink(missing_ok=True)
+            raise SystemExit(f"!! {dest.name} 的 sha256 不对（镜像可能给了错误页），已删除")
+
+
+def build_bundle_runtime(proxy: str) -> None:
+    """随包分发的引擎运行环境资源（bundle_runtime\\）
+
+    为什么要随包（2026-11-05）：新用户装引擎时，「运行环境」这一步要出 GitHub 下
+    uv / ffmpeg / MinGit / tokcount。ffmpeg 已经复用随包的 .tools/bin 那份（同一个
+    构建 commit），这里再把剩下三个小的也放进来。`finesub setup` 里只有 ffmpeg 是
+    硬依赖，git / tokcount 是 optional，但都在 LLM 阶段用得上，一并带上省得那时再下。
+
+    版本不写死：uv 取 engine.UV_ZIP_URL / UV_ZIP_SHA256，MinGit / tokcount 从
+    engine_whl 里那份 runtime-manifest.json 读 —— 换引擎版本时这里自动跟上。
+    """
+    import engine
+    out = BUNDLE_RUNTIME
+    out.mkdir(parents=True, exist_ok=True)
+    opener = _opener(proxy)
+
+    print("  uv …")
+    _download_verified(opener, engine.UV_ZIP_URL, out / "uv.zip", engine.UV_ZIP_SHA256)
+
+    doc = _manifest_from_engine_wheel()
+    if not doc:
+        print("  !! 读不到引擎清单（engine_whl 还没准备好），MinGit / tokcount 跳过")
+        return
+    for res in doc.get("resources") or []:
+        rid = str(res.get("id") or "")
+        if rid not in ("tokcount", "git"):
+            continue
+        asset = res.get("asset") or {}
+        url = str(asset.get("url") or "")
+        if not url or asset.get("digest_from"):
+            continue
+        print(f"  {rid} …")
+        _download_verified(opener, url, out / f"{rid}.zip", str(asset.get("sha256") or ""))
+    files = sorted(out.glob("*.zip"))
+    print(f"  {out}  {len(files)} 个包 / {sum(f.stat().st_size for f in files) / 1048576:.0f} MB")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--proxy", default="", help="如 http://127.0.0.1:7897（国内访问 GitHub 用）")
@@ -199,6 +279,8 @@ def main() -> int:
     fetch_wheels(args.proxy)
     print("=== 翻译引擎本体 + 依赖（随包分发，离线装引擎）===")
     fetch_engine_wheels(args.proxy)
+    print("=== 引擎运行环境资源（uv / MinGit / tokcount，随包分发）===")
+    build_bundle_runtime(args.proxy)
 
     # 装完不留下载缓存，避免 .tools 里留一份重复的百兆压缩包
     for f in tmp.glob("*.zip"):

@@ -74,6 +74,18 @@
 | CTranslate2（翻译引擎用的推理库） | 4.8.1+finesub0.6.0.cu128 | MIT |
 - **CTranslate2（翻译引擎用的推理库）**：**随本软件分发**（位于程序目录的 `wheelhouse\`）。上游为 OpenNMT 的 CTranslate2（MIT）：<https://github.com/OpenNMT/CTranslate2>。这里分发的是翻译引擎所需的 CUDA 构建副本，原样未改；同时带 0.4.0 与 0.6.0 两个引擎版本对应的构建，运行时按引擎实际需要选用。该包只在 GitHub 上发布，为保证没有代理的用户也能装好翻译引擎而随包提供。该 wheel 还可能静态包含 ruy、FlatBuffers、SentencePiece、cpuinfo、CUTLASS 等上游依赖（Apache-2.0 / BSD 等），各自许可证见对应项目仓库。
 
+翻译引擎的运行环境还要下载几个只发布在 GitHub 上的工具；没有代理的机器下不动，
+所以随安装包各带一份原样压缩包（位于程序目录的 `bundle_runtime\`），装引擎时直接解出来：
+
+| 组件 | 版本 | 许可证 |
+| --- | --- | --- |
+| uv（uv.zip） | 见安装包内 zip 的目录名 | Apache-2.0 / MIT |
+| MinGit（git.zip） | 2.55.0.3 | GPL-2.0 |
+| tokcount（tokcount.zip） | 1.62.0-0 | GPL-3.0 |
+- **uv（uv.zip）**：**随本软件分发**（程序目录 `bundle_runtime\uv.zip`）。安装翻译引擎时用于创建 Python 运行环境；原样未改。上游 <https://github.com/astral-sh/uv>，许可证原文见 `licenses/Apache-2.0.txt`。
+- **MinGit（git.zip）**：**随本软件分发**（程序目录 `bundle_runtime\git.zip`）。翻译引擎的可选依赖；原样未改，作为独立程序调用。上游 <https://github.com/git-for-windows/git>，许可证原文见 `licenses/GPL-2.0.txt`；对应源码同上仓库。
+- **tokcount（tokcount.zip）**：**随本软件分发**（程序目录 `bundle_runtime\tokcount.zip`）。翻译引擎离线统计 token 数用；原样未改，作为独立程序调用。上游 <https://github.com/caca2331/finesub>，许可证原文见 `licenses/GPL-3.0.txt`。
+
 ### 翻译引擎及其 Python 依赖（随本软件分发，位于 `engine_whl\`）
 
 | 组件 | 版本 | 许可证 |
@@ -148,10 +160,10 @@
 | --- | --- | --- |
 | faster-whisper / Whisper 模型 | MIT | 由翻译引擎在首次使用时自动下载，本软件不分发。 |
 | Qwen3-ASR 模型 | Apache-2.0 | 由翻译引擎在首次使用时自动下载，本软件不分发。 |
-| uv（引擎运行时用） | Apache-2.0 / MIT | 引擎本体随包时已带一份 uv 0.11.32（见上面的引擎依赖清单，随包分发）；运行时另外用到的 uv 由引擎从上游 GitHub（astral-sh/uv）下载，本软件不镜像、不分发。 |
-| FFmpeg（引擎运行时用，GPL 构建） | GPL-3.0 | 由翻译引擎从上游 GitHub（BtbN/FFmpeg-Builds）下载，本软件不镜像、不分发。**与随包那个 LGPL 构建不是同一份文件**。 |
-| MinGit（引擎运行时用） | GPL-2.0 | 由翻译引擎从上游 GitHub（git-for-windows/git）下载，本软件不镜像、不分发。 |
-| tokcount（引擎的本地分词器） | 随 finesub（GPL-3.0-or-later） | 由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。 |
+| uv（引擎运行时用） | Apache-2.0 / MIT | 引擎本体随包时已带一份 uv 0.11.32（见上面的引擎依赖清单，随包分发）；装引擎用的 uv 0.13.1 也随包提供（`bundle_runtime\uv.zip`，见第二节）。只有引擎自己重建运行环境时才会另外从上游 GitHub 下载。 |
+| FFmpeg（引擎运行时用） | LGPL-3.0-or-later | 2026-11-05 起引擎复用随包那份 LGPL 构建（见第二节），不再从 GitHub 下载 194MB GPL 构建，也不再请求 GitHub API。引擎只在「多模态视频片段」里用到 libx264，而本软件的模型目录把视频能力关掉了。 |
+| MinGit（引擎运行时用） | GPL-2.0 | 随包提供（`bundle_runtime\git.zip`，见第二节）；只有随包那份缺失时引擎才会从上游下载。 |
+| tokcount（引擎的本地分词器） | 随 finesub（GPL-3.0-or-later） | 随包提供（`bundle_runtime\tokcount.zip`，见第二节）；只有随包那份缺失时引擎才会从上游下载。 |
 | BS-Roformer 人声分离模型（权重与 .yaml） | MIT（依 UVR 的模型声明） | 由翻译引擎从上游 GitHub 下载，本软件不镜像、不分发。模型作者为 Anjok07、aufr33、viperx；代码架构来自 lucidrains/BS-Roformer（MIT）。UVR README 要求署名，许可证原文见 `licenses/UVR-MIT.txt`。 |
 | faster-whisper large-v3-turbo 模型权重 | MIT | 由翻译引擎从 HuggingFace 下载，本软件不镜像、不分发。 |
 | whisper-ja-1.5B-ct2（日语重解码） | 上游未声明许可证 | 由翻译引擎从 HuggingFace 下载，本软件不镜像、不分发。上游模型卡没有声明许可证，商业使用前请向作者确认。 |
