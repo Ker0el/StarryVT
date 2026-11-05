@@ -229,6 +229,104 @@ def _routes_report() -> list[str]:
     return [f"{p}:", "    " + json.dumps(body, ensure_ascii=False)]
 
 
+def _version_of(path: Path) -> str:
+    """文件版本号（读不到返回 ""）—— 判 DLL 新旧用，不需要管理员权限"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        ver = ctypes.WinDLL("version", use_last_error=True)
+        size = ver.GetFileVersionInfoSizeW(str(path), None)
+        if not size:
+            return ""
+        buf = ctypes.create_string_buffer(size)
+        if not ver.GetFileVersionInfoW(str(path), 0, size, buf):
+            return ""
+        ptr = ctypes.c_void_p()
+        length = wintypes.UINT()
+        if not ver.VerQueryValueW(buf, "\\", ctypes.byref(ptr), ctypes.byref(length)):
+            return ""
+        # VS_FIXEDFILEINFO：dwFileVersionMS/LS（两个 DWORD，各拆高低 16 位）
+        fixed = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32 * 13)).contents
+        ms, ls = fixed[2], fixed[3]
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _engine_env_report() -> list[str]:
+    """引擎的 Python 环境：用的是哪个解释器、编译扩展能不能导入
+
+    ★ 2026-11-05 客户报告：两天 67 次「运行环境没准备好」，每次都死在
+      `ImportError: DLL load failed while importing _pydantic_core: 找不到指定的程序`
+      （WinError 127 = 依赖 DLL 里没有它要的导出，不是下载问题），可报告里
+      **看不出用的是哪个 Python**，只能请客户再点一次。这里补上，下次一锤定音。
+    """
+    out = ["----- 引擎 Python 环境 -----"]
+    try:
+        import settings as cfg2
+        import datadir
+        home = (str((cfg2.load() or {}).get("finesub_home") or "").strip()
+                or str(datadir.default_home()))
+        out.append(f"数据目录: {home}" + ("" if home.isascii() else "  ⚠ 含非英文字符"))
+        try:
+            import engine as _e
+            out.append(f"托管 Python 目录: {_e._uv_python_dir({'finesub_home': home})}")
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as e:  # noqa: BLE001
+        out.append(f"(读引擎数据目录失败: {e})")
+    try:
+        import engine
+    except Exception as e:  # noqa: BLE001
+        return out + [f"(导入 engine 失败: {e})"]
+    try:
+        py = engine.tool_python()
+    except Exception as e:  # noqa: BLE001
+        return out + [f"(读工具环境失败: {e})"]
+    if not py:
+        return out + ["工具环境: (没找到 finesub 的工具环境)"]
+    root = py.parent.parent
+    out.append(f"工具环境: {root}")
+    out.append(f"解释器: {py}")
+    # pyvenv.cfg 的 home = 解释器实际来自哪个目录（uv 托管 / 系统 Python）
+    try:
+        cfg = (root / "pyvenv.cfg").read_text(encoding="utf-8", errors="replace")
+        for line in cfg.splitlines():
+            if line.strip().lower().startswith("home"):
+                out.append("pyvenv.cfg → " + line.strip())
+                break
+    except OSError:
+        pass
+    probe = engine.env_probe()
+    out.append(f"版本: {probe.get('version') or '(读不到)'}"
+               f"  base_prefix: {probe.get('base_prefix') or '?'}")
+    if probe.get("import_ok") is None:
+        out.append(f"导入 pydantic_core: (探针没跑起来：{probe.get('error') or '未知'})")
+    elif probe.get("import_ok"):
+        out.append("导入 pydantic_core: 正常")
+    else:
+        out.append(f"导入 pydantic_core: 失败 — {probe.get('error') or ''}")
+    # 编译扩展本身：文件名/大小/sha256，对着它才能判断是不是装坏了
+    try:
+        import hashlib
+        for p in sorted((root / "Lib" / "site-packages" / "pydantic_core")
+                        .glob("_pydantic_core*.pyd")):
+            h = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+            out.append(f"pyd: {p.name}  {p.stat().st_size} B  sha256={h}…")
+    except OSError:
+        pass
+    # 解释器目录里的 python3xx.dll / 运行库：127 就是它们的版本对不上
+    base = Path(probe.get("base_prefix") or "")
+    if base and base.is_dir():
+        for name in ("python312.dll", "python311.dll", "python313.dll",
+                     "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"):
+            f = base / name
+            if f.is_file():
+                v = _version_of(f)
+                out.append(f"{name}: {v or '(无版本信息)'}  {f}")
+    return out
+
+
 def environment_info(deep: bool = False) -> str:
     """环境快照（key 只报有无，不报内容）
 
@@ -390,6 +488,11 @@ def environment_info(deep: bool = False) -> str:
             lines.append("(各目录可用性：导出诊断报告时检测)")
     except Exception as e:  # noqa: BLE001
         lines.append(f"(检测引擎数据目录失败: {e})")
+    try:
+        # 引擎工具环境用的哪个 Python、能不能导入编译扩展（2026-11-05 客户报障后加的）
+        lines += _engine_env_report()
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(检测引擎 Python 环境失败: {e})")
     try:
         # 外网依赖：哪几样只能从 GitHub 拿、现在走什么路子（无代理用户的排障关键）
         import mirrors

@@ -114,6 +114,39 @@ def python_exe() -> Path:
     return src() / ".venv" / "Scripts" / "python.exe"
 
 
+def venv_broken(code: int, last_line: str = "") -> bool:
+    """克隆环境的 Python 启动器是不是坏了（「No Python at …」/ 退出码 103）
+
+    ★ 2026-11-05 客户报告（`E:\\星译\\StarryVT\\...`）：启动器按系统代码页解析
+      pyvenv.cfg 里的 `home =`，`星译` 变成 `??`，只吐一行
+      `No Python at '"E:\\??\\StarryVT\\...\\python.exe'`、退出码 103。
+      数据目录改名成英文是最好的，但用户不该自己去搬 15 GB —— 这里自动重建。
+    """
+    low = (last_line or "").lower()
+    return code == 103 or "no python at" in low or not python_exe().is_file()
+
+
+def repair_venv(params: dict, job: Job) -> bool:
+    """删掉 `.venv` 重新 `uv sync`（启动器找不到解释器时）。返回是否修好。"""
+    s = src()
+    uv = engine.find_uv()
+    if not uv:
+        diag.write("[clone] 想重建运行环境，但找不到 uv", "run")
+        return False
+    diag.write("[clone] 运行环境的 Python 启动器坏了，重建 .venv…", "run")
+    shutil.rmtree(s / ".venv", ignore_errors=True)
+    try:
+        _run_streamed(job, [uv, "sync"], cwd=s, env=engine.uv_env(params),
+                      report=lambda stage, _pct, msg: diag.write(f"[clone] {msg}"[:220], "run"),
+                      stage="clone", tag="环境")
+    except Exception as e:  # noqa: BLE001 - 修不好只影响这次，别再往上抛
+        diag.write(f"[clone] 重建 .venv 失败：{e}"[:220], "run")
+        return False
+    ok = python_exe().is_file()
+    diag.write("[clone] 运行环境重建完成" if ok else "[clone] 重建后仍然没有 python.exe", "run")
+    return ok
+
+
 def _dir_size(path: Path) -> int:
     total = 0
     for root, _dirs, files in os.walk(path):
@@ -268,7 +301,10 @@ def install(params: dict, job: Job, report) -> dict:
     _run_streamed(job, [uv, "sync"], cwd=s, env=engine.uv_env(params),
                   report=report, stage="clone", tag="环境")
     if not python_exe().is_file():
-        raise RuntimeError("运行环境装完了但没找到 python.exe，看看日志")
+        # 2026-11-05：中文数据目录下启动器会吐「No Python at …」，uv sync 却返回 0
+        report("clone", 6, "运行环境的 Python 启动器没建好，重建一次…")
+        if not repair_venv(params, job):
+            raise RuntimeError("运行环境装完了但没找到 python.exe，看看日志")
 
     # 3) 模型权重（约 4 GB）
     spec = h / "download.json"
@@ -415,9 +451,20 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
         code = p.wait()
         if code != 0 and ok + fail == 0:
             diag.write(f"[clone] 子进程退出码 {code}，一句都没跑成", "run")
-        return ok, fail, errs, (tail[-1] if tail else "")
+        return ok, fail, errs, (tail[-1] if tail else ""), code
 
-    ok, fail, errors, last_line = _run(_sub_env(params))
+    if not python_exe().is_file():
+        # 环境整个不在了（清理软件删了 / 中文目录下没建好）：先修再跑，
+        # 否则 Popen 直接抛一个看不懂的 FileNotFoundError（2026-11-05）
+        job.check()
+        repair_venv(params, job)
+    ok, fail, errors, last_line, code = _run(_sub_env(params))
+    if ok + fail == 0 and venv_broken(code, last_line):
+        # 启动器找不到解释器（No Python at …／退出码 103）：重建 .venv 再跑一次。
+        # 这类失败和网络无关，去掉镜像重试也没用（2026-11-05 客户报告）。
+        job.check()
+        if repair_venv(params, job):
+            ok, fail, errors, last_line, code = _run(_sub_env(params))
     if ok + fail == 0:
         # 一句都没跑成：多半是**加载模型时要补下的小模型**（w2v-bert / campplus / bigvgan）
         # 在镜像上找不到 —— 去掉镜像直连官方源再试一次（2026-10-14 实测就是栽在这儿）。
@@ -425,7 +472,7 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
         diag.write("[clone] 第一遍没跑成，去掉 HF 镜像再试一次", "run")
         env2 = _sub_env(params)
         env2.pop("HF_ENDPOINT", None)
-        ok, fail, errors, last_line = _run(env2)
+        ok, fail, errors, last_line, code = _run(env2)
         if ok + fail == 0:
             why = f"：{last_line[:200]}" if last_line else ""
             raise RuntimeError(

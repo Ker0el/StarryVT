@@ -296,7 +296,29 @@ def _uv_python_dir(params: dict) -> Path:
     """
     home = (params.get("finesub_home") or "").strip()
     base = Path(home) if home else datadir.default_home()
-    return base / "runtime" / "uv-python"
+    base = base / "runtime" / "uv-python"
+    if not str(base).isascii():
+        # ★ 2026-11-05 客户报告（引擎数据目录 `E:\\星译\\StarryVT\\data\\engine`）：
+        #   克隆环境的 `.venv\\Scripts\\python.exe` 启动器按系统代码页解析路径，
+        #   `星译` 变成 `??`，只吐一行
+        #   `No Python at '"E:\\??\\StarryVT\\...\\python.exe'`、退出码 103，
+        #   209 句一句都没合成。托管解释器（以及用它建的 venv）一律不放中文路径。
+        base = _ascii_uv_python_dir()
+    return base
+
+
+def _ascii_uv_python_dir() -> Path:
+    """托管 Python 的纯英文落脚点（连用户名都可能是中文，所以逐个候选验一遍）"""
+    cands = []
+    for root in (os.environ.get("LOCALAPPDATA"),
+                 os.environ.get("PUBLIC"),
+                 os.environ.get("PROGRAMDATA")):
+        if root and Path(root).is_absolute():
+            cands.append(Path(root) / "StarryVT" / "uv-python")
+    for c in cands:
+        if str(c).isascii():
+            return c
+    return Path(r"C:\ProgramData\StarryVT\uv-python")
 
 
 def uv_env(params: dict) -> dict:
@@ -311,6 +333,97 @@ def uv_env(params: dict) -> dict:
     # 见 _uv_python_dir：不能让它去扫 %APPDATA%\uv\python 里的坏 junction
     env["UV_PYTHON_INSTALL_DIR"] = str(_uv_python_dir(params))
     return env
+
+
+#: 「引擎的 Python 环境坏了」在输出里的痕迹（和「下载失败」是两回事）
+_BROKEN_ENV_MARKERS = (
+    "dll load failed",
+    "_pydantic_core",
+    "importerror:",
+    "modulenotfounderror",
+    "no python at",
+)
+
+
+def env_broken(lines) -> bool:
+    """`finesub …` 的输出是不是「环境坏了」而不是「网络不好」
+
+    ★ 2026-11-05 客户报告：`ImportError: DLL load failed while importing
+      _pydantic_core: 找不到指定的程序`（WinError 127）被当成「下载被限流」，
+      自动换了 2 次下载源、界面劝客户「等约 1 小时」，两天点了 67 次。
+      127 是「依赖 DLL 里没有它要的导出」—— 下载、重试、换镜像都不可能修好它。
+    """
+    if isinstance(lines, (list, tuple)):
+        text = "\n".join(str(x) for x in lines)
+    else:
+        text = str(lines or "")
+    low = text.lower()
+    return any(m in low for m in _BROKEN_ENV_MARKERS)
+
+
+def _tool_dir() -> Path:
+    """uv 的工具环境根目录（`UV_TOOL_DIR` 优先，默认 `%APPDATA%\\uv\\tools`）"""
+    custom = os.environ.get("UV_TOOL_DIR", "").strip()
+    if custom:
+        return Path(custom)
+    return Path(os.environ.get("APPDATA", str(Path.home()))) / "uv" / "tools"
+
+
+def tool_python(exe: str = "") -> Path | None:
+    """引擎工具环境里的 `Scripts\\python.exe`（没有就返回 None）"""
+    root: Path | None = None
+    fb = exe or find_finesub()
+    if fb:
+        try:
+            root = _venv_root_of_launcher(Path(fb))
+        except OSError:
+            root = None
+    if root is None:
+        cand = _tool_dir() / "finesub"
+        root = cand if (cand / "pyvenv.cfg").is_file() else None
+    if root is None:
+        return None
+    py = root / "Scripts" / "python.exe"
+    return py if py.is_file() else None
+
+
+def env_probe(exe: str = "") -> dict:
+    """引擎解释器是谁、编译扩展能不能导入
+
+    返回 `{python, version, base_prefix, import_ok, error}`。
+    ★ 2026-11-05 起：诊断报告和失败日志都带这一份。上次客户报告里
+      `DLL load failed … 找不到指定的程序` 查不出用的是哪个 Python，
+      只能让客户再点一次。
+    """
+    out = {"python": "", "version": "", "base_prefix": "", "import_ok": None, "error": ""}
+    py = tool_python(exe)
+    if py is None:
+        return out
+    out["python"] = str(py)
+    code = ("import sys\n"
+            "print(sys.version.split()[0])\n"
+            "print(sys.base_prefix)\n"
+            "import pydantic_core\n"
+            "print('ok', pydantic_core.__version__)\n")
+    try:
+        # cwd 用工具环境根目录：别让用户当前目录里的同名 .pyd / .dll 抢先
+        r = subprocess.run([str(py), "-c", code],
+                           **no_window_kwargs(capture_output=True, text=True,
+                                              encoding="utf-8", errors="replace",
+                                              timeout=30, cwd=str(py.parent.parent)))
+    except Exception as e:  # noqa: BLE001 - 探针失败本身不能影响任何流程
+        out["error"] = f"{e.__class__.__name__}: {e}"
+        return out
+    parts = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    if parts:
+        out["version"] = parts[0]
+    if len(parts) > 1:
+        out["base_prefix"] = parts[1]
+    out["import_ok"] = r.returncode == 0 and any(p.startswith("ok ") for p in parts)
+    if not out["import_ok"]:
+        err = [ln for ln in (r.stderr or "").splitlines() if ln.strip()]
+        out["error"] = (err[-1] if err else f"退出码 {r.returncode}")[:300]
+    return out
 
 
 def install_uv(params: dict, job: Job, report) -> str:
@@ -655,6 +768,166 @@ def install_finesub(params: dict, job: Job, report) -> str:
         return _install_finesub(params, job, report)
 
 
+def _run_tool_install(params: dict, job: Job, report, uv: str, *,
+                      python: str = "3.12", reinstall: bool = False) -> str:
+    """`uv tool install finesub`：随包 wheelhouse 优先，再走镜像/官方源
+
+    ★ 钉住 0.6.x：我们的 pylock / 路由配置 / 知识库都按 0.6 写死，上游一旦发 0.7
+      而不改这里，全新安装的机器会拿到一个没测过的引擎。0.6.x 的补丁版仍能装上。
+    ★ 引擎的运行时 pylock 是 win-py312，工具环境也钉 3.12，避免 uv 挑到 3.11
+      然后找不到随包的 cp312 wheel（2026-10-19 离线安装实测踩到）。
+    `python` 可以是一份**托管解释器的绝对路径**（见 _managed_python）：这样 uv 不会
+    回落到用户 PATH 上那份来路不明的 Python（2026-11-05 客户报障）。
+    """
+    base = [uv, "tool", "install", ENGINE_REQ, "--force", "--python", python]
+    if reinstall:
+        base.append("--reinstall")
+    # 随包分发引擎本体和它的 Python 依赖（约 32MB）：先试本地 wheelhouse，
+    # 再做网络兜底。这样没有代理、镜像又抽风的机器也能把引擎装上。
+    local_whl = tools.bundle_dir() / "engine_whl"
+    has_local = local_whl.is_dir() and any(local_whl.glob("finesub-*.whl"))
+    # 直连上游源容易超时：先走清华镜像，失败再退回官方源。
+    # 走不走镜像看的是那个地址**真的通不通**，不是「填没填」。
+    # ⚠️ 有代理时也把清华源垫在官方源后面：用户填的代理可能只是端口开着、
+    #    实际出不去（2026-10-19 全面检查时补的），官方源失败后还能靠镜像装上。
+    tuna = not mirrors.effective_proxy(params)
+    if tuna:
+        net_tries = [base + ["--index-url", TUNA_INDEX], base]
+    else:
+        net_tries = [base, base + ["--index-url", TUNA_INDEX]]
+    tries = ([base + ["--no-index", "--find-links", str(local_whl)]] if has_local else []) + net_tries
+    if has_local:
+        report("engine", None, "使用随包的翻译引擎组件…")
+    out = ""
+    r = None
+    failed: list[str] = []
+    env = uv_env(params)          # ★ 必须用 uv_env：里面带着 UV_PYTHON_INSTALL_DIR
+    for i, cmd in enumerate(tries):
+        if i:
+            report("engine", None, "换一个下载源重试…")
+        r = job.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    env=env)
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        if r.returncode == 0:
+            break
+        # ★ 每一次失败都留一行（2026-11-05 客户一）：以前只回显**最后一次**的输出，
+        #   于是「随包的组件为什么装不上、才退回网上拿了个没测过的 pydantic」永远查不到。
+        why = [ln.strip() for ln in out.splitlines() if ln.strip()][-2:]
+        if why:
+            failed.append(f"第 {i + 1} 个源失败：" + " / ".join(why)[:300])
+    for line in out.splitlines()[-8:]:
+        report("engine", None, line)
+    if failed and (r is None or r.returncode != 0):
+        for line in failed:
+            report("engine", None, line)
+    if r is None or r.returncode != 0:
+        if datadir.looks_blocked(out):
+            # 2026-10-25 客户报障：uv 不信 %APPDATA%\uv\python 里的老 junction，
+            # 整个发现过程直接失败。人话讲清楚，别把 uv 的英文原文丢出去。
+            where = env.get("UV_PYTHON_INSTALL_DIR", "")
+            raise RuntimeError(
+                "Windows 拒绝访问引擎的 Python 目录（os error 448 / 不受信任的装入点）。\n"
+                f"目录：{where}\n"
+                "请把该目录加入杀毒软件白名单；如果星译是「以管理员身份运行」启动的，"
+                "改成普通方式启动（或反过来）后，再点一次「一键安装引擎」。")
+        raise RuntimeError(f"finesub 安装失败: {out[-400:]}")
+    return out
+
+
+def _managed_python(params: dict, job: Job, report) -> str:
+    """让 uv 装一份**托管**的 3.12 并返回它的绝对路径（失败返回 ""）
+
+    ★ 2026-11-05 客户报障：`--python 3.12` 在托管目录里没有解释器时，uv 会
+      **回落到 PATH 上的系统 Python**（本机复现过）。客户机器上那份解释器加载
+      `_pydantic_core` 直接 `ERROR_PROC_NOT_FOUND`（找不到指定的程序），
+      `finesub setup` 每次退出码 1，界面却报「下载被限流」。
+      自己点名用托管解释器，环境就是所有机器都一样的那份。
+    """
+    uv = find_uv()
+    if not uv:
+        return ""
+    env = uv_env(params)
+    report("engine", None, "准备引擎专用的 Python（3.12）…")
+    try:
+        r = job.run([uv, "python", "install", "3.12"], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", env=env)
+    except Cancelled:
+        raise
+    except Exception as e:  # noqa: BLE001
+        report("engine", None, f"（托管 Python 没装上：{e}）")
+        return ""
+    if r.returncode != 0:
+        tail = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-3:]
+        report("engine", None, "（托管 Python 没装上：" + " / ".join(tail) + "）")
+        return ""
+    d = _uv_python_dir(params)
+    cands = []
+    try:
+        cands = sorted(d.glob("cpython-3.12.*-windows-*/python.exe"),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        cands = []
+    for c in cands:
+        if c.is_file():
+            return str(c)
+    # uv 把解释器放在了别处（用户自己设了别的目录）时，问它要
+    try:
+        r = job.run([uv, "python", "find", "3.12"], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", env=env)
+        line = ((r.stdout or "").strip().splitlines() or [""])[-1].strip()
+        if r.returncode == 0 and line and Path(line).is_file():
+            return line
+    except Cancelled:
+        raise
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def repair_env(params: dict, job: Job, report) -> bool:
+    """重建引擎的 Python 工具环境（导入阶段就崩时用），成功返回 True
+
+    顺序：删工具环境 → 装托管 3.12 → 用它 `--reinstall` 重装引擎 → 看启动器背后的
+    解释器还在不在。客户机器上「装好的东西重新装一遍」是最省事的自愈手段：
+    uv 缓存里的 wheel 都还在，不用重新下载。
+    """
+    uv = find_uv()
+    if not uv:
+        report("engine", None, "（重建环境失败：找不到 uv）")
+        return False
+    report("engine", None, "重建引擎运行环境（删掉旧环境 → 用托管 Python 重装）…")
+    root = _tool_dir() / "finesub"
+    try:
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
+    except OSError as e:
+        report("engine", None, f"（删不掉旧工具环境：{e}）")
+    py = _managed_python(params, job, report)
+    try:
+        _run_tool_install(params, job, report, uv,
+                          python=py or "3.12", reinstall=True)
+    except Cancelled:
+        raise
+    except Exception as e:  # noqa: BLE001
+        report("engine", None, f"（重建环境失败：{e}）")
+        return False
+    # ★ 验的是**刚重建的这个环境**，不是 find_finesub() 随手挑到的那份：
+    #   用户设置里可能还留着老路径（2026-11-05 实测：设了 UV_TOOL_BIN_DIR 时
+    #   find_finesub 会挑到别处，重建成功也会被误判成失败）。
+    py = root / "Scripts" / "python.exe"
+    if not py.is_file():
+        report("engine", None, f"（重建后没找到解释器：{py}）")
+        return False
+    probe = env_probe(str(root / "Scripts" / "finesub.exe"))
+    if probe["python"]:
+        report("engine", None,
+               f"引擎解释器: {probe['python']}（{probe['version'] or '?'}）")
+    if probe["import_ok"] is False:
+        report("engine", None, f"（重建后导入仍然失败：{probe['error']}）")
+        return False
+    return True
+
+
 def _install_finesub(params: dict, job: Job, report) -> str:
     # 上一次没退干净 / 另一个实例还在翻译时，uv 覆盖引擎目录会撞文件锁，
     # 用户看到的只是一句权限错误。先讲清楚，别让人白等。
@@ -689,52 +962,7 @@ def _install_finesub(params: dict, job: Job, report) -> str:
                "（没检测到 NVIDIA 显卡：引擎会用 CPU 跑，速度会明显慢 —— 但能用，不影响装）")
 
     report("engine", None, "正在安装翻译引擎…")
-    # ★ 钉住 0.6.x：我们的 pylock / 路由配置 / 知识库都按 0.6 写死，
-    #   上游一旦发 0.7 而不改这里，全新安装的机器会拿到一个没测过的引擎。
-    #   0.6.x 的补丁版仍然能装上（上游修 bug 不受影响）。
-    # 引擎的运行时 pylock 是 win-py312，工具环境也钉 3.12，避免 uv 挑到 3.11
-    # 然后找不到随包的 cp312 wheel（2026-10-19 离线安装实测踩到）。
-    base = [uv, "tool", "install", ENGINE_REQ, "--force", "--python", "3.12"]
-    # 随包分发引擎本体和它的 Python 依赖（约 32MB）：先试本地 wheelhouse，
-    # 再做网络兜底。这样没有代理、镜像又抽风的机器也能把引擎装上。
-    local_whl = tools.bundle_dir() / "engine_whl"
-    has_local = local_whl.is_dir() and any(local_whl.glob("finesub-*.whl"))
-    # 直连上游源容易超时：先走清华镜像，失败再退回官方源。
-    # 走不走镜像看的是那个地址**真的通不通**，不是「填没填」。
-    # ⚠️ 有代理时也把清华源垫在官方源后面：用户填的代理可能只是端口开着、
-    #    实际出不去（2026-10-19 全面检查时补的），官方源失败后还能靠镜像装上。
-    tuna = not mirrors.effective_proxy(params)
-    if tuna:
-        net_tries = [base + ["--index-url", TUNA_INDEX], base]
-    else:
-        net_tries = [base, base + ["--index-url", TUNA_INDEX]]
-    tries = ([base + ["--no-index", "--find-links", str(local_whl)]] if has_local else []) + net_tries
-    if has_local:
-        report("engine", None, "使用随包的翻译引擎组件…")
-    out = ""
-    r = None
-    env = uv_env(params)          # ★ 必须用 uv_env：里面带着 UV_PYTHON_INSTALL_DIR
-    for i, cmd in enumerate(tries):
-        if i:
-            report("engine", None, "换一个下载源重试…")
-        r = job.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                    env=env)
-        out = ((r.stdout or "") + (r.stderr or "")).strip()
-        if r.returncode == 0:
-            break
-    for line in out.splitlines()[-8:]:
-        report("engine", None, line)
-    if r is None or r.returncode != 0:
-        if datadir.looks_blocked(out):
-            # 2026-10-25 客户报障：uv 不信 %APPDATA%\uv\python 里的老 junction，
-            # 整个发现过程直接失败。人话讲清楚，别把 uv 的英文原文丢出去。
-            where = env.get("UV_PYTHON_INSTALL_DIR", "")
-            raise RuntimeError(
-                "Windows 拒绝访问引擎的 Python 目录（os error 448 / 不受信任的装入点）。\n"
-                f"目录：{where}\n"
-                "请把该目录加入杀毒软件白名单；如果星译是「以管理员身份运行」启动的，"
-                "改成普通方式启动（或反过来）后，再点一次「一键安装引擎」。")
-        raise RuntimeError(f"finesub 安装失败: {out[-400:]}")
+    _run_tool_install(params, job, report, uv)
 
     fb = find_finesub()
     if not fb:
@@ -807,8 +1035,9 @@ def _install_finesub(params: dict, job: Job, report) -> str:
         # 别谎报成功：HomePage 会按 engine_status 判「能不能进翻译页」，
         # 这里把话说清楚，省得用户以为装好了、一翻译又失败。
         report("engine", 100,
-               "⚠ 翻译引擎本体已装好，但运行环境没准备好 —— 请稍后点「重新试一次」。"
-               "如果日志里出现「GitHub API 速率限制」，等约 1 小时再试，不要反复点。")
+               "⚠ 翻译引擎本体已装好，但运行环境没准备好 —— 原因见上面那一行；"
+               "能自动修的（重建环境、换下载源）已经修过了。仍失败请点「环境自检」"
+               "导出诊断报告发给我们。")
     if prefetched and all(prefetched.values()):
         report("engine", None, "模型权重已一并下好，第一次翻译不用再等下载")
     else:
@@ -908,6 +1137,21 @@ def _stream(job: Job, cmd: list[str], env: dict, report, stage: str = "engine",
     return p.wait()
 
 
+def _setup_env(params: dict) -> dict:
+    """跑 `finesub` 子进程用的环境（代理 / 镜像 / 引擎数据目录 / 托管 Python 目录）
+
+    放在一处：以前「首次」和「换条路重试」各拼一份，改一处漏一处。
+    带上 UV_PYTHON_INSTALL_DIR 是为了让引擎自己建运行时 venv 时也用同一份托管
+    Python（中文数据目录会被换到纯英文位置，见 _uv_python_dir）。
+    """
+    env = uv_env(params)
+    if params.get("finesub_home"):
+        env["FINESUB_HOME"] = params["finesub_home"]
+    env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     """把引擎的 Python 运行环境先装好（`finesub setup`）
 
@@ -944,11 +1188,7 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     prune_engine_cache(params, report)
 
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
-    env = _proxy_env(params)
-    if params.get("finesub_home"):
-        env["FINESUB_HOME"] = params["finesub_home"]
-    env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
-    env["PYTHONIOENCODING"] = "utf-8"
+    env = _setup_env(params)
 
     # ★ 2026-11-05：先把引擎的必装资源（ffmpeg / tokcount / git）放到磁盘上。
     #   `finesub setup` 里只有 ffmpeg 是硬依赖，而它是整个流程里**唯一**还要问
@@ -964,24 +1204,42 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
 
     tail: list[str] = []
     try:
+        probe = env_probe(finesub)
+        if probe["python"]:
+            # 2026-11-05：客户报告里查不出用的是哪个解释器，只能让他再点一次。
+            report("engine", None,
+                   f"引擎解释器: {probe['python']}（{probe['version'] or '?'}）")
+            if probe["import_ok"] is False:
+                report("engine", None, f"（导入 pydantic_core 失败：{probe['error']}）")
         code = _stream(job, [finesub, "setup"], env, report, tail=tail)
+        # ★ 环境坏了（导入阶段 DLL 加载失败）和「下载不动」是两回事：换下载源、
+        #   等一小时都不可能好。直接重建工具环境（2026-11-05 客户报障：两天 67 次）。
+        if code != 0 and env_broken(tail):
+            report("engine", None,
+                   "引擎的 Python 环境在导入组件时崩了（DLL 加载失败）——这不是网络问题，"
+                   "自动重建一次环境…")
+            if repair_env(params, job, report):
+                env = _setup_env(params)
+                try:
+                    import runtime_pin as _pin2
+                    _pin2.prefetch(params, report)
+                except Exception:  # noqa: BLE001
+                    pass
+                tail.clear()
+                code = _stream(job, [finesub, "setup"], env, report, tail=tail)
         # ★ 失败后换一条路再试一次（2026-11-05）：最常见的原因是**选中的镜像
         #   已经不回字节了**，而 mirrors.pick 的结果会缓存 6 小时。重探一遍镜像、
         #   或把钉死的 ffmpeg 回退成引擎默认路径，往往这一把就过了。
-        #   明显的非网络失败（VC++ / c10.dll）不重试，重试也只会再耗几分钟。
+        #   明显的非网络失败（VC++ / c10.dll / 环境坏了）不重试，重试也只会再耗几分钟。
         retries = 0
-        while code != 0 and retries < 2 and not any(
+        while code != 0 and retries < 2 and not env_broken(tail) and not any(
                 ("1114" in s) or ("c10.dll" in s) for s in tail):
             action = _retry_route(params, report)
             if not action:
                 break
             retries += 1
             report("engine", None, f"运行环境没装好，{action}后重试一次…")
-            env = _proxy_env(params)
-            if params.get("finesub_home"):
-                env["FINESUB_HOME"] = params["finesub_home"]
-            env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
-            env["PYTHONIOENCODING"] = "utf-8"
+            env = _setup_env(params)
             try:
                 import runtime_pin as _pin
                 _pin.prefetch(params, report)
@@ -1001,6 +1259,13 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
     prune_engine_cache(params, report)
     # 退出码后面什么都不说，用户只能看到一行「没准备好」。引擎的失败原因都印在
     # 输出的最后几行里，认得出就翻译成人话（见 _stream 的 tail）。
+    if env_broken(tail):
+        report("engine", None,
+               "⚠ 运行环境在这台机器上加载不了：引擎的 Python 组件导入就崩（DLL 加载失败）。"
+               "这不是下载慢，重试和等待都不会好。最可能是安全软件拦了 Python 的 DLL —— "
+               "把程序目录、%LOCALAPPDATA%\\uv 和引擎数据目录加入白名单"
+               "（或临时退出杀软）后，再点「重新试一次」。")
+        return False
     if any(("1114" in s) or ("c10.dll" in s) for s in tail):
         report("engine", None,
                "⚠ 运行环境卡在加载 torch（WinError 1114 / c10.dll）：这是微软 VC++ 运行库的问题，"

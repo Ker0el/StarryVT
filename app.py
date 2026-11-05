@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.57"
+APP_VERSION = "6.58"
 
 
 def _base_dir() -> Path:
@@ -324,7 +324,9 @@ class Api:
             proxy = (c.get("proxy") or "").strip() or mirrors.effective_proxy(c)
             pkg = updater.download(pkg_url, proxy, self._job, self._report, sha256)
             self._report("update", 100, "下载完成，正在安装并重启…")
-            updater.install_and_restart(pkg, restart=True)
+            updater.install_and_restart(
+                pkg, restart=True,
+                target_version=str((self._update_info or {}).get("version") or ""))
             time.sleep(1.0)
             os._exit(0)          # 立刻退出，让安装程序接替（避免文件占用）
         except Cancelled:
@@ -759,10 +761,19 @@ class Api:
             home = (str(params.get("finesub_home") or "").strip()
                     or str(datadir.default_home()))
             if not datadir.runtime_ready(Path(home)):
+                # 环境在导入阶段就崩（DLL 加载失败）和「下载没下完」要分开说：
+                # 2026-11-05 客户两天点了 67 次，提示却是「下载被限流，等 1 小时」。
+                probe = engine.env_probe(path)
+                if probe.get("import_ok") is False:
+                    raise engine.EngineError(
+                        "引擎的 Python 环境在这台机器上加载不了（导入组件时 DLL 加载失败："
+                        f"{probe.get('error') or '找不到指定的程序'}）。这不是下载慢，"
+                        "重试和等待都不会好。最可能是安全软件拦了 Python 的 DLL —— 把程序目录、"
+                        "%LOCALAPPDATA%\\uv、%LOCALAPPDATA%\\StarryVT 和引擎数据目录加入白名单"
+                        "（或临时退出杀软）后，再点一次「一键安装引擎」。")
                 raise engine.EngineError(
-                    "翻译引擎本体已装好，但运行环境还没准备好（多半是下载被限流或中断）。"
-                    "请稍后点「重新试一次」；如果日志里出现「GitHub API 速率限制」，"
-                    "等约 1 小时再试，不要反复点。")
+                    "翻译引擎本体已装好，但运行环境还没准备好 —— 原因见安装日志最后几行。"
+                    "能自动修的已经修过；仍失败请点「环境自检」导出诊断报告发给我们。")
             with self._lock:
                 self._status.update(running=False, stage="done", percent=100)
             self._report("done", 100, "🎉 翻译引擎安装完成，可以开始翻译了")
@@ -1458,6 +1469,11 @@ def main():
     diag.install_hooks()
     diag.write(f"进程守卫（关闭时清理子进程树）: {'已启用' if guard_processes() else '未启用'}", "boot")
     diag.start_session(APP_VERSION)
+    try:
+        import updater
+        updater.log_last_update_problem(APP_VERSION)
+    except Exception:  # noqa: BLE001 - 绝不能影响启动
+        pass
     api = Api()
     window = webview.create_window(
         APP_TITLE, str(WEB_DIR / "index.html"), js_api=api,

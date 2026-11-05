@@ -91,6 +91,52 @@ def _vtuple(v: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3]) or (0,)
 
 
+def last_update_problem(current: str) -> str:
+    """上次更新没装到正在运行的这个程序上时，返回一句人话；正常返回 ""
+
+    ★ 2026-11-05 客户报障：「更新下载完、程序退出，再打开还是提示更新」。
+      更新脚本会把装之前/之后的 exe 尺寸+时间写进 logs\\update-last.log，
+      开机时对一下：目标版本比当前新、或程序文件根本没变 —— 就是没换成。
+      这句话会进 app 日志，客户下次导诊断报告就能直接看到。
+    """
+    p = Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT" / "logs" / "update-last.log"
+    try:
+        if not p.is_file():
+            return ""
+        if time.time() - p.stat().st_mtime > 3 * 24 * 3600:
+            return ""
+        info = {}
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                info[k.strip().lower()] = v.strip().strip('"').strip()
+    except OSError:
+        return ""
+    target = info.get("target", "")
+    if not target or _vtuple(target) <= _vtuple(current):
+        return ""
+    same = info.get("before") and info.get("before") == info.get("after")
+    where = info.get("exe") or info.get("dir") or "?"
+    why = "安装程序跑完了但程序文件没变（被占用，或被安全软件拦了）" if same else \
+          "安装程序把新版本装到了别处，你打开的这份没被替换"
+    return (f"上次更新到 v{target} 没生效：{why}。\n"
+            f"这次更新装的文件：{where}；当前运行的是 v{current}。\n"
+            "请确认是通过哪个快捷方式/目录启动的；必要时手动运行安装包，"
+            "并把安装目录选成你实际在用的那个。")
+
+
+def log_last_update_problem(current: str) -> str:
+    """开机时调一次：有问题就写进日志（诊断报告会带走）"""
+    msg = last_update_problem(current)
+    if msg:
+        try:
+            # diag.write 自己会加 [tag] 前缀，这里别再拼一次（否则 [update] [update]）
+            diag.write(" ".join(msg.split()), "update")
+        except Exception:  # noqa: BLE001
+            pass
+    return msg
+
+
 def check(current: str, url: str = "", proxy: str = "") -> dict:
     """检查是否有新版本。返回 {ok, has_update, version, url, notes, current, error}
 
@@ -273,7 +319,8 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _update_script(setup_path: Path, exe: str, pid: int, restart: bool, also_name: str = "") -> str:
+def _update_script(setup_path: Path, exe: str, pid: int, restart: bool,
+                   also_name: str = "", target_version: str = "") -> str:
     """生成更新脚本（纯 ASCII + CRLF：cmd.exe 按控制台代码页读批处理，
     非 ASCII 注释会变乱码、LF 换行还会错行——发动机那边踩过同样的坑）
 
@@ -293,12 +340,20 @@ def _update_script(setup_path: Path, exe: str, pid: int, restart: bool, also_nam
     # 记录被写成临时目录，之后每次更新都会跟着错下去（v1.6→v1.7 实际踩到：
     # 用户界面还是 1.6，%TEMP% 下却多出一份 1.7）。
     app_dir = str(Path(exe).parent)
+    # Inno 自己的安装日志：客户报「更新完版本没变」时，光看我们的时间线猜不出来
+    # （2026-10-29 客户三次 errorlevel 5 时就没有）。日志目录同时会被诊断报告收走。
+    instlog = "%APPDATA%\\StarryVT\\logs\\install-update.log"
+    # 更新「到底换没换」的现场记录（.log 后缀：诊断报告只收 logs\*.log）
+    marker = "%APPDATA%\\StarryVT\\logs\\update-last.log"
     lines = [
         "@echo off",
         "setlocal enabledelayedexpansion",
         f'if not exist "%APPDATA%\\StarryVT\\logs" mkdir "%APPDATA%\\StarryVT\\logs"',
         f'{echo}update script started (pid={pid})>> "{logfile}"',
-        "rem Wait for the running app (our PID) to exit, up to ~60s, then force-kill.",
+        f'set "APPEXE={exe}"',
+        f'set "TARGET={target_version}"',
+        'for %%I in ("%APPEXE%") do set "BEFORE=%%~zI|%%~tI"',
+        f'{echo}install target: "%APPEXE%" (v%TARGET%), dir "{app_dir}">> "{logfile}"',        "rem Wait for the running app (our PID) to exit, up to ~60s, then force-kill.",
         "set /a WAIT=0",
         ":wait",
         "set ALIVE=",
@@ -322,8 +377,21 @@ def _update_script(setup_path: Path, exe: str, pid: int, restart: bool, also_nam
         "rem the installer has really finished.",
         "rem /DIR= 是必须的：见上面 app_dir 那段说明。",
         f'start "" /wait "{setup_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART '
-        f'/CLOSEAPPLICATIONS /DIR="{app_dir}"',
+        f'/CLOSEAPPLICATIONS /DIR="{app_dir}" /LOG="{instlog}"',
         f'{echo}installer finished (errorlevel !ERRORLEVEL!)>> "{logfile}"',
+        # ★ 2026-11-05 客户报障：更新完打开还是提示更新。安装程序可能返回 0 但
+        #   文件没换掉（被占用/装到别处）。这里把「装之前/之后」的 exe 尺寸+时间
+        #   记下来，下次诊断报告里一眼就能看出有没有真的替换。
+        'for %%I in ("%APPEXE%") do set "AFTER=%%~zI|%%~tI"',
+        f'{echo}exe before !BEFORE! -> after !AFTER!>> "{logfile}"',
+        # 逐行写，别用 (echo a& echo b) 块：路径里带 `(` `)` `&` 时（Program Files (x86)
+        # 之类）整个块会被 cmd 解析坏 —— 2026-11-05 写完就在这里踩过一次。
+        f'echo target="!TARGET!"> "{marker}"',
+        f'echo exe="!APPEXE!">> "{marker}"',
+        f'echo dir="{app_dir}">> "{marker}"',
+        f'echo before="!BEFORE!">> "{marker}"',
+        f'echo after="!AFTER!">> "{marker}"',
+        f'if "!BEFORE!"=="!AFTER!" {echo}WARNING 程序文件没变（更新可能没换成）>> "{logfile}"',
     ]
     if restart:
         lines.append(f'start "" "{exe}"')
@@ -332,7 +400,7 @@ def _update_script(setup_path: Path, exe: str, pid: int, restart: bool, also_nam
     return "\r\n".join(lines) + "\r\n"
 
 
-def install_and_restart(setup_path: Path, restart: bool = True):
+def install_and_restart(setup_path: Path, restart: bool = True, target_version: str = ""):
     """脱离本进程执行：等本程序退出 → 静默安装 → 重新启动
 
     必须用独立脚本，不能拼一条 cmd 命令串（v1.0/v1.1 就是这么写的，实测出了两个坑）：
@@ -365,7 +433,7 @@ def install_and_restart(setup_path: Path, restart: bool = True):
     # 用系统 ANSI 代码页（中文 Windows 上是 GBK）写：cmd 就是按这个代码页读批处理的，
     # 用户把软件装在中文目录（D:\软件\StarryVT）时路径才不会变成乱码。
     script.write_text(
-        _update_script(setup_path, exe, os.getpid(), restart, also_name),
+        _update_script(setup_path, exe, os.getpid(), restart, also_name, target_version),
         encoding="mbcs", errors="replace", newline="",
     )
     # ★ CREATE_BREAKAWAY_FROM_JOB 不能去掉：job.guard() 把本进程挂进了一个

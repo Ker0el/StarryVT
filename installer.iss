@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.57"
+#define AppVersion "6.58"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
@@ -95,6 +95,33 @@ Filename: "{app}\{#AppExeName}"; Description: "立即启动 {#AppName}"; Flags: 
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
   Confirm := False;
+end;
+
+{ 2026-11-05 客户报障：手动删掉整个安装目录后重装，Inno 仍按注册表里记的
+  「上次安装位置」往回装 —— 那个目录已经不在了（或者只剩个空壳），
+  用户看到的就是「重装了，但还是旧的 / 装到别处去了」。
+  这里只清掉「记录的那份程序已经不在了」的情况，正常的升级安装不受影响。 }
+procedure ClearStaleAppPath();
+var
+  prev: String;
+begin
+  if not RegQueryStringValue(HKCU,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7E3B9C2A-5D41-4A6E-9F2B-1C8E4A6D2B91}_is1',
+       'Inno Setup: App Path', prev) then
+    exit;
+  if prev = '' then
+    exit;
+  if FileExists(AddBackslash(prev) + '{#AppExeName}') then
+    exit;
+  RegDeleteValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7E3B9C2A-5D41-4A6E-9F2B-1C8E4A6D2B91}_is1',
+    'Inno Setup: App Path');
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  ClearStaleAppPath();
+  Result := True;
 end;
 
 [UninstallDelete]

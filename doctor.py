@@ -500,6 +500,23 @@ def _clones(c: dict) -> dict:
 
 # ---------- 汇总 ----------
 
+def _last_update() -> dict | None:
+    """上次更新没装到正在运行的这份程序上（2026-11-05 客户报障：更新完还提示更新）
+
+    正常时返回 None（不占版面）。依据是更新脚本留下的 logs\\update-last.log
+    （装前/装后的 exe 尺寸+时间），见 updater.last_update_problem。
+    """
+    try:
+        import updater
+        import app as vt_app
+        msg = updater.last_update_problem(vt_app.APP_VERSION)
+    except Exception:  # noqa: BLE001 - 自检不该因为这一项崩掉
+        return None
+    if not msg:
+        return None
+    return _item("update", "上次更新", WARN, " ".join(msg.split()))
+
+
 def check(params: dict | None = None, deep: bool = False) -> dict:
     """跑一遍自检，返回 {state, summary, bad, warn, items}"""
     import settings as cfg
@@ -508,7 +525,7 @@ def check(params: dict | None = None, deep: bool = False) -> dict:
 
     items = [_hardware(c), _data_dir(c), _install_dir(), _tools(), _downloader(c, deep),
              _engine(c), _models(c), _clones(c), _keys(c), _llm_route(c), _disk(c),
-             _output(c), _proxy(c), _github(c, deep)]
+             _output(c), _proxy(c), _github(c, deep), _last_update()]
     if deep:
         items.append(_net(c))
 

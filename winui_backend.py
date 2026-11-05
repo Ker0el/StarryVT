@@ -173,6 +173,12 @@ def _seed_builtin_kb() -> None:
 def main() -> int:
     threading.Thread(target=_status_pusher, daemon=True).start()
     _send({"event": "ready", "version": vt_app.APP_VERSION})
+    # 上次更新没装到正在运行的这份程序上时，开机就留一句（2026-11-05 客户报障）
+    try:
+        import updater
+        updater.log_last_update_problem(vt_app.APP_VERSION)
+    except Exception:  # noqa: BLE001 - 绝不能影响启动
+        pass
     threading.Thread(target=_auto_update, daemon=True).start()
     threading.Thread(target=_seed_builtin_kb, daemon=True).start()
 
