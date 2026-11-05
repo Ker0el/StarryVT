@@ -15,6 +15,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import time
 import threading
 import zipfile
 from pathlib import Path
@@ -424,6 +426,257 @@ def env_probe(exe: str = "") -> dict:
         err = [ln for ln in (r.stderr or "").splitlines() if ln.strip()]
         out["error"] = (err[-1] if err else f"退出码 {r.returncode}")[:300]
     return out
+
+
+# ---------- 引擎用哪个 Python ----------
+
+#: 最近一次「装运行环境」失败的人话原因（界面上的错误框直接用它）
+_LAST_SETUP_REASON = ""
+_REASON_LOCK = threading.Lock()
+
+
+def last_setup_reason() -> str:
+    with _REASON_LOCK:
+        return _LAST_SETUP_REASON
+
+
+def _set_setup_reason(text: str) -> None:
+    global _LAST_SETUP_REASON
+    with _REASON_LOCK:
+        _LAST_SETUP_REASON = text
+
+
+#: 「系统里那份 Python 是 32 位」在引擎输出里的痕迹
+#: ★ 2026-11-05 客户报障：机器上有一个 Python 3.12.0a2 **32 位**（Python312-32），
+#:   引擎的 bootstrap 见到「系统 Python 3.12」就直接复用，建出来的 venv 也是 32 位，
+#:   而依赖里 onnxruntime 只有 win_amd64 轮子 —— uv 当场报
+#:   `Package onnxruntime can't be installed because it doesn't have a ... wheel
+#:   for the current platform`，环境永远装不完。
+_BAD_PYTHON_MARKERS = (
+    "doesn't have a source distribution or wheel for the current platform",
+    "only has wheels for the following platform",
+    "platform_machine == 'amd64'",
+)
+
+#: 「网络不通 / 节点太慢」在引擎输出里的痕迹（和「环境坏了」「服务器 404」分开）
+_NETWORK_MARKERS = (
+    "timed out", "timeout", "handshake", "certificate verify failed",
+    "urlopen error", "econnreset", "econnrefused", "econnaborted",
+    "connection reset", "connection aborted", "failed to fetch",
+    "network is unreachable", "no route to host",
+    "temporary failure in name resolution", "name or service not known",
+    "10053", "10054", "10060", "10061",
+    "远程主机强迫关闭", "目标计算机积极拒绝", "连接尝试失败", "连接超时",
+)
+
+
+def _tail_text(lines) -> str:
+    if isinstance(lines, (list, tuple)):
+        return "\n".join(str(x) for x in lines)
+    return str(lines or "")
+
+
+def bad_system_python(lines) -> bool:
+    """引擎的失败是不是「它复用了系统里的 32 位 Python」"""
+    low = _tail_text(lines).lower()
+    return any(m in low for m in _BAD_PYTHON_MARKERS)
+
+
+def network_broken(lines) -> bool:
+    """引擎的失败是不是网络（连不上 / 节点太慢），而不是环境本身坏了"""
+    low = _tail_text(lines).lower()
+    return any(m in low for m in _NETWORK_MARKERS)
+
+
+#: 问一个解释器：几位 + 版本（`py -3.12` 这类要带额外参数）
+_BITS_CODE = ("import struct,sys\n"
+              "print(struct.calcsize('P') * 8)\n"
+              "print('%d.%d' % sys.version_info[:2])\n")
+_PY_BITS_CACHE: dict[str, tuple[int, str]] = {}
+_PY_BITS_LOCK = threading.Lock()
+
+
+def _probe_python(cmd: list[str]) -> tuple[int, str]:
+    """(位数, "3.12")；跑不起来返回 (0, "")"""
+    key = "\0".join(cmd)
+    with _PY_BITS_LOCK:
+        hit = _PY_BITS_CACHE.get(key)
+    if hit is not None:
+        return hit
+    bits, ver = 0, ""
+    try:
+        r = subprocess.run(
+            cmd,
+            **no_window_kwargs(capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=8))
+        lines = [x.strip() for x in (r.stdout or "").splitlines() if x.strip()]
+        if r.returncode == 0 and len(lines) >= 2:
+            bits, ver = int(lines[0]), lines[1]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    with _PY_BITS_LOCK:
+        _PY_BITS_CACHE[key] = (bits, ver)
+    return bits, ver
+
+
+def _python_bits(exe, args=()) -> tuple[int, str]:
+    return _probe_python([str(exe), *args, "-c", _BITS_CODE])
+
+
+def _engine_python(params: dict) -> Path | None:
+    """一份 **64 位** 的 Python 3.12（引擎建运行时环境时用它，不用系统里那份）
+
+    优先级：uv 托管的那份 → 引擎工具环境的解释器。两者都没有就返回 None，
+    让引擎自己按 UV_PYTHON_INSTALL_DIR 去下一份 64 位的。
+    """
+    # 先用 uv 托管的那份（是**真正的解释器**，不是 venv 启动器）：
+    # `uv venv --python <venv 里的 python.exe>` 要多绕一层，能避则避。
+    base = _uv_python_dir(params)
+    try:
+        cands = sorted(base.glob("cpython-3.12*windows-x86_64*/python.exe"),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        cands = []
+    for c in cands:
+        if c.is_file() and _python_bits(c)[0] == 64:
+            return c
+    py = tool_python()
+    if py is not None and _python_bits(py)[0] == 64:
+        return py
+    return None
+
+
+def _py_launcher_32() -> str:
+    """系统 `py` 启动器解析出来的 3.12 是 32 位时，返回启动器路径；否则返回 "" """
+    launcher = shutil.which("py")
+    if not launcher:
+        return ""
+    bits, _ = _probe_python([launcher, "-3.12", "-c", _BITS_CODE])
+    return launcher if bits == 32 else ""
+
+
+def _py_shim_source() -> Path | None:
+    r"""venv 里的启动器（uv 工具环境的 `Scripts\python.exe`）"""
+    py = tool_python()
+    if py is None:
+        return None
+    try:
+        if (py.parent.parent / "pyvenv.cfg").is_file():
+            return py
+    except OSError:
+        pass
+    return None
+
+
+def _py_shim_dir(source: Path | None) -> Path | None:
+    """放一个「跑不起来的 py.exe」，把系统的 py 启动器挡在后面
+
+    引擎的 `_find_system_python()` 先试 `py -3.12`、再试 PATH 上的 python。PATH
+    我们能改，py 启动器走注册表，改不了；但它用的 `shutil.which("py")` 认 PATH
+    顺序。venv 里的 `python.exe` 是个启动器，拷到没有 pyvenv.cfg 的目录里只会打印
+    `No pyvenv.cfg file` 并退出（实测 106），正好让引擎跳过这个候选。
+    """
+    if source is None or not source.is_file():
+        return None
+    # 只能从 venv 拿启动器（Scripts\python.exe 旁边有 pyvenv.cfg）：拷一份真的
+    # python.exe 出去没有 python312.dll，Windows 会弹「找不到 DLL」的对话框。
+    try:
+        if not (source.parent.parent / "pyvenv.cfg").is_file():
+            return None
+    except OSError:
+        return None
+    root = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir())
+    shim = root / "StarryVT" / "py-shim"
+    dst = shim / "py.exe"
+    try:
+        if not dst.is_file() or dst.stat().st_size != source.stat().st_size:
+            shim.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, dst)
+    except OSError:
+        return None
+    return shim
+
+
+_PLAN_CACHE: dict[str, dict] = {}
+_PLAN_LOCK = threading.Lock()
+
+
+def engine_python_plan(params: dict) -> dict:
+    """引擎子进程用哪个 Python、要挡掉哪些路径
+
+    ★ 2026-11-05 客户报障：系统里装的是 **32 位** 的 Python 3.12.0a2，
+      引擎直接复用 → 依赖（onnxruntime）没有 32 位轮子 → 运行环境永远装不好。
+      这里让引擎只看得见 64 位的那份：
+        · PATH 上 32 位的 Python 3.12 目录整条删掉；
+        · 系统 `py` 启动器指向 32 位时，用一个假 py.exe 把它挡掉；
+        · 把我们自己那份 64 位解释器放在 PATH 最前面。
+    返回 `{python, blocked, shim, path}`。
+    """
+    good = _engine_python(params)
+    launcher = _py_launcher_32()
+    env_path = os.environ.get("PATH", "")
+    key = "\0".join([os.path.normcase(str(good or "")), launcher,
+                     os.path.normcase(env_path), str(params.get("finesub_home") or "")])
+    with _PLAN_LOCK:
+        hit = _PLAN_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    blocked: list[str] = []
+    keep: list[str] = []
+    seen: set[str] = set()
+    for entry in env_path.split(os.pathsep):
+        if not entry:
+            continue
+        norm = os.path.normcase(entry)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        is32 = False
+        for name in ("python.exe", "python3.12.exe", "python3.exe"):
+            cand = Path(entry) / name
+            try:
+                if cand.is_file() and _python_bits(cand) == (32, "3.12"):
+                    is32 = True
+                    break
+            except OSError:
+                continue
+        (blocked if is32 else keep).append(entry)
+
+    parts: list[str] = []
+    shimmed = False
+    if launcher:
+        # py.exe 不在 Windows 目录里时，直接把它那条 PATH 去掉最省事。
+        windir = os.path.normcase(os.environ.get("WINDIR") or "C:\\Windows")
+        launcher_dir = os.path.normcase(str(Path(launcher).parent))
+        if not launcher_dir.startswith(windir):
+            keep = [e for e in keep if os.path.normcase(e) != launcher_dir]
+            if launcher_dir not in {os.path.normcase(b) for b in blocked}:
+                blocked.append(str(Path(launcher).parent))
+        else:
+            # 装在 Windows 目录里的 py.exe 不能从 PATH 里拿掉（系统命令还要用），
+            # 只能用一个跑不起来的 py.exe 抢在它前面。
+            shim = _py_shim_dir(_py_shim_source())
+            if shim is not None:
+                parts.append(str(shim))
+                shimmed = True
+    if good is not None:
+        parts.append(str(Path(good).parent))
+    parts.extend(keep)
+    plan = {
+        "python": str(good) if good is not None else "",
+        "blocked": blocked,
+        "shim": shimmed,
+        "path": os.pathsep.join(parts),
+    }
+    with _PLAN_LOCK:
+        _PLAN_CACHE[key] = plan
+    return plan
+
+
+def engine_child_path(params: dict) -> str:
+    """给 `finesub` 子进程用的 PATH（见 engine_python_plan）"""
+    return engine_python_plan(params)["path"]
 
 
 def install_uv(params: dict, job: Job, report) -> str:
@@ -1149,10 +1402,152 @@ def _setup_env(params: dict) -> dict:
         env["FINESUB_HOME"] = params["finesub_home"]
     env["FINESUB_HF_ENDPOINT"] = params.get("hf_endpoint") or "https://hf-mirror.com"
     env["PYTHONIOENCODING"] = "utf-8"
+    # ★ 2026-11-05：引擎的 bootstrap 会优先复用「系统里的 Python 3.12」，
+    #   客户机上那份是 **32 位**（Python312-32），建出来的运行环境装不了
+    #   onnxruntime（只有 win_amd64 轮子）。这里把 PATH 换掉，让它只看得见
+    #   我们自己那份 64 位解释器（见 engine_python_plan）。
+    try:
+        env["PATH"] = engine_child_path(params)
+    except Exception:  # noqa: BLE001 - 探测失败就退回原样，别拦住安装
+        pass
     return env
 
 
+def _dir_size(root: Path) -> int:
+    """目录里所有普通文件的总字节数（走不通就返回 0，别让进度条把安装带崩）"""
+    total = 0
+    stack = [str(root)]
+    try:
+        while stack:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        elif e.is_file(follow_symlinks=False):
+                            total += e.stat().st_size
+                    except OSError:
+                        continue
+    except OSError:
+        pass
+    return total
+
+
+#: torch 的 wheel 在 lock 里没有 size（来自 download.pytorch.org），按经验补齐
+_TORCH_BYTES = 2600 * 2**20
+
+
+def _runtime_download_total() -> int:
+    """引擎运行环境装完大概占多少字节（下载 + 解包）——进度条的分母
+
+    分母读引擎自带的 pylock（每个 wheel 都写了 size）；torch 那条没写，用经验值。
+    读不到就按 6 GB 估。估得不准没关系：进度条只要在动、字节数在涨，
+    用户就知道没卡死（2026-11-05 用户反馈：初始化下载看不见进度）。
+    """
+    import tomllib
+
+    bases: list[Path] = []
+    py = tool_python()
+    if py is not None:
+        bases.append(py.parent.parent / "Lib" / "site-packages" / "finesub_cli"
+                     / "_vendor" / "src" / "finesub_bootstrap")
+    bases.append(_tool_dir() / "finesub" / "Lib" / "site-packages" / "finesub_cli"
+                 / "_vendor" / "src" / "finesub_bootstrap")
+    for base in bases:
+        for name in ("pylock.win-py312.cn.toml", "pylock.win-py312.toml"):
+            p = base / name
+            if not p.is_file():
+                continue
+            try:
+                data = tomllib.loads(p.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 - 解析不了就换下一份
+                continue
+            total = 0
+            for pkg in data.get("packages") or []:
+                sizes = [int(w.get("size") or 0) for w in (pkg.get("wheels") or [])]
+                size = max(sizes) if sizes else 0
+                if size == 0 and str(pkg.get("name")) == "torch":
+                    size = _TORCH_BYTES
+                total += size
+            if total > 0:
+                # 下载进缓存 + 解包进 staging，落盘约是 wheel 的 2.4 倍
+                return int(total * 2.4)
+    return 6 * 2**30
+
+
+class _RuntimeProgress:
+    """引擎装运行环境时的进度（后台线程，只读磁盘、不碰子进程）
+
+    引擎把下载交给 uv，uv 的输出接在管道里**没有进度条**，界面上原本只有一行
+    「正在准备引擎运行环境（首次要下载 2~3 GB）」，几分钟不动 —— 用户以为卡死，
+    反复关软件重开（2026-11-05 用户反馈：得让用户看得见初始化下载进度）。
+
+    这里按磁盘增长估：`<home>/cache/uv`（下下来的 wheel）+ `<home>/runtime/python.staging`
+    （正在解包的环境）。每 3 秒算一次百分比，每 12 秒报一句「已下 X GB / 约 Y GB」。
+    """
+
+    def __init__(self, params: dict, report):
+        home = (str(params.get("finesub_home") or "").strip()
+                or str(datadir.default_home()))
+        self.home = Path(home)
+        self.report = report
+        self.total = max(1, _runtime_download_total())
+        self.stop_event = threading.Event()
+        self.thread: threading.Thread | None = None
+        self.interval = 3.0       # 多久看一眼磁盘
+        self.message_every = 12.0  # 多久往日志里写一句「已下 X GB」
+
+    def start(self) -> None:
+        try:
+            self.thread = threading.Thread(target=self._loop, daemon=True,
+                                           name="engine-progress")
+            self.thread.start()
+        except Exception:  # noqa: BLE001 - 没有进度条也不能耽误安装
+            self.thread = None
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def _size(self) -> int:
+        return (_dir_size(self.home / "cache" / "uv")
+                + _dir_size(self.home / "runtime" / "python.staging"))
+
+    def _loop(self) -> None:
+        started = time.monotonic()
+        last = self._size()
+        last_msg = 0.0
+        warned = False
+        while not self.stop_event.wait(self.interval):
+            got = self._size()
+            pct = 2 + int(min(96, 94.0 * got / self.total))
+            self.report("engine", pct, "")
+            now = time.monotonic()
+            if now - last_msg < self.message_every:
+                continue
+            speed = (got - last) / max(0.001, now - last_msg)
+            last, last_msg = got, now
+            text = (f"下载/安装运行环境：{got / 2**30:.1f} GB / 约 {self.total / 2**30:.1f} GB"
+                    f"（{speed / 2**20:.1f} MB/s）")
+            self.report("engine", pct, text)
+            # ★ 用户要求：没梯子或者节点太慢时直接提示，别让人干等
+            if not warned and got < 2 * 2**20 and now - started > 45:
+                warned = True
+                self.report("engine", pct,
+                            "还没下到任何数据：如果没开代理，或者代理节点太慢，"
+                            "请更换网络代理和节点后再试")
+
+
 def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
+    """装运行环境（带进度）；真正的流程在 _provision_runtime_impl 里"""
+    progress = _RuntimeProgress(params, report)
+    progress.start()
+    try:
+        return _provision_runtime_impl(params, job, report, finesub)
+    finally:
+        progress.stop()
+
+
+def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> bool:
     """把引擎的 Python 运行环境先装好（`finesub setup`）
 
     **为什么要在这一步做**：运行时 = Python 环境 + CUDA 版 torch，解包约 2.8GB、
@@ -1189,6 +1584,18 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
 
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
     env = _setup_env(params)
+    # 说清楚引擎用的是哪个解释器：客户机器上有 32 位 Python 时，日志里必须看得出来
+    # 我们绕开了它（否则再出问题又是一份「看不出用了哪个 Python」的诊断报告）。
+    try:
+        plan = engine_python_plan(params)
+        if plan.get("python"):
+            report("engine", None, f"引擎将使用 64 位 Python：{plan['python']}")
+        for bad in plan.get("blocked") or []:
+            report("engine", None,
+                   f"已跳过系统里的 32 位 Python：{bad}"
+                   "（引擎依赖只有 64 位版本，用它会装不上）")
+    except Exception:  # noqa: BLE001 - 只是提示，出问题不影响安装
+        pass
 
     # ★ 2026-11-05：先把引擎的必装资源（ffmpeg / tokcount / git）放到磁盘上。
     #   `finesub setup` 里只有 ffmpeg 是硬依赖，而它是整个流程里**唯一**还要问
@@ -1233,7 +1640,7 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
         #   明显的非网络失败（VC++ / c10.dll / 环境坏了）不重试，重试也只会再耗几分钟。
         retries = 0
         while code != 0 and retries < 2 and not env_broken(tail) and not any(
-                ("1114" in s) or ("c10.dll" in s) for s in tail):
+                ("1114" in s) or ("c10.dll" in s) for s in tail)                 and not bad_system_python(tail):
             action = _retry_route(params, report)
             if not action:
                 break
@@ -1253,6 +1660,7 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
         report("engine", None, f"（运行环境预置跳过：{e}）")
         return False
     if code == 0:
+        _set_setup_reason("")
         report("engine", None, "✅ 引擎运行环境已就绪")
         return True
     # 这次失败留下的轮子也一并收拾（超阈值才动手，见 prune_engine_cache）
@@ -1265,12 +1673,29 @@ def _provision_runtime(params: dict, job: Job, report, finesub: str) -> bool:
                "这不是下载慢，重试和等待都不会好。最可能是安全软件拦了 Python 的 DLL —— "
                "把程序目录、%LOCALAPPDATA%\\uv 和引擎数据目录加入白名单"
                "（或临时退出杀软）后，再点「重新试一次」。")
+        _set_setup_reason("引擎的 Python 组件导入就崩（DLL 加载失败），最可能是安全软件拦了 Python 的 DLL。")
         return False
     if any(("1114" in s) or ("c10.dll" in s) for s in tail):
         report("engine", None,
                "⚠ 运行环境卡在加载 torch（WinError 1114 / c10.dll）：这是微软 VC++ 运行库的问题，"
                "不是网络也不是显卡。程序已经尝试自动修；如果还不行，"
                "重启电脑后再点「重新试一次」，或手动装一次 https://aka.ms/vc14/vc_redist.x64.exe。")
+        _set_setup_reason("卡在加载 torch（WinError 1114 / c10.dll）——这是微软 VC++ 运行库的问题。")
+        return False
+    if bad_system_python(tail):
+        report("engine", None,
+               "⚠ 引擎想复用你系统里的 Python 3.12，但它是 **32 位** 的 —— 依赖组件"
+               "（onnxruntime）只有 64 位版本，装上去也加载不了。已经改成用引擎自带的 "
+               "64 位 Python，再点一次「重新试一次」就会重装；如果反复出现，请把"
+               "「Python312-32」卸载掉（或从 PATH 里移除）。")
+        _set_setup_reason("系统里的 Python 3.12 是 32 位版本，引擎依赖只有 64 位；"
+                          "已改用引擎自带的 64 位 Python，请再点一次「重新试一次」。")
+        return False
+    if network_broken(tail):
+        report("engine", None,
+               "⚠ 下载没走完：网络连不上，或者代理节点太慢。请更换网络代理和节点后"
+               "再点「重新试一次」；没有代理的机器建议先开代理（首次要下 2~3 GB）。")
+        _set_setup_reason("网络连不上或代理节点太慢：请更换网络代理和节点后重试。")
         return False
     report("engine", None,
            f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"

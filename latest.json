@@ -1,7 +1,7 @@
 {
-  "version": "6.58",
-  "sha256": "463dcdc6d4e088caee6e493213cebbdd5adcda1b4f13ae5e603c4ff4f097b95b",
-  "notes": "引擎环境坏了会自动重建，不再误报「下载被限流」；本地克隆在中文目录下自动修；更新/重装不再装错位置。",
+  "version": "6.59",
+  "sha256": "8e2f70632a1545f294926f8c32a60a96b0486778b19c6ed7a0e59ac3eb64bf37",
+  "notes": "引擎不再复用系统里的 32 位 Python（装不上运行环境的根因）；初始化下载有进度和 GB 数；网络/节点问题直接提示，更新 404 不再甩锅给用户的网络。",
   "published": "2026-11-05",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.58.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.59.exe"
 }

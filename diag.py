@@ -297,6 +297,20 @@ def _engine_env_report() -> list[str]:
                 break
     except OSError:
         pass
+    # 引擎建运行环境时会用哪个解释器、哪些路径被挡掉了
+    # （2026-11-05 客户机器上是个 32 位 Python 3.12.0a2，引擎复用它 → onnxruntime
+    #   没有 32 位轮子 → 运行环境永远装不完，报告里必须能一眼看出来）
+    try:
+        cfg_mod = locals().get("cfg2")
+        home = (str((cfg_mod.load() or {}).get("finesub_home") or "").strip()
+                if cfg_mod is not None else "")
+        plan = engine.engine_python_plan({"finesub_home": home})
+        out.append("引擎建运行环境将用: "
+                   + (plan.get("python") or "(由引擎自己下载 64 位 Python 3.12)"))
+        for bad in plan.get("blocked") or []:
+            out.append(f"已挡掉的 Python 路径: {bad}")
+    except Exception as e:  # noqa: BLE001 - 只是报告，不能把诊断搞崩
+        out.append(f"(算引擎用哪个 Python 失败: {e})")
     probe = engine.env_probe()
     out.append(f"版本: {probe.get('version') or '(读不到)'}"
                f"  base_prefix: {probe.get('base_prefix') or '?'}")

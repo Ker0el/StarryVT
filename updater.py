@@ -185,7 +185,46 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     #   诊断报告里一条记录都没有 —— 分不清是「没新版」还是「压根没查成」。
     diag.write(f"检查更新失败（当前 v{current}）：试了 {len(tried)} 个源都不行，"
                f"最后一个是 {last_kind}", "update")
-    return {"ok": False, "error": f"检查更新失败（{last_kind}）——检查网络/代理"}
+    return {"ok": False, "error": f"检查更新失败（{last_kind}）——{check_failure_hint(last_kind)}"}
+
+
+
+#: 「网络不通 / 节点太慢」的异常痕迹（和「服务器 404」是两回事）
+_NETWORK_MARKERS = (
+    "timed out", "timeout", "handshake", "certificate verify failed",
+    "urlopen error", "econnreset", "econnrefused", "connection reset",
+    "connection aborted", "network is unreachable", "no route to host",
+    "temporary failure in name resolution", "name or service not known",
+    "10053", "10054", "10060", "10061",
+    "远程主机强迫关闭", "目标计算机积极拒绝", "连接尝试失败", "连接超时",
+    "太慢",
+)
+
+
+def download_failure_hint(last) -> str:
+    """下载失败时后面那句人话（404 / 网络 / 其它分开说）
+
+    ★ 2026-11-05 客户报障：发版后那几个小时 latest.json 已经上线、安装包还没传完，
+      界面只显示「下载失败（已试过 3 条线路）：HTTPError: HTTP Error 404」，
+      客户以为是自己的网络，反复点了十几分钟。404 和「节点太慢」必须分开说。
+    """
+    code = int(getattr(last, "code", 0) or 0)
+    if code == 404:
+        return ("——服务器上还没有这个安装包（刚发版、还没传完），不是你网络的问题；"
+                "过一会儿再点「检查更新」。")
+    text = str(last or "").lower()
+    if any(m in text for m in _NETWORK_MARKERS):
+        return "——网络不通或者代理节点太慢：请更换网络代理和节点后重试。"
+    return ""
+
+
+def check_failure_hint(kind: str) -> str:
+    """检查更新全失败时的人话"""
+    if kind in {"URLError", "HTTPError", "TimeoutError", "socket.timeout",
+                "SSLError", "SSLCertVerificationError", "ConnectionError",
+                "ConnectionResetError", "ConnectionAbortedError"}:
+        return "网络不通或者代理节点太慢：请更换网络代理和节点后重试。"
+    return "检查网络/代理后再试。"
 
 
 #: 下载速度低于这个值（字节/秒）视为「这条线卡住了」，换下一条线路。
@@ -308,7 +347,8 @@ def download(pkg_url: str, proxy: str, job, report, sha256: str = "") -> Path:
         dst.unlink(missing_ok=True)
     except OSError:
         pass
-    raise RuntimeError(f"下载失败（已试过 {attempts} 条线路）：{type(last).__name__}: {last}")
+    raise RuntimeError(f"下载失败（已试过 {attempts} 条线路）：{type(last).__name__}: {last}"
+                       + download_failure_hint(last))
 
 
 def _sha256(path: Path) -> str:

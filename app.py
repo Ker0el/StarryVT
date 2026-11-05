@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.58"
+APP_VERSION = "6.59"
 
 
 def _base_dir() -> Path:
@@ -771,9 +771,11 @@ class Api:
                         "重试和等待都不会好。最可能是安全软件拦了 Python 的 DLL —— 把程序目录、"
                         "%LOCALAPPDATA%\\uv、%LOCALAPPDATA%\\StarryVT 和引擎数据目录加入白名单"
                         "（或临时退出杀软）后，再点一次「一键安装引擎」。")
+                reason = engine.last_setup_reason()
                 raise engine.EngineError(
-                    "翻译引擎本体已装好，但运行环境还没准备好 —— 原因见安装日志最后几行。"
-                    "能自动修的已经修过；仍失败请点「环境自检」导出诊断报告发给我们。")
+                    "翻译引擎本体已装好，但运行环境还没准备好。"
+                    + (f"原因：{reason}" if reason else "原因见安装日志最后几行。")
+                    + "能自动修的已经修过；仍失败请点「环境自检」导出诊断报告发给我们。")
             with self._lock:
                 self._status.update(running=False, stage="done", percent=100)
             self._report("done", 100, "🎉 翻译引擎安装完成，可以开始翻译了")

@@ -308,8 +308,15 @@ def _opener(params: dict):
     return mirrors.opener(params or {})
 
 
+def _overall_pct(base: int, got: int, total: int):
+    """整个模型已下到百分之几（进度条用）；不知道总量就返回 None"""
+    if not total:
+        return None
+    return int(min(99, (base + got) * 100 / total))
+
+
 def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
-           report, label: str) -> bool:
+           report, label: str, progress: tuple[int, int] = (0, 0)) -> bool:
     """下到 dest 并核对 sha256。先写 `.part`，验过了才改名——中断不留半个"真身"。
 
     HF 的 blob 文件名本身就是它的 sha256，所以引擎那边的判据（存在 + 大小对）天然成立；
@@ -328,6 +335,7 @@ def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
     except OSError:
         pass
     started, got, last = time.time(), 0, 0
+    warned = False
     h = hashlib.sha256()
     # 非 LFS 文件在 HF 缓存里的 blob 名 = git blob 的 sha1（清单里只有大权重的 sha256）。
     # git blob 哈希 = sha1("blob <字节数>\0" + 内容)，字节数就是清单里的大小。
@@ -349,10 +357,18 @@ def _fetch(url: str, dest: Path, want: int, sha: str, params: dict, job: Job,
                     last = got
                     pct = f"（{got * 100 // want}%）" if want else ""
                     speed = got / 1048576 / max(0.5, time.time() - started)
-                    report("engine", None,
+                    # 整个模型（多个文件）的百分比：进度条上要能看到它在动
+                    base, total = progress
+                    report("engine", _overall_pct(base, got, total),
                            f"⬇ {label} {got // 1048576} MB"
                            + (f" / {want // 1048576} MB" if want else "")
                            + f"{pct} · {speed:.1f} MB/s")
+                elif not warned and got == 0 and time.time() - started > 45:
+                    # ★ 用户要求：没梯子 / 节点太慢时直接说，别让人干等
+                    warned = True
+                    report("engine", None,
+                           "还没下到任何数据：如果没有开代理，或者代理节点太慢，"
+                           "请更换网络代理和节点")
     except Exception as e:  # noqa: BLE001
         report("engine", None,
                f"（{label} 没下成：{type(e).__name__}——引擎用到时会自己再试一次）")
@@ -452,13 +468,17 @@ def prefetch_one(model_id: str, params: dict, job: Job, report,
     if announce:
         report("engine", None, f"预取{label}（约 {total // 1048576} MB）…")
 
+    done = 0
     for name, dest, want, sha, urls in files:
         if dest.is_file() and (not want or dest.stat().st_size == want):
+            done += want or 0
             continue
         got = False
         for url in urls:
-            if _fetch(url, dest, want, sha, params, job, report, f"{label} {name}"):
+            if _fetch(url, dest, want, sha, params, job, report, f"{label} {name}",
+                      progress=(done, total)):
                 got = True
+                done += want or 0
                 break
         if not got:
             _drop_incomplete_snapshot(model_id, params, report, announce)
