@@ -1,7 +1,7 @@
 {
-  "version": "6.57",
-  "sha256": "4ea6f7a4cec4479b609a3a84954e8e8b5a44d8d22eb6463e2b048c66d7912551",
-  "notes": "新用户安装翻译引擎不再卡在「运行环境还没准备好」：ffmpeg、uv、MinGit、tokcount 随包带上，装运行环境不再依赖 GitHub。",
+  "version": "6.58",
+  "sha256": "463dcdc6d4e088caee6e493213cebbdd5adcda1b4f13ae5e603c4ff4f097b95b",
+  "notes": "引擎环境坏了会自动重建，不再误报「下载被限流」；本地克隆在中文目录下自动修；更新/重装不再装错位置。",
   "published": "2026-11-05",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.57.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.58.exe"
 }
