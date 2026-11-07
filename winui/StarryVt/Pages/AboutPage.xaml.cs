@@ -81,15 +81,14 @@ public sealed partial class AboutPage : Page
     /// （fail-fast，接不住）。逐段埋点才定位到是那个 RPC，已复现多次。
     ///
     /// 后端身上本来就有这个值（它起来时推的 ready 事件里带的，见 Backend.Version），
-    /// 直接读就够；还没有就退回和标题栏一致的写死值 —— 界面里显示的数字必须和
-    /// 标题栏那个 v3.0 对得上，否则用户会以为装错了版本。
+    /// 直接读就够；还没有就不写版本号 —— 别再写死一个迟早过期的数字。
     /// </summary>
     void LoadVersion()
     {
         try
         {
             var ver = Backend.Version;
-            BVersion.Text = ver.Length > 0 ? $"当前版本 v{ver}" : "当前版本 v6.20";
+            BVersion.Text = ver.Length > 0 ? $"当前版本 v{ver}" : "当前版本";
         }
         catch { }
     }
