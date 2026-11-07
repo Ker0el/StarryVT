@@ -108,6 +108,28 @@ def _gpu() -> str:
     return "(没有 NVIDIA 显卡或驱动，引擎会走 CPU——会明显慢)"
 
 
+def _repo_model_id(repo_dir: str) -> str:
+    """`models--org--name` → 清单里的 model_id（认不出就空串，报告里只少一句注解）"""
+    try:
+        import modelfetch
+        for mid, spec in (modelfetch._models() or {}).items():
+            repo = (spec or {}).get("repo")
+            if repo and "models--" + repo.replace("/", "--") == repo_dir:
+                return mid
+    except Exception:  # noqa: BLE001 - 报告不能因为注解而失败
+        pass
+    return ""
+
+
+def _model_ready(root: Path, model_id: str) -> bool:
+    """这个模型在这个引擎目录里，引擎到底加载得了吗（stat 判据，不联网）"""
+    try:
+        import modelfetch
+        return modelfetch.ready({"finesub_home": str(root)}, model_id)
+    except Exception:  # noqa: BLE001
+        return True                      # 判不了就别吓人
+
+
 def _hf_cache_report() -> list[str]:
     """引擎已下载的模型缓存：目录名 / 大小 / 有没有下到一半的 .incomplete
 
@@ -156,7 +178,25 @@ def _hf_cache_report() -> list[str]:
             else:
                 state = (f"已下 {done / 1048576:.0f} MB"
                          + (f"，下到一半 {psize / 1048576:.0f} MB" if part else "，完整"))
+                # ★ 2026-11-07：「完整」只能说明**字节够了**，不代表引擎加载得了。
+                #   诊断报告-20261107-143642 就是被这一行骗的：这里写着「1547 MB，完整」，
+                #   而引擎每次都在语音识别那步报 LocalEntryNotFoundError。两个仓库
+                #   （识别 / 校验）按引擎自己的判据再 stat 一遍，对不上就写明白。
+                if not part:
+                    mid = _repo_model_id(repo.name)
+                    if mid and not _model_ready(root, mid):
+                        state += "，但加载不了（快照/小文件对不上，引擎会当成没下过）"
             lines.append(f"    {repo.name}: {state}")
+    # 引擎到底去哪个目录找模型（`HF_HOME`）。2026-11-07 那次报障全靠猜：界面这份齐了，
+    # 引擎那份空的，两边目录分叉。以后报告里直接写出来。
+    try:
+        import modelfetch
+        pinned = modelfetch.hf_env({"finesub_home": str(roots[0]) if roots else ""})
+        lines.append("引擎 HF_HOME: " + (
+            pinned["HF_HOME"] if pinned
+            else "(未钉 —— 我们这份没下齐，引擎按它自己的规则找)"))
+    except Exception:  # noqa: BLE001 - 报告不能因为这一行而失败
+        pass
     return lines or ["(无)"]
 
 

@@ -1,7 +1,7 @@
 {
-  "version": "6.59",
-  "sha256": "8e2f70632a1545f294926f8c32a60a96b0486778b19c6ed7a0e59ac3eb64bf37",
-  "notes": "引擎不再复用系统里的 32 位 Python（装不上运行环境的根因）；初始化下载有进度和 GB 数；网络/节点问题直接提示，更新 404 不再甩锅给用户的网络。",
-  "published": "2026-11-05",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.59.exe"
+  "version": "6.60",
+  "sha256": "5b01929103c544b1188f620ccf8f81a9a6c0b21a0aea777d188ff50d84b8d3a4",
+  "notes": "修语音识别一直失败：界面说模型已就绪，引擎却去另一个缓存目录找不到、跑去重下然后下载失败。现在引擎固定读我们下好的那份模型，装好即可离线运行；诊断报告的模型状态也改成按「能否加载」判断。",
+  "published": "2026-11-07",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.60.exe"
 }

@@ -300,6 +300,36 @@ def ready(params: dict, model_id: str) -> bool:
     return True
 
 
+#: 引擎按 HF_HOME 去 Hugging Face 拿的那两个仓库（人声分离那个是平铺目录，不走 HF）
+_HF_MODEL_IDS = ("whisper", "qwen-referee")
+
+
+def hf_env(params: dict) -> dict:
+    """跑引擎时钉死 `HF_HOME`，让它读的就是我们这边下好的那份模型。
+
+    ★ 2026-11-07 客户报障（诊断报告-20261107-143642）：界面说「识别模型 1547 MB，
+      完整」，引擎却每次都在第 2 步倒在
+      `LocalEntryNotFoundError` / `FileMetadataError`，重试 3 次全失败。
+
+    根因是两边的缓存目录分叉了。引擎那边（`finesub_bootstrap/model_caches.py:
+    existing_hf_home`）只要 `%USERPROFILE%\\.cache\\huggingface\\hub` 里出现**任何一个**
+    我们自己仓库的同名目录——哪怕是个空壳、老版本留下的残骸——整机就改用它；而本模块
+    下载模型永远只写 `<引擎目录>\\models\\huggingface\\hub`。于是：我们这边齐了，
+    引擎那边空的（或残缺），它就去网上重下；客户那条线一下载就挂
+    （`FileMetadataError`），翻译直接跑不起来，重试三次也一样。
+
+    这里把引擎的 `HF_HOME` 钉到我们这一份。**只在这边确实齐了的时候**才钉：不齐就返回
+    空字典，让引擎按它原本的规则走——只覆盖我们确定能加载的情形，不会把「机器上只有
+    老缓存、我们这份还没下完」的用户搞坏。
+    """
+    try:
+        if all(ready(params, model_id) for model_id in _HF_MODEL_IDS):
+            return {"HF_HOME": str(_home(params) / _HF_HUB.parent)}
+    except Exception:  # noqa: BLE001 - 钉不上就让引擎自己找，别拦住任务
+        pass
+    return {}
+
+
 # ---------- 下载 ----------
 
 def _opener(params: dict):

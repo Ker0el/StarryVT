@@ -1410,6 +1410,14 @@ def _setup_env(params: dict) -> dict:
         env["PATH"] = engine_child_path(params)
     except Exception:  # noqa: BLE001 - 探测失败就退回原样，别拦住安装
         pass
+    # ★ 2026-11-07：模型目录要对齐（见 modelfetch.hf_env 的说明）。这里和
+    #   pipeline._translate_once 各拼一份环境，两边都得钉，不然「装的时候对、
+    #   跑的时候错」照样复现。
+    try:
+        import modelfetch
+        env.update(modelfetch.hf_env(params))
+    except Exception:  # noqa: BLE001 - 钉不上就让引擎自己找，别拦住安装
+        pass
     return env
 
 

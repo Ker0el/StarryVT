@@ -2091,6 +2091,15 @@ def _translate_once(video: Path, params: dict, job: Job, report, stage: str = ""
         raise
     except Exception as e:  # noqa: BLE001 - 补不齐也让引擎自己去试
         report("translate", None, f"（模型缓存检查跳过：{e}）")
+    # ★ 2026-11-07：模型是齐的，还得让**引擎去找我们这一份**——引擎发现
+    #   `%USERPROFILE%\.cache\huggingface` 里有同名仓库目录（哪怕空壳）就会改用那边，
+    #   于是它跑去下载、客户那条线一下载就挂（诊断报告-20261107-143642）。
+    #   放在补全之后：补完才谈得上「齐」，才谈得上钉 HF_HOME。
+    try:
+        import modelfetch
+        env.update(modelfetch.hf_env(params))
+    except Exception:  # noqa: BLE001 - 钉不上就按引擎默认来
+        pass
     # 0.5.x 的旧任务缓存里 annotated.csv 少一列（0.6.0 加了 spk），
     # 引擎复用旧目录时知识更新会崩；开跑前把它补成新格式。
     _upgrade_old_annotated_csv(video, params, report)
