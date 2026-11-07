@@ -1318,9 +1318,19 @@ public sealed partial class MainWindow : Window
                 if (!ok)
                 {
                     var err = info.TryGetProperty("error", out var e2) ? (e2.GetString() ?? "") : "";
+                    // 后端那句话本身常常已经带句号，别拼成「。。」
+                    string errLine = err.Length == 0 ? ""
+                        : (err.EndsWith("。") || err.EndsWith("；") || err.EndsWith(".") ? err : err + "。");
+                    // ★ 2026-11-07：后端现在会告诉我们到底是不是网络问题。
+                    //   清单 404（发版漏传文件）以前也被补上「机器连不上更新服务器」，
+                    //   用户于是反复换代理节点 —— 明明是他的网络好的，服务器上没那个文件。
+                    bool net = info.TryGetProperty("network", out var nw)
+                               && nw.ValueKind == JsonValueKind.True;
                     UpdateTitle.Text = "检查更新没成功";
-                    UpdateNotes.Text = (err.Length > 0 ? err + "。" : "")
-                        + "机器连不上更新服务器（其它功能不受影响，但一键装引擎也要访问那里）。";
+                    UpdateNotes.Text = errLine
+                        + (net
+                            ? "机器连不上更新服务器（其它功能不受影响，但一键装引擎也要访问那里）。"
+                            : "可以先点「手动下载」去 Releases 页面看看。");
                     UpdateGoBtn.Visibility = Visibility.Collapsed;   // 没有东西可装
                     UpdateManualBtn.Visibility = Visibility.Visible; // 但可以手动去 Releases 下
                     UpdateLaterBtn.Content = "知道了";

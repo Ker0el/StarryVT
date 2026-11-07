@@ -125,6 +125,67 @@ def last_update_problem(current: str) -> str:
             "并把安装目录选成你实际在用的那个。")
 
 
+#: 从 GitHub Release 页面地址推出 API 地址（只有默认更新源才兜底，用户自定义地址不动）
+_API_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/releases/")
+
+
+def _api_latest_url(u: str) -> str:
+    m = _API_RE.match(u or "")
+    if not m:
+        return ""
+    return f"https://api.github.com/repos/{m.group(1)}/{m.group(2)}/releases/latest"
+
+
+def _info_from_api_release(rel: dict, current: str, src: str) -> dict | None:
+    """把 GitHub API 的 release JSON 变成和 latest.json 一样的结构。
+
+    ★ 2026-11-07 客户报障：v6.60 的 release 只传了 exe、漏了 latest.json，
+      `releases/latest/download/latest.json` 全程 404，检查更新彻底失效。
+      清单是我们自己发的、可以漏；release 本身才是唯一权威，所以 404 时改问 API。
+    """
+    tag = str(rel.get("tag_name") or rel.get("name") or "").strip()
+    version = tag[1:] if tag[:1] in ("v", "V") else tag
+    pkg = ""
+    sha = ""
+    for a in rel.get("assets") or []:
+        name = str(a.get("name") or "")
+        low = name.lower()
+        if not (low.endswith(".exe") and "setup" in low):
+            continue
+        pkg = str(a.get("browser_download_url") or "")
+        digest = str(a.get("digest") or "")
+        if digest.lower().startswith("sha256:"):
+            sha = digest.split(":", 1)[1].strip().lower()
+        break
+    if not version or not pkg:
+        return None
+    notes = re.sub(r"\s+", " ", str(rel.get("body") or "")).strip()[:800]
+    return {"ok": True, "has_update": _vtuple(version) > _vtuple(current),
+            "version": version, "current": current, "pkg_url": pkg, "notes": notes,
+            "sha256": sha, "published": str(rel.get("published_at") or "")[:10],
+            "source": src, "network": False}
+
+
+def _api_fallback(u: str, proxy: str, current: str) -> dict | None:
+    """清单 404 时的兜底：直接问 GitHub API 最新 release。"""
+    api = _api_latest_url(u)
+    if not api:
+        return None
+    try:
+        req = urllib.request.Request(
+            api, headers={"User-Agent": mirrors.UA, "Accept": "application/vnd.github+json"})
+        with _opener(proxy).open(req, timeout=8) as r:
+            rel = json.loads(r.read().decode("utf-8"))
+    except Exception as e:  # noqa: BLE001 - 兜底失败就按原错误报
+        diag.write(f"检查更新：清单 404，GitHub API 兜底也失败（{type(e).__name__}: {e}）", "update")
+        return None
+    info = _info_from_api_release(rel, current, api)
+    if info:
+        diag.write(f"检查更新：清单 404，改用 GitHub API 兜底：最新 v{info['version']}，"
+                   f"有更新={info['has_update']}", "update")
+    return info
+
+
 def log_last_update_problem(current: str) -> str:
     """开机时调一次：有问题就写进日志（诊断报告会带走）"""
     msg = last_update_problem(current)
@@ -143,6 +204,8 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     latest.json 里的 sha256 会被透传给下载步骤做完整性校验（老版本清单没有这个字段也没关系）。
     """
     last_kind = "未知错误"
+    last_exc: BaseException | None = None
+    saw_404 = False
     tried: list[str] = []
     configured = (proxy or "").strip()
     # 用户/系统已经给出代理就直接用，别再探一次：
@@ -163,6 +226,9 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
                 src = u
             except Exception as e:  # noqa: BLE001 - 这个源不行就换下一个
                 last_kind = type(e).__name__
+                last_exc = e
+                if isinstance(e, urllib.error.HTTPError) and int(getattr(e, "code", 0) or 0) == 404:
+                    saw_404 = True
                 info = None
                 diag.write(f"检查更新：源 {u} 连不上（{type(e).__name__}: {e}）", "update")
                 continue
@@ -181,11 +247,23 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
                     "sha256": str(info.get("sha256") or "").strip().lower(),
                     "published": str(info.get("published") or ""), "source": src}
 
+    # ★ 清单 404 = 服务器上确实没这个文件（发版时漏传），不是网络问题。
+    #   这时候改问 GitHub API 要最新 release —— 装了新版却检测不到，问题比报错更难查。
+    if saw_404:
+        for u in dict.fromkeys(tried):
+            if _api_latest_url(u):
+                info = _api_fallback(u, proxy, current)
+                if info:
+                    return info
+                break
+
     # ★ 每个源失败都写日志：以前只在成功时写，于是客户报「检测不到最新版」时，
     #   诊断报告里一条记录都没有 —— 分不清是「没新版」还是「压根没查成」。
     diag.write(f"检查更新失败（当前 v{current}）：试了 {len(tried)} 个源都不行，"
                f"最后一个是 {last_kind}", "update")
-    return {"ok": False, "error": f"检查更新失败（{last_kind}）——{check_failure_hint(last_kind)}"}
+    return {"ok": False, "has_update": False,
+            "error": f"检查更新失败（{last_kind}）——{check_failure_hint(last_exc or last_kind)}",
+            "network": not isinstance(last_exc, urllib.error.HTTPError)}
 
 
 
@@ -218,9 +296,23 @@ def download_failure_hint(last) -> str:
     return ""
 
 
-def check_failure_hint(kind: str) -> str:
-    """检查更新全失败时的人话"""
-    if kind in {"URLError", "HTTPError", "TimeoutError", "socket.timeout",
+def check_failure_hint(kind) -> str:
+    """检查更新全失败时的人话
+
+    ★ 2026-11-07 客户报障：v6.60 release 漏传 latest.json，全程 404，
+      界面却说「网络不通或者代理节点太慢」，客户反复换节点也没用。
+      能收到 404 说明网络是通的 —— 服务器上没这个文件，必须和网络问题分开说。
+    """
+    if isinstance(kind, urllib.error.HTTPError):
+        code = int(getattr(kind, "code", 0) or 0)
+        if code == 404:
+            return ("服务器上还没有更新清单（刚发版、还没传完），不是你网络的问题；"
+                    "过一会儿再点「检查更新」，或者点「手动下载」。")
+        if code in (403, 429):
+            return "更新服务器暂时限流或拒绝访问，不是你网络的问题；过一会儿再试。"
+        return f"更新服务器返回 HTTP {code}，过一会儿再试。"
+    name = type(kind).__name__ if isinstance(kind, BaseException) else str(kind)
+    if name in {"URLError", "HTTPError", "TimeoutError", "socket.timeout",
                 "SSLError", "SSLCertVerificationError", "ConnectionError",
                 "ConnectionResetError", "ConnectionAbortedError"}:
         return "网络不通或者代理节点太慢：请更换网络代理和节点后重试。"
