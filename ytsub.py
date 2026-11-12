@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import html
+import math
 import re
 from pathlib import Path
 
@@ -35,8 +36,16 @@ _RE_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'“])")
 
 #: 一条字幕最多多少字符（英文），超了就找最近的逗号断——引擎按条纠错，太长会稀释
 MAX_CHARS = 120
-#: 一条字幕最多多少秒，超了强制断句
-MAX_SECONDS = 14.0
+#: 一条**成品字幕**最多多少秒 / 多少「宽度单位」
+#:
+#: 为什么不能再长（2026-11-12 客户报障「在线翻译出来的字幕一大串，都没分开」）：
+#: 韩语等语言的人工字幕轨是「2 秒一条、首尾相接、通篇没有句号」，三条断句信号
+#: （句末标点 / 停顿 / 长度）全都命不中，`group_sentences` 就一路攒到 14 秒上限；
+#: 引擎再把这段原样输出，于是成品里一条字幕 15~17 秒、七八十个汉字，画面上又小又长。
+#: 语音识别那条路是 3 秒上下一条（实测 373 条平均 3.04 秒、最长 6.68 秒），这里向它看齐。
+#: 宽度单位：中日韩字符按 1、拉丁字母按 0.56（同 srt2ass 的字号估算口径）。
+MAX_SECONDS = 6.5
+MAX_CUE_UNITS = 60.0
 #: 两句之间静音超过这个秒数就当一句说完（自动轨没有标点时全靠它）
 SENTENCE_GAP = 1.1
 #: 自动轨里词与词之间超过这个间隔，认为是一句话的停顿
@@ -247,11 +256,17 @@ def group_sentences(
     * 句末标点（人工轨主要靠这个）
     * 与下一条之间的停顿超过 `gap` 秒
     * 攒到 `max_chars` 字符或 `max_seconds` 秒（兜底，防止一句没完没了）
+
+    超过 `max_seconds` 时**在原来那条 cue 的边界收口**，不把一句话从中间劈开：
+    字幕轨自己的换行本来就是跟着语气走的（韩语人工轨没有句号，全靠这个）。
     """
     out: list[tuple[float, float, str]] = []
     buf: list[str] = []
     start = end = 0.0
     for i, (s, e, text) in enumerate(cues):
+        if buf and (e - start) > max_seconds:
+            out.append((start, end, " ".join(buf)))
+            buf = []
         if not buf:
             start = s
         buf.append(text)
@@ -269,6 +284,64 @@ def group_sentences(
         if done:
             out.append((start, end, joined))
             buf = []
+    return _fix_overlaps(out)
+
+
+def _width_units(text: str) -> float:
+    """字幕占多宽：中日韩字符 1，拉丁字母 0.56（口径同 srt2ass 的字号估算）"""
+    return sum(1.0 if ord(ch) > 0x2E7F else 0.56 for ch in text)
+
+
+def _split_even(text: str, n: int) -> list[str]:
+    """把一句话按字符数均分成 n 段，切点尽量落在空格上（韩语/英语有词边界）
+
+    中日韩这类不含空格的语言找不到空格，就按字符硬切——反正时间也是按字数摊的。
+    """
+    if n <= 1:
+        return [text]
+    length = len(text)
+    cuts: list[int] = []
+    last = 0
+    for k in range(1, n):
+        target = max(last + 1, round(length * k / n))
+        cut = None
+        # 切开一个字符也不该出现空段：窗口最多找半个片段那么远
+        for d in range(0, max(8, length // n)):
+            for pos in (target + d, target - d):
+                if last < pos < length and text[pos] == " ":
+                    cut = pos
+                    break
+            if cut is not None:
+                break
+        cut = cut if cut is not None else min(target, length - 1)
+        if cut <= last:
+            continue
+        cuts.append(cut)
+        last = cut
+    bounds = [0, *cuts, length]
+    return [text[a:b].strip() for a, b in zip(bounds, bounds[1:]) if text[a:b].strip()]
+
+
+def split_long_cues(cues: list[tuple[float, float, str]]) -> list[tuple[float, float, str]]:
+    """把过长的字幕条按时间/宽度预算均分（句号、停顿都没断出来的那种）
+
+    时间按切出来的字数摊给每一段：这些字幕轨本来就没有词级时间戳，
+    按字数比例分配已经够准（`split_cues` 对人工轨也是这么做的）。
+    """
+    out: list[tuple[float, float, str]] = []
+    for start, end, text in cues:
+        span = max(0.0, end - start)
+        n = max(1, math.ceil(span / MAX_SECONDS), math.ceil(_width_units(text) / MAX_CUE_UNITS))
+        parts = _split_even(text, n) if n > 1 else [text]
+        if len(parts) <= 1:
+            out.append((start, end, text))
+            continue
+        total = sum(len(p) for p in parts) or 1
+        at = start
+        for i, part in enumerate(parts):
+            stop = end if i == len(parts) - 1 else at + span * len(part) / total
+            out.append((round(at, 3), round(stop, 3), part))
+            at = stop
     return _fix_overlaps(out)
 
 
@@ -411,13 +484,13 @@ def parse_srt(vtt: Path) -> tuple[list[tuple[float, float, str]] | None, str]:
     tagged = sum(1 for _s, _e, body in blocks if any("<c>" in ln for ln in body))
     if tagged >= max(4, len(blocks) // 3):
         groups = group_words(words)
-        return groups, "YouTube 自动字幕"
+        return split_long_cues(groups), "YouTube 自动字幕"
     cues = parse_vtt(vtt)
     cues = [c for c in cues if _RE_CUE_MARK.sub("", c[2]).strip()]
     rolling = sum(1 for i in range(1, len(cues)) if cues[i][2].startswith(cues[i - 1][2]))
     if rolling >= max(2, len(cues) // 4):
         cues = dedupe_rolling(cues)
-    return group_sentences(split_cues(cues)), "YouTube 字幕"
+    return split_long_cues(group_sentences(split_cues(cues))), "YouTube 字幕"
 
 
 if __name__ == "__main__":       # 手工验证：python ytsub.py <视频或 vtt>

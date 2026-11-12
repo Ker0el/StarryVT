@@ -1,7 +1,7 @@
 {
-  "version": "6.61",
-  "sha256": "416013768fc4a9d03eb7835bfdff03927d012e1776626935b4048ebc34b6cb09",
-  "notes": "检查更新失败时不再一律怪网络：发版漏传更新清单会自动改问 GitHub API，照样能检测到新版；网络类错误仍保留原提示。",
-  "published": "2026-11-07",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.61.exe"
+  "version": "6.62",
+  "sha256": "317205550f67c30fd9081a8464dd615c5e22aa70b5e01f1b7a98331660e8c5fd",
+  "notes": "在线翻译的字幕不再挤成一大段：YouTube 字幕轨没有句号时，按字幕自己的停顿切成 6 秒以内的短句。",
+  "published": "2026-11-12",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.62.exe"
 }
