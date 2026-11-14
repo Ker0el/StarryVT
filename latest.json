@@ -1,7 +1,7 @@
 {
-  "version": "6.62",
-  "sha256": "317205550f67c30fd9081a8464dd615c5e22aa70b5e01f1b7a98331660e8c5fd",
-  "notes": "在线翻译的字幕不再挤成一大段：YouTube 字幕轨没有句号时，按字幕自己的停顿切成 6 秒以内的短句。",
-  "published": "2026-11-12",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.62.exe"
+  "version": "6.63",
+  "sha256": "f11a802ea8ca560e2db34e2473330432e22576d250488855ca80dfd74db3d529",
+  "notes": "装引擎更稳：官方源传不动时自动改用国内镜像并清掉下坏的缓存；显存不足时不再下载本地克隆模型。",
+  "published": "2026-11-14",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.63.exe"
 }

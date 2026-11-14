@@ -280,6 +280,11 @@ def _gpu_info() -> dict:
     return info
 
 
+def gpu() -> dict:
+    """显卡信息（`localclone` 判显存够不够时也用它，读的是同一份 60 秒缓存）"""
+    return _gpu_info()
+
+
 def _hardware(c: dict) -> dict:
     """电脑配置：系统 / 位数 / 显卡（用户 2026-10-21 要求初始化时顺带查）。
 
@@ -489,11 +494,17 @@ def _clones(c: dict) -> dict:
     try:
         import localclone
         a = localclone.status()
+        why = localclone.blocked_reason()
     except Exception as e:  # noqa: BLE001
         return _item("clones", "语音克隆引擎", WARN,
                      f"读不到状态：{type(e).__name__}", "clone", "一键安装")
     if a["ready"]:
         return _item("clones", "语音克隆引擎", OK, "Index 已就绪")
+    if why:
+        # ★ 2026-11-11：显存不够时**不提供安装入口**，也别标成待修项 ——
+        #   否则一键初始化每次都要为一件做不了的事亮红灯。
+        return _item("clones", "语音克隆引擎", OK,
+                     f"本机克隆不可用：{why}")
     return _item("clones", "语音克隆引擎", WARN,
                  "还没装：Index（约 15 GB，初始化时下载）", "clone", "一键安装")
 

@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.62"
+APP_VERSION = "6.63"
 
 
 def _base_dir() -> Path:
@@ -806,7 +806,9 @@ class Api:
             # 设置页直接显示在提示里，别等用户跑了 40 分钟才发现。
             try:
                 import doctor
-                hint = localclone.speed_hint(bool((doctor._gpu_info() or {}).get("name")))
+                _g = doctor.gpu() or {}
+                hint = localclone.speed_hint(bool(_g.get("name")),
+                                             float(_g.get("vram_gb") or 0))
             except Exception:  # noqa: BLE001 - 查不到显卡就别吓人
                 hint = ""
             if hint:
@@ -899,6 +901,12 @@ class Api:
             with self._lock:
                 self._status.update(running=False, stage="cancelled")
             self._report("cancelled", None, "⏹ 已取消（已下好的部分留着）")
+        except localclone.Unsupported as e:
+            # 显存不够：一键初始化里这是「跳过」，不是失败 —— 别报红、别让人再点。
+            with self._lock:
+                self._status.update(running=False, stage="skipped", percent=100,
+                                    error="", result={"skipped": str(e)})
+            self._report("clone", 100, f"⏭ 已跳过本机语音克隆：{e}")
         except Exception as e:  # noqa: BLE001
             msg = f"{type(e).__name__}: {e}"
             diag.write_exception(e, "语音克隆引擎安装")

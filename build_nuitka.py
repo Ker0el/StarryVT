@@ -135,6 +135,8 @@ def main() -> int:
         "--include-module=paths",
         # ffmpeg 钉死（只在 install_finesub / _precheck 里延迟 import，显式带上）
         "--include-module=runtime_pin",
+        # 引擎运行环境的国内镜像（engine.py 顶层 import；显式列出以防哪天改成延迟 import）
+        "--include-module=pypi_mirror",
         # 微软运行库检测（同上，只在 engine._provision_runtime / pipeline._precheck /
         # diag 里延迟 import）
         "--include-module=vcruntime",

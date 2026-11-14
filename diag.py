@@ -21,6 +21,9 @@ from pathlib import Path
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "StarryVT"
 LOG_DIR = APP_DIR / "logs"
 
+#: 应用版本（start_session 里由 app.py 传进来；诊断报告的第一屏要能看到）
+_APP_VERSION = ""
+
 
 def _now() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -378,6 +381,12 @@ def _engine_env_report() -> list[str]:
             if f.is_file():
                 v = _version_of(f)
                 out.append(f"{name}: {v or '(无版本信息)'}  {f}")
+    # 运行环境的下载源：官方源传不动时会临时改到国内镜像（见 pypi_mirror）
+    try:
+        import pypi_mirror
+        out.append(f"运行环境下载源: {pypi_mirror.describe()}")
+    except Exception:  # noqa: BLE001 - 只是补充信息
+        pass
     return out
 
 
@@ -396,7 +405,7 @@ def environment_info(deep: bool = False) -> str:
     lines = [
         "===== 环境信息 =====",
         f"时间: {_now()}",
-        f"应用: 星译（StarryVT）",
+        f"应用: 星译（StarryVT） v{_APP_VERSION or '(未记录)'}",
         f"系统: {platform.system()} {platform.release()} 版本 {platform.version()}",
         f"Python: {sys.version.split()[0]}（打包运行: {frozen}）",
         f"程序目录: {base}",
@@ -761,6 +770,10 @@ def install_hooks():
 
 def start_session(app_version: str = "0.1.0"):
     """启动时记一笔：环境快照 + 会话开始"""
+    global _APP_VERSION
+    # ★ 2026-11-11：「应用: 星译（StarryVT）」这一行没有版本号，客户发来诊断报告
+    #   只能靠 traceback 的行号去源码里反推是哪一版（那次就是靠 app.py:894 认出的）。
+    _APP_VERSION = str(app_version or "").strip()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     write(f"===== 会话开始 v{app_version} =====", "boot")
     for line in environment_info().splitlines():

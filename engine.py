@@ -25,6 +25,7 @@ from job import Cancelled, Job, no_window_kwargs
 import datadir
 import engine_mirror
 import mirrors
+import pypi_mirror
 import tools
 import wheels
 
@@ -334,6 +335,13 @@ def uv_env(params: dict) -> dict:
     env["PYTHONUTF8"] = "1"
     # 见 _uv_python_dir：不能让它去扫 %APPDATA%\uv\python 里的坏 junction
     env["UV_PYTHON_INSTALL_DIR"] = str(_uv_python_dir(params))
+    # ★ 2026-11-11 客户（诊断报告-20261111-224823）：一次装 6.7 GB，官方源
+    #   传一半就被掐（peer closed connection / connection reset）。默认 30 秒读
+    #   超时 + 3 次重试对慢线路太紧；同时并发下载几十个文件会把（国内常见的）
+    #   代理连接池压垮 —— 限到 8 条，稳比快重要。
+    env.setdefault("UV_HTTP_TIMEOUT", "120")
+    env.setdefault("UV_HTTP_RETRIES", "5")
+    env.setdefault("UV_CONCURRENT_DOWNLOADS", "8")
     return env
 
 
@@ -1591,7 +1599,7 @@ def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> boo
     prune_engine_cache(params, report)
 
     report("engine", None, "正在准备引擎运行环境（首次要下载 2~3 GB，请保持网络畅通、别关软件）…")
-    env = _setup_env(params)
+    # 环境不再在这里拼：每轮 setup 由 run_setup 现拼（可能带代理、也可能不带）
     # 说清楚引擎用的是哪个解释器：客户机器上有 32 位 Python 时，日志里必须看得出来
     # 我们绕开了它（否则再出问题又是一份「看不出用了哪个 Python」的诊断报告）。
     try:
@@ -1618,6 +1626,45 @@ def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> boo
         report("engine", None, f"（随包资源预置跳过：{e}）")
 
     tail: list[str] = []
+    # 上次要是被强杀，pylock 可能还停在「改到国内镜像」的状态 —— 先还原再动。
+    try:
+        pypi_mirror.restore()
+    except Exception:  # noqa: BLE001 - 还原不了不影响走官方源
+        pass
+
+    def run_setup(*, mirror: str = "") -> int:
+        """跑一次 `finesub setup`。
+
+        mirror 三档：
+          ""        官方源（照旧）
+          "cn"      用引擎自带的国内清单（`pylock.win-py312.cn.toml`，全指向清华源）
+                    —— 先清掉「这台机器已经放弃 pypi 镜像」的计数，否则引擎永远不用它
+          "rewrite" 引擎的国内清单不可用时，我们自己把官方清单的地址改到国内镜像
+        两种镜像模式都**不走代理**：客户机的代理正是把 TLS 流搞坏的那个环节。
+        每轮都重新拼一份环境，跑完一定把 pylock 还原成原版。
+        """
+        tail.clear()
+        changed = False
+        try:
+            if not mirror:
+                return _stream(job, [finesub, "setup"], _setup_env(params), report, tail=tail)
+            env_now = _mirror_env(params)
+            if mirror == "rewrite":
+                if pypi_mirror.apply(report):
+                    changed = True
+                    # 引擎可能还在按「地区=cn」挑它自带的清单；那份要是不能用，
+                    # 就得让它换回官方清单（我们已经把官方清单改到镜像了）。
+                    env_now["FINESUB_DOWNLOAD_REGION"] = "global"
+                else:
+                    # 国内镜像用不了：这一轮别把代理也摘掉，照旧跑官方源。
+                    env_now = _setup_env(params)
+            else:
+                pypi_mirror.reset_degraded()
+            return _stream(job, [finesub, "setup"], env_now, report, tail=tail)
+        finally:
+            if changed:
+                pypi_mirror.restore()
+
     try:
         probe = env_probe(finesub)
         if probe["python"]:
@@ -1626,7 +1673,13 @@ def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> boo
                    f"引擎解释器: {probe['python']}（{probe['version'] or '?'}）")
             if probe["import_ok"] is False:
                 report("engine", None, f"（导入 pydantic_core 失败：{probe['error']}）")
-        code = _stream(job, [finesub, "setup"], env, report, tail=tail)
+        # ★ 2026-11-11：引擎的 pylock 钉的是**绝对 URL**，index 类镜像
+        #   （UV_DEFAULT_INDEX / --index-url）对这一步完全无效。没有可用代理的机器
+        #   直接先走国内清单；有代理的先用官方源，失败了再换（见循环里的 ②③）。
+        mirror = "cn" if not mirrors.effective_proxy(params) else ""
+        code = run_setup(mirror=mirror)
+        cn_tried = bool(mirror)
+        rewrite_tried = False
         # ★ 环境坏了（导入阶段 DLL 加载失败）和「下载不动」是两回事：换下载源、
         #   等一小时都不可能好。直接重建工具环境（2026-11-05 客户报障：两天 67 次）。
         if code != 0 and env_broken(tail):
@@ -1634,34 +1687,54 @@ def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> boo
                    "引擎的 Python 环境在导入组件时崩了（DLL 加载失败）——这不是网络问题，"
                    "自动重建一次环境…")
             if repair_env(params, job, report):
-                env = _setup_env(params)
                 try:
                     import runtime_pin as _pin2
                     _pin2.prefetch(params, report)
                 except Exception:  # noqa: BLE001
                     pass
-                tail.clear()
-                code = _stream(job, [finesub, "setup"], env, report, tail=tail)
-        # ★ 失败后换一条路再试一次（2026-11-05）：最常见的原因是**选中的镜像
-        #   已经不回字节了**，而 mirrors.pick 的结果会缓存 6 小时。重探一遍镜像、
-        #   或把钉死的 ffmpeg 回退成引擎默认路径，往往这一把就过了。
+                code = run_setup(mirror=mirror)
+        # ★ 失败后换路（2026-11-05 加了两条，2026-11-11 又加了两条）：
+        #   ① 缓存里躺着下坏的轮子 → 清那一条再试（同一个哈希错好几次就是它）；
+        #   ② 引擎自带的国内清单被「失败 3 次」永久拉黑 → 清计数，改用它；
+        #   ③ 国内清单本身不可用 → 把官方清单改到国内镜像再试；
+        #   ④ 选中的 GitHub 加速镜像已经死了 → 强制重探一遍；
+        #   ⑤ 钉死的 ffmpeg 下不动 → 回退成引擎默认路径。
         #   明显的非网络失败（VC++ / c10.dll / 环境坏了）不重试，重试也只会再耗几分钟。
         retries = 0
-        while code != 0 and retries < 2 and not env_broken(tail) and not any(
-                ("1114" in s) or ("c10.dll" in s) for s in tail)                 and not bad_system_python(tail):
+        while code != 0 and retries < 4 and not env_broken(tail) and not any(
+                ("1114" in s) or ("c10.dll" in s) for s in tail) and not bad_system_python(tail):
+            bad = _bad_cache_packages(tail)
+            if bad and _clean_bad_cache(params, bad, report):
+                retries += 1
+                report("engine", None,
+                       f"运行环境没装好，清掉下坏的缓存（{'、'.join(bad)}）后重试一次…")
+                code = run_setup(mirror=mirror)
+                continue
+            if not cn_tried:
+                cn_tried = True
+                mirror = "cn"
+                retries += 1
+                report("engine", None, "运行环境没装好，换用引擎自带的国内清单后重试一次…")
+                code = run_setup(mirror="cn")
+                continue
+            if not rewrite_tried:
+                rewrite_tried = True
+                mirror = "rewrite"
+                retries += 1
+                report("engine", None, "运行环境没装好，改走国内下载镜像后重试一次…")
+                code = run_setup(mirror="rewrite")
+                continue
             action = _retry_route(params, report)
             if not action:
                 break
             retries += 1
             report("engine", None, f"运行环境没装好，{action}后重试一次…")
-            env = _setup_env(params)
             try:
                 import runtime_pin as _pin
                 _pin.prefetch(params, report)
             except Exception:  # noqa: BLE001
                 pass
-            tail.clear()
-            code = _stream(job, [finesub, "setup"], env, report, tail=tail)
+            code = run_setup(mirror=mirror)
     except Cancelled:
         raise
     except Exception as e:  # noqa: BLE001
@@ -1709,6 +1782,64 @@ def _provision_runtime_impl(params: dict, job: Job, report, finesub: str) -> boo
            f"⚠ 运行环境这次没准备好（退出码 {code}）——第一次翻译时会自动再试一次。"
            f"如果一直失败，请把诊断报告发给我们。")
     return False
+
+
+#: 引擎输出里「哈希对不上」的痕迹（`Hash mismatch for `cython==3.2.9``）
+_HASH_MISMATCH = re.compile(r"Hash mismatch for\s+`([A-Za-z0-9._+-]+)==", re.IGNORECASE)
+
+
+def _bad_cache_packages(lines) -> list[str]:
+    """输出里哈希不符的那几个包名
+
+    ★ 2026-11-11 客户报告（诊断报告-20261111-224823）：cython==3.2.9 连续 7 次
+      拿到**同一个**错误哈希（期望 4b1fd5a9…、实际 ebf4856c…，而 PyPI 上就是
+      4b1fd5a9…）。换镜像、换代理都没用 —— 下坏的轮子被 uv 缓存在
+      `<引擎目录>\\cache\\uv` 里，重试只是把同一份坏字节再拿出来。必须先清掉那一条。
+    """
+    out: list[str] = []
+    for line in lines or ():
+        m = _HASH_MISMATCH.search(str(line))
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out[:4]
+
+
+def _clean_bad_cache(params: dict, names: list[str], report=None) -> bool:
+    """把 uv 缓存里下坏的那几个包清掉，返回是否真的清过（清失败不拦安装）"""
+    uv = find_uv()
+    if not uv or not names:
+        return False
+    home = (params.get("finesub_home") or "").strip()
+    base = Path(home) if home else datadir.default_home()
+    # 引擎自己跑 uv 时把 UV_CACHE_DIR 指到这儿（finesub_bootstrap/environment.py），
+    # 我们清缓存必须清同一个目录，否则清了它也不认。
+    env = _proxy_env(params)
+    env["UV_CACHE_DIR"] = str(base / "cache" / "uv")
+    ok = False
+    for name in names:
+        try:
+            r = subprocess.run([uv, "cache", "clean", name],
+                               **no_window_kwargs(capture_output=True, text=True,
+                                                  encoding="utf-8", errors="replace",
+                                                  timeout=120, env=env))
+            ok = ok or r.returncode == 0
+        except Exception:  # noqa: BLE001 - 清缓存失败绝不能拖累安装
+            continue
+    return ok
+
+
+def _mirror_env(params: dict) -> dict:
+    """走国内镜像时用的环境：**不带代理**
+
+    国内镜像本来就不该绕代理；而客户机的代理往往正是把大文件传断的那个环节
+    （2026-11-11 那台：代理端口活着，2.6 GB 的 torch 传几次断几次）。
+    """
+    env = _setup_env(params)
+    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+              "http_proxy", "https_proxy", "all_proxy"):
+        env.pop(k, None)
+    env["NO_PROXY"] = env["no_proxy"] = "*"
+    return env
 
 
 def _retry_route(params: dict, report) -> str:

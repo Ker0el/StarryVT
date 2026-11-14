@@ -16,6 +16,7 @@
 | bottle | 0.13.4 | MIT |
 | certifi | 2026.10.23 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
+| charset-normalizer | 3.5.2 | MIT |
 | click | 8.5.0 | BSD-3-Clause |
 | clr_loader | 0.3.1 | MIT |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
@@ -32,6 +33,7 @@
 | multidict | 7.2.1 | Apache-2.0 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 |
 | propcache | 0.5.4 | Apache-2.0 |
+| protobuf | 7.36.2 | 3-Clause BSD License |
 | proxy_tools | 0.1.0 | MIT |
 | pydantic | 2.14.1 | MIT |
 | pydantic_core | 2.50.1 | MIT |
@@ -40,7 +42,9 @@
 | pythonnet | 3.2.1 | MIT |
 | pywebview | 6.2.1 | BSD-3-Clause |
 | pywin32 | 312 | PSF |
+| PyYAML | 6.0.3 | MIT |
 | referencing | 0.37.0 | MIT |
+| requests | 2.34.2 | Apache-2.0 |
 | rpds-py | 2026.9.1 | MIT |
 | sse-starlette | 3.5.0 | BSD-3-Clause |
 | starlette | 1.9.0 | BSD-3-Clause |
@@ -48,6 +52,7 @@
 | truststore | 0.10.5 | MIT |
 | typing-inspection | 0.4.4 | MIT |
 | typing_extensions | 4.16.0 | PSF-2.0 |
+| urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.54.0 | BSD-3-Clause |
 | yarl | 1.25.1 | Apache-2.0 |
 
@@ -186,4 +191,4 @@
 - 随包的「思源黑体 Light」是 OFL-1.1 的静态 Light 实例，许可证原文在 `assets\fonts\OFL.txt`；字幕字体固定为这一款，界面不再提供其它字体选项，也不随包分发其它字体。
 - 若你二次分发本软件，请一并保留本清单与 `licenses\` 目录。
 
-（本清单由 `make_licenses.py` 自动生成，共 43 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）
+（本清单由 `make_licenses.py` 自动生成，共 48 个打包组件 + 2 个随包外部程序 + 3 个随包运行时 DLL + 1 个随包字体 + 13 个翻译引擎依赖包）

@@ -71,6 +71,9 @@ SRC_ZIP = "https://github.com/index-tts/index-tts/archive/refs/heads/main.zip"
 # 情感模型（qwen0.6bemo4-merge，1.1 GB）只有 use_emo_text 用得上，我们不用 —— 别下
 SKIP = ("qwen0.6bemo4-merge/*",)
 
+#: 本机克隆至少要的显存（IndexTTS-2.5 用 bf16 跑；见文件头「8 GB 显存就能跑」）
+MIN_VRAM_GB = 8.0
+
 # 加载模型时**真正会读**的文件（infer_v2_5.py + checkpoints/config.yaml）：
 #   config.yaml / gpt.pth / s2mel.pth / codec.pth / feat1.pt / feat2.pt /
 #   wav2vec2bert_stats.pt / 分词器 tiktoken
@@ -158,10 +161,47 @@ def _dir_size(path: Path) -> int:
     return total
 
 
+def _torch_ready() -> bool:
+    """环境里**真的有 torch** 吗
+
+    ★ 2026-11-11 客户：`uv sync` 下 torch 失败（退出码 2），但 `.venv\\Scripts\\
+      python.exe` 已经建出来了 —— 只看 python.exe 的旧判定把「运行环境装好了」报给
+      用户，模型那一半还空着，人以为只差模型。
+    """
+    sp = src() / ".venv" / "Lib" / "site-packages"
+    return (sp / "torch" / "__init__.py").is_file()
+
+
+class Unsupported(RuntimeError):
+    """这台机器跑不了本机克隆（显存不够）—— 这是「跳过」，不是「装坏了」。
+
+    一键初始化会把它当成可跳过的项：不下载、不报红，只在日志里说明改用云端克隆。
+    """
+
+
+def blocked_reason() -> str:
+    """这台机器为什么跑不了本机克隆；空串 = 能跑（或查不到显卡，不拦）。
+
+    ★ 2026-11-11 客户（GTX 960 4 GB）：界面只提示「约 1.5 倍」，他反复下 15 GB
+      都失败。显存不够的一律挡在下载之前 —— 装上也只会退回 CPU 跑几小时。
+    """
+    try:
+        import doctor
+        g = doctor.gpu() or {}
+    except Exception:  # noqa: BLE001 - 查不到显卡就别拦
+        return ""
+    vram = float(g.get("vram_gb") or 0)
+    if g.get("name") and 0 < vram < MIN_VRAM_GB:
+        return (f"本机语音克隆至少要 {MIN_VRAM_GB:g} GB 显存（IndexTTS-2.5 用 bf16 跑），"
+                f"这台机器的 {g['name']} 只有 {vram:g} GB；装上也只会退回 CPU 跑"
+                f"（长片要几个小时）。请改用「云端克隆」。")
+    return ""
+
+
 def status() -> dict:
     """装到哪一步了：{ready, installed, model_ready, missing, problem, dir, model_gb, detail}"""
     h, s, c = home(), src(), ckpt()
-    env_ok = python_exe().is_file()
+    env_ok = python_exe().is_file() and _torch_ready()
     miss = missing_model_files()
     model_ok = not miss
     gb = round(_dir_size(c) / 1024 ** 3, 1) if c.is_dir() else 0.0
@@ -190,15 +230,21 @@ def status() -> dict:
             "detail": detail}
 
 
-def speed_hint(has_nvidia: bool) -> str:
+def speed_hint(has_nvidia: bool, vram_gb: float = 0.0) -> str:
     """这台机器上本机克隆会不会明显更慢（给设置页直接显示）。
 
-    克隆环境是 torch 2.8+cu128，只有 NVIDIA 卡能上 GPU；AMD / 核显机器上
+    克隆环境是 cu128 的 torch，只有 NVIDIA 卡能上 GPU；AMD / 核显机器上
     torch 在 Windows 只能走 CPU，同一段素材会慢 5～10 倍。不是故障，但用户
     选之前应该知道 —— 2026-10-28 实测：配音耗时约为视频时长的 1.5 倍。
+
+    ★ 2026-11-11 客户：GTX 960 4 GB。以前只要有 NVIDIA 就报「约 1.5 倍」，
+      4 GB 的卡根本跑不动（见文件头的 8 GB 要求），等于把人骗去下 15 GB。
     """
-    if has_nvidia:
+    if has_nvidia and (not vram_gb or vram_gb >= MIN_VRAM_GB):
         return "本机克隆的配音时间大约是视频时长的 1.5 倍，显卡越弱越慢。"
+    if has_nvidia:
+        return (f"这块显卡只有 {vram_gb:g} GB 显存，本机克隆至少要 {MIN_VRAM_GB:g} GB，"
+                "装上也只会退回 CPU 跑（长片要几个小时）。建议改用云端克隆。")
     return ("这台机器没检测到 NVIDIA 显卡，本机克隆只能用 CPU 跑，视频越长越慢"
             "（长片可能要几个小时）。建议改用云端克隆。")
 
@@ -273,6 +319,11 @@ def install(params: dict, job: Job, report) -> dict:
         raise RuntimeError(
             f"本地语音克隆需要约 15 GB，{h.anchor} 只剩 {free_gb:.1f} GB。"
             f"请换一个空间足够的「数据目录」（设置 → 输出 → 数据目录），或改用云端配音。")
+    # ★ 2026-11-11：显存不够就别开始下这 15 GB。客户那台是 GTX 960 4 GB，
+    #   界面只提示「约 1.5 倍」，他反复下 torch（2.6 GB）都失败，白耗两天。
+    why = blocked_reason()
+    if why:
+        raise Unsupported(why)
     report("clone", 0, "准备本地语音克隆（IndexTTS-2.5）…")
     if not str(h).isascii():
         # 文本前端 wetext 用 C++ 的 kaldifst 打开 .fst，按系统代码页解析路径，
