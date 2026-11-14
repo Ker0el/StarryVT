@@ -1,7 +1,7 @@
 {
-  "version": "6.63",
-  "sha256": "f11a802ea8ca560e2db34e2473330432e22576d250488855ca80dfd74db3d529",
-  "notes": "装引擎更稳：官方源传不动时自动改用国内镜像并清掉下坏的缓存；显存不足时不再下载本地克隆模型。",
+  "version": "6.64",
+  "sha256": "557a594692f89797f1976678aa7c060501e0b9e090a5ed54cb4ca0387428de48",
+  "notes": "本机代理端口连不上时自动换成探测到的可用代理并写回设置，检查更新不再报连接被拒。",
   "published": "2026-11-14",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.63.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.64.exe"
 }

@@ -211,6 +211,11 @@ def check(current: str, url: str = "", proxy: str = "") -> dict:
     # 用户/系统已经给出代理就直接用，别再探一次：
     # 探测是 1.5 秒的快速请求，代理稍慢就会被判死，然后整个检查退成直连 → GitHub 超时
     # （2026-10-29 实测：日志里明明检测到 7897，检查更新却报 URLError）。
+    # ★ 2026-11-11：但**已经探过是死的**那个别再硬用 —— 客户那台设置里留着 7890、
+    #   实际在跑 7897，三次检查更新全报 WinError 10061。这里只看缓存（启动时
+    #   boot 已经探过一次），不额外发探测，不会把 v6.49 那个坑吃回来。
+    if configured and mirrors.proxy_cached(configured) is False:
+        configured = ""
     proxy = configured or mirrors.effective_proxy({"proxy": ""})
     urls = _manifest_urls(url)
     info = None

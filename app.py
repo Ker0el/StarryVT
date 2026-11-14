@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.63"
+APP_VERSION = "6.64"
 
 
 def _base_dir() -> Path:
@@ -133,6 +133,22 @@ class Api:
                 diag.write("[data] 已归并旧缓存：" + "；".join(moved), "app")
         except Exception as e:  # noqa: BLE001 - 归并失败不影响启动
             diag.write(f"[data] 归并旧缓存失败: {type(e).__name__}: {e}", "app")
+
+        # ★ 2026-11-11 客户：设置里留着 127.0.0.1:7890（代理软件早换了端口），
+        #   实际在跑 7897。我们每次都能探测到 7897 并用上，但配置值一直没改 ——
+        #   检查更新那条路信任配置值，三次全报 WinError 10061。探测到了就写回去，
+        #   让「界面显示的」「各模块用的」是同一个地址。
+        try:
+            import mirrors as _mir
+            fix = _mir.adopt_better(c)
+            if fix["changed"]:
+                cfg.save({"proxy": fix["new"]})
+                c["proxy"] = fix["new"]
+                _mir.forget_proxy_cache()
+                diag.write(f"设置里的代理 {fix['old']} 连不上，已自动改用探测到的 "
+                           f"{fix['new']}（{fix['source']}）", "proxy")
+        except Exception as e:  # noqa: BLE001 - 自动纠正失败不影响启动
+            diag.write(f"代理自动纠正跳过：{type(e).__name__}: {e}", "proxy")
 
         def keyinfo(name: str) -> dict:
             v = c.get(name) or ""

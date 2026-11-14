@@ -295,6 +295,44 @@ def detect_proxy(params: dict) -> dict:
     return {"ok": bool(proxy), "proxy": proxy, "source": source}
 
 
+def proxy_cached(proxy: str) -> bool | None:
+    """缓存里这个代理上次探测的结果；没探过返回 None（**不发起探测**）"""
+    hit = _proxy_cache.get((proxy or "").strip())
+    return None if not hit else hit[1]
+
+
+def _is_loopback(proxy: str) -> bool:
+    try:
+        u = urllib.parse.urlsplit(proxy if "://" in proxy else "http://" + proxy)
+        return (u.hostname or "") in ("127.0.0.1", "localhost", "::1")
+    except Exception:  # noqa: BLE001 - 解析不了就别当本机
+        return False
+
+
+def adopt_better(params: dict) -> dict:
+    """配置里的**本机**代理已经没人监听时，返回该换成的那个代理。
+
+    ★ 2026-11-11 客户（诊断报告-20261111-224823）：设置里留着
+      `http://127.0.0.1:7890`，实际在跑的是 7897。我们每次都能自动探测到 7897
+      并且**用上了**（引擎下载、镜像判断都走它），但设置里那一栏始终是 7890；
+      而检查更新那条路信任配置值 —— 于是三次全报 `WinError 10061 目标计算机
+      积极拒绝`，用户看到的是「网络不通」。探测到了就该写回去。
+
+    只换本机地址：远程代理临时不通不算配错，不能替用户改。
+    返回 {changed, old, new, source}；changed=False 时 new/source 是空串。
+    """
+    configured = (params.get("proxy") or "").strip()
+    blank = {"changed": False, "old": configured, "new": "", "source": ""}
+    if not configured or not _is_loopback(configured):
+        return blank
+    if proxy_ok({"proxy": configured}):        # 带 5 分钟缓存；活着就什么都不做
+        return blank
+    found, source = _detect_proxy({"proxy": ""}, force=True)
+    if not found or found == configured:
+        return blank
+    return {"changed": True, "old": configured, "new": found, "source": source}
+
+
 def enabled(params: dict) -> bool:
     """这台机器要不要用镜像：用户关掉了就直接不用；**有可用代理**才不用"""
     mode = (params.get("github_mirror", AUTO) or AUTO).strip().lower()
