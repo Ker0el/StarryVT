@@ -443,6 +443,36 @@ def _subprocess_env(params: dict) -> dict:
     return env
 
 
+def probe_size(path: Path) -> tuple[int, int]:
+    """取视频**显示用**的宽高（拿不到返回 (0, 0)）
+
+    ⚠️ 手机竖拍的文件常常是「1920x1080 + 旋转元数据」，ffmpeg 解码时会自动转正，
+    所以这里要读 side_data 的 rotation 再决定要不要把宽高对调 —— 否则 ASS 的
+    坐标系和实际画面又差 90 度，字幕会横向拉宽 / 跑到画面外。
+    """
+    from job import no_window_kwargs
+    exe = tools.find("ffprobe")
+    if not exe:
+        return 0, 0
+    try:
+        r = subprocess.run([exe, "-v", "error", "-select_streams", "v:0",
+                            "-show_entries",
+                            "stream=width,height:stream_side_data=rotation",
+                            "-of", "json", str(path)],
+                           capture_output=True, text=True, **no_window_kwargs())
+        st = (json.loads(r.stdout or "{}").get("streams") or [{}])[0]
+        w, h = int(st.get("width") or 0), int(st.get("height") or 0)
+        rot = 0
+        for sd in st.get("side_data_list") or []:
+            if "rotation" in sd:
+                rot = int(float(sd["rotation"]))
+        if abs(rot) % 180 == 90:
+            w, h = h, w
+        return w, h
+    except Exception:  # noqa: BLE001 - 探测失败就退回 1280x720，不影响出片
+        return 0, 0
+
+
 def probe_duration(path: Path) -> float:
     """取视频时长（只用于进度百分比；拿不到就返回 0，不影响出片）"""
     from job import no_window_kwargs
@@ -2343,8 +2373,15 @@ def burn(video: Path, srt_path: Path, out_path: Path, job: Job, report,
         src_scale = float(p.get("subtitle_bilingual_scale") or 80)
     except (TypeError, ValueError):
         src_scale = 80.0
+    # 坐标系必须用视频自己的分辨率：写成 1280x720 时 libass 会按高度把竖屏放大，
+    # 文字和边距一起放大到画面外（客户 2026-11 报的「竖屏字幕超出界面」）。
+    vw, vh = probe_size(video)
+    play_res = f"{vw}x{vh}" if vw > 0 and vh > 0 else "1280x720"
+    if vh > vw >= 1:
+        report("burn", None, f"竖屏视频 {vw}x{vh}：字幕按画布宽度自动折行")
     n = srt2ass.srt_to_ass(
         srt_path, ass,
+        play_res=play_res,
         font=font,
         size=float(p.get("subtitle_size") or 42),
         margin_v=int(p.get("subtitle_margin_v") or 30),

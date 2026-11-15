@@ -35,6 +35,64 @@ def _fit_size(text: str, base: float, play_w: int, margin: int = 20,
     return max(24.0, min(base, fit))      # 低于 24 就太小了，宁可稍微溢出
 
 
+_BREAKS = set("，。！？；：、,.!?;:…—")
+
+
+def _split_two(text: str) -> tuple[str, str] | None:
+    """把一行拆成两行：只在靠近中间的位置断，找不到合适位置就返回 None。
+
+    优先在标点或空格后面断；纯英文又没有空格时不断（避免从单词中间劈开）。
+    """
+    n = len(text)
+    if n < 6:
+        return None
+    mid = n / 2
+    cut, best = 0, None
+    for i, ch in enumerate(text[:-1]):
+        if ch in _BREAKS or ch == " ":
+            score = abs(i + 1 - mid)
+            if best is None or score < best:
+                best, cut = score, i + 1
+    if not cut:
+        if sum(1 for ch in text if ch.isascii() and ch.isalpha()) > n * 0.5:
+            return None
+        cut = int(round(mid))          # 中文可以任意位置断
+    a, b = text[:cut].strip(), text[cut:].strip()
+    if not a or not b:
+        return None
+    return a, b
+
+
+def _fit_block(text: str, base: float, play_w: int, margin: int = 20,
+               spacing: float = 0.0) -> tuple[str, float]:
+    """一条字幕的排版：放得下就一行；放不下先折成两行，再按宽度缩字号。
+
+    返回 (文本, 字号)。文本里可能带 ASS 的硬换行标记（反斜杠 + N，两个字面字符）。
+    竖屏画面窄，只靠缩字号会把字压到看不清；以前还有 24 px 的下限，
+    长句只能溢出画面。折行能保住字号。
+    """
+    one = _fit_size(text, base, play_w, margin, spacing)
+    if one >= base - 0.01:
+        return text, base
+    pair = _split_two(text)
+    if pair:
+        a, b = pair
+        two = min(_fit_size(a, base, play_w, margin, spacing),
+                  _fit_size(b, base, play_w, margin, spacing))
+        # 折行要能明显把字号救回来才折，否则一行更干净；
+        # 但撞到 24 px 下限还放不下时，宁可折行也不能溢出画面。
+        if (two > one * 1.15 or two >= base - 0.01
+                or _too_wide(text, one, play_w, margin, spacing)):
+            return f"{a}\\N{b}", two
+    return text, one
+
+
+def _too_wide(text: str, fs: float, play_w: int, margin: int, spacing: float) -> bool:
+    """这个字号下这一行是否已经超出可用宽度（缩到下限也放不下）"""
+    units = sum(1.0 if ord(c) > 0x2E7F else 0.56 for c in text)
+    return units * fs + spacing * max(0, len(text) - 1) > play_w - margin * 2 + 1
+
+
 def _rgb(color: str) -> tuple[int, int, int]:
     """#RRGGBB -> (r, g, b)；写错了按白色处理。"""
     s = (color or "").strip().lstrip("#")
@@ -132,9 +190,10 @@ def _two_line(src: str, main: str, size: float, play_w: int, spacing: float,
     每行各自按画面宽度算字号；原文那行默认是主字号的 80%（可在设置里调）。
     """
     src_base = max(24.0, size * max(30.0, min(100.0, scale)) / 100.0)
-    src_fs = _fit_size(src, src_base, play_w, spacing=spacing)
-    main_fs = _fit_size(main, size, play_w, spacing=spacing)
-    pairs = [(src, src_fs), (main, main_fs)] if src_top else [(main, main_fs), (src, src_fs)]
+    src_txt, src_fs = _fit_block(src, src_base, play_w, spacing=spacing)
+    main_txt, main_fs = _fit_block(main, size, play_w, spacing=spacing)
+    pairs = ([(src_txt, src_fs), (main_txt, main_fs)] if src_top
+             else [(main_txt, main_fs), (src_txt, src_fs)])
     parts = []
     for text, fs in pairs:
         prefix = f"{{\\fs{fs:g}}}" if abs(fs - size) > 0.01 else ""
@@ -160,6 +219,15 @@ def srt_to_ass(srt_path: Path | str, ass_path: Path | str, font: str = "Microsof
     """
     w, h = play_res.split("x")
     play_w = int(w)
+    play_h = int(h)
+    # 字号/描边/字距/底部距离都以 720p 为基准换算到真实分辨率：
+    # 横屏 1080p 上得到的像素高度和过去（PlayRes 写死 1280x720）完全一致；
+    # 竖屏不再被 libass 按高度整体放大，也就不会整行出画。
+    k = (play_h / 720.0) if play_h > 0 else 1.0
+    size = max(12.0, size * k)
+    margin_v = int(round(margin_v * k))
+    outline = outline * k
+    spacing = spacing * k
     srt = Path(srt_path).read_text(encoding="utf-8-sig")
 
     def t(a, b, c, d):  # SRT 时间戳 -> ASS 时间戳
@@ -175,6 +243,18 @@ def srt_to_ass(srt_path: Path | str, ass_path: Path | str, font: str = "Microsof
     else:
         lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
         outline_color_ass = _ass_color(255, 255, 255) if lum < 0.35 else _ass_color(0, 0, 0)
+
+    # ---- 全片统一字号 ----
+    # 以前是「短句用基准字号、长句单独缩小」，同一部片子里字幕一会大一会小（客户吐槽）。
+    # 现在先算每条字幕放下所需的最小字号，取全片最小值当统一字号；只在个别超长句
+    # 低于基准 55% 时才让它们单独缩小。折行仍然优先（两条线比缩小字号好读）。
+    try:
+        _texts = [re.sub(r"\s+", " ", m.group(9)).strip() for m in _PAT.finditer(srt)]
+        if _texts:
+            _need = [_fit_block(t, size, play_w, spacing=spacing)[1] for t in _texts]
+            size = min(size, max(size * 0.55, min(_need)))
+    except Exception:  # noqa: BLE001 - 算不出来就按原字号，别把烧录搞挂
+        pass
 
     head = f"""[Script Info]
 ScriptType: v4.00+
@@ -216,9 +296,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if bilingual and src:
                 body = _two_line(src, text, size, play_w, spacing, src_scale, src_top)
             else:
-                # 强制一行：把 SRT 里的换行/多空格压成单空格；太宽就按画面宽度缩字号
-                fs = _fit_size(text, size, play_w, spacing=spacing)
-                body = (f"{{\\fs{fs:g}}}" if fs < size else "") + text
+                # 先试一行；放不下就按标点折成两行，还放不下再缩字号
+                fitted, fs = _fit_block(text, size, play_w, spacing=spacing)
+                body = (f"{{\\fs{fs:g}}}" if fs < size else "") + fitted
             lines.append(f"Dialogue: 0,{st},{en},Default,,0,0,0,,{body}")
             n += 1
     else:
@@ -227,9 +307,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             st = t(m.group(1), m.group(2), m.group(3), m.group(4))
             en = t(m.group(5), m.group(6), m.group(7), m.group(8))
             text = re.sub(r"\s+", " ", m.group(9)).strip()
-            fs = _fit_size(text, size, play_w, spacing=spacing)
+            fitted, fs = _fit_block(text, size, play_w, spacing=spacing)
             prefix = f"{{\\fs{fs:g}}}" if fs < size else ""
-            lines.append(f"Dialogue: 0,{st},{en},Default,,0,0,0,,{prefix}{text}")
+            lines.append(f"Dialogue: 0,{st},{en},Default,,0,0,0,,{prefix}{fitted}")
             n += 1
     Path(ass_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return n

@@ -1,7 +1,7 @@
 {
-  "version": "6.64",
-  "sha256": "557a594692f89797f1976678aa7c060501e0b9e090a5ed54cb4ca0387428de48",
-  "notes": "本机代理端口连不上时自动换成探测到的可用代理并写回设置，检查更新不再报连接被拒。",
-  "published": "2026-11-14",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.64.exe"
+  "version": "6.65",
+  "sha256": "159d1d3b394a447ace7e884ef64d3db54b35975aa3018a38eff65a9586f87935",
+  "notes": "竖屏视频的字幕不再超出画面，同一部片子里字幕字号统一。",
+  "published": "2026-11-15",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.65.exe"
 }
