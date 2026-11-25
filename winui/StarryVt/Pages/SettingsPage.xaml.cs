@@ -1277,6 +1277,14 @@ public sealed partial class SettingsPage : Page
         CloneRemoveBtn.Visibility = _cloneReady ? Visibility.Visible : Visibility.Collapsed;
         CloneInstallBtn.Content = _cloneBusy ? "正在下载…" : (_cloneInstalled ? "继续下载" : "下载并启用");
         CloneInstallBtn.IsEnabled = !_cloneBusy;
+        // 显存不够（<8 GB）的机器别给下载入口：装了也只能 CPU 跑几个小时
+        var blocked = Str(r.Value, "blocked");
+        if (blocked.Length > 0 && !_cloneReady && !_cloneBusy)
+        {
+            CloneInstallBtn.Visibility = Visibility.Collapsed;
+            SetHint(CloneHint, blocked, false);
+            return;
+        }
         if (!_cloneBusy) SetHint(CloneHint, Str(r.Value, "detail"), _cloneReady ? true : null);
     }
 

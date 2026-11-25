@@ -252,8 +252,10 @@
                         </Grid>
                         <Border Style="{StaticResource RowDividerStyle}" />
 
-                        <!-- 本地语音克隆（备用）：默认不装，要用再下 -->
-                        <Grid Padding="16,12" ColumnSpacing="20" Visibility="Collapsed">
+                        <!-- 本地语音克隆（可选）：默认不装，要用再下
+                             2026-11-25 起从「一键初始化」里挪到这儿，所以这一行必须露出来，
+                             否则整个软件没有下载入口（以前只在初始化里出现）。 -->
+                        <Grid Padding="16,12" ColumnSpacing="20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="320" />
                                 <ColumnDefinition Width="*" />
@@ -678,7 +680,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="引擎数据目录" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB（不含语音克隆，那一项在下面「数据目录」）<LineBreak />留空 = 默认位置（新装会跟「数据目录」放在一起；之前装过的保持原来的位置）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">引擎、语音模型和分离模型都放这里，装完约 15 GB（不含语音克隆，那一项在下面「数据目录」）<LineBreak />留空 = 默认位置（新装会跟「数据目录」放在一起；之前装过的保持原来的位置）。点「选择…」换盘会先把数据搬过去（同盘瞬时、跨盘几分钟），搬不动才重新下载<LineBreak />⚠ 建议用纯英文路径（例如 D:\StarryVT）：中文路径个别组件容易出问题</TextBlock>
                             </StackPanel>
                             <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
@@ -715,7 +717,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="数据目录" Style="{StaticResource RowLabelStyle}" />
-                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">语音克隆、配音缓存、缩略图都放这里<LineBreak />留空 = 默认位置（新装跟软件放在一起；之前装过的保持原来的位置）。点「选择…」可以换盘</TextBlock>
+                                <TextBlock Style="{StaticResource RowDescStyle}" TextWrapping="Wrap">语音克隆、配音缓存、缩略图都放这里<LineBreak />留空 = 默认位置（新装跟软件放在一起；之前装过的保持原来的位置）。点「选择…」可以换盘<LineBreak />⚠ 建议用纯英文路径（例如 D:\StarryVT）：中文路径个别组件容易出问题</TextBlock>
                             </StackPanel>
                             <Grid Grid.Column="1" RowSpacing="4" HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>

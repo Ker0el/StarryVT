@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.66"
+#define AppVersion "6.67"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
@@ -15,7 +15,14 @@ AppId={{7E3B9C2A-5D41-4A6E-9F2B-1C8E4A6D2B91}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
-; 默认装到「安装包自己所在目录」下的 StarryVT\ —— 用户把安装包放到想装的盘上双击即可。
+; 默认装到「安装包所在的那个盘的盘根\StarryVT」（例如 D:\StarryVT）。
+;
+; ★ 2026-11-25 用户定：不再用 {src}\StarryVT。用户的安装包常放在中文文件夹里
+;   （客户实例：安装包在 D:\软件安装包\星译\ 里双击 → 装进 D:\软件安装包\星译\StarryVT），
+;   而数据目录 / 引擎 / 15 GB 的语音克隆默认都跟着安装目录走，于是整条路径都是中文。
+;   中文路径本身能跑，但个别组件对代码页敏感（本机语音克隆的 Python 3.11 按 GBK
+;   读 .pth，客户那张诊断报告就是卡在这儿）。默认到盘根就是纯英文，一劳永逸。
+;   用户仍然可以自己改；路径含中文时 NextButtonClick 会提醒一句（见 [Code]）。
 ;
 ; ⚠⚠ 这个 {src} 只适合**用户手动双击**的场景，绝不能当成「自动更新会装到哪」的依据：
 ;   {src} = 安装包自己所在的目录，而自动更新是把新安装包下到 %TEMP%\StarryVT-Setup-new.exe
@@ -26,7 +33,7 @@ AppVerName={#AppName} {#AppVersion}
 ;
 ; PrivilegesRequired=lowest：程序要往自己的目录写 output\（在线视频的成品）和日志，
 ; 装 Program Files 会写不进去。这样也免 UAC。
-DefaultDirName={src}\StarryVT
+DefaultDirName={drive:{src}}\StarryVT
 UsePreviousAppDir=yes
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -179,6 +186,38 @@ begin
   DeleteDirSafe(JoinPath(Root, 'runtime'));
   DeleteDirSafe(JoinPath(Root, 'cache'));
   DeleteDirSafe(JoinPath(Root, 'tasks'));
+end;
+
+{ 2026-11-25：安装路径含中文 / 其它非 ASCII 字符时提醒一句。
+  程序里该兜的都兜了（克隆环境的 .pth 会改写、wetext 走英文临时目录），
+  但纯英文路径最省事 —— 用户坚持也能装。 }
+function HasNonAscii(const S: String): Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  for i := 1 to Length(S) do
+    if Ord(S[i]) > 127 then
+    begin
+      Result := True;
+      exit;
+    end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then exit;
+  if not HasNonAscii(WizardDirValue()) then exit;
+  if MsgBox('安装路径里有中文或其它非英文字符：' + #13#10 + WizardDirValue() + #13#10 + #13#10 +
+            '程序能装、能用，但个别可选组件（比如本地语音克隆）对中文路径比较敏感，' +
+            '出问题时更难排查。建议改成纯英文路径，例如 ' +
+            ExpandConstant('{drive:{src}}\StarryVT') + '。' + #13#10 + #13#10 +
+            '仍然用这个路径继续安装吗？',
+            mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    Result := True
+  else
+    Result := False;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

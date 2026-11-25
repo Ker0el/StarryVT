@@ -1,7 +1,7 @@
 {
-  "version": "6.66",
-  "sha256": "12d304751b354728e646f4e7163a7b4d7bfddaf5d3d306943279becbb9448db4",
-  "notes": "卸载时默认删除模型和全部数据，不再询问；安装引擎和语音克隆的下载缓存改到引擎数据目录，不再堆在 C 盘。",
+  "version": "6.67",
+  "sha256": "7a0e5aa61db4d2c814fff276718129a77251b8f153f865cf4892f2bc25ffa5cf",
+  "notes": "语音克隆改为「可选下载」，放在 设置 → 配音 → 本地语音克隆，不再在一键初始化时下载；修好了中文数据目录下本机克隆装不上的问题；标题栏去掉标语。",
   "published": "2026-11-25",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.66.exe"
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.67.exe"
 }

@@ -36,7 +36,7 @@ from job import Job, Cancelled, guard as guard_processes, no_window_kwargs
 from pipeline import run_pipeline
 from pipeline import probe_info as pipeline_probe_info
 
-APP_VERSION = "6.66"
+APP_VERSION = "6.67"
 
 
 def _base_dir() -> Path:
@@ -817,6 +817,11 @@ class Api:
         import localclone
         st = localclone.status()
         st["engine"] = "local" if cfg.load().get("clone_engine") == "local" else "cloud"
+        # 显存不够的机器：界面别给「下载并启用」，否则点了才报错（15 GB 白下）
+        try:
+            st["blocked"] = localclone.blocked_reason()
+        except Exception:  # noqa: BLE001 - 查不到显卡不算阻塞
+            st["blocked"] = ""
         if st["engine"] == "local":
             # 没 NVIDIA 卡时本机克隆只能走 CPU（torch cu128 没有 AMD/核显后端）。
             # 设置页直接显示在提示里，别等用户跑了 40 分钟才发现。

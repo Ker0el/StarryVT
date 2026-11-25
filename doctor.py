@@ -490,23 +490,38 @@ def _net(c: dict) -> dict:
 
 
 def _clones(c: dict) -> dict:
-    """两个本地语音克隆引擎：一键初始化时一起装好。"""
+    """本地语音克隆：**可选功能**，一键初始化不装（2026-11-25 用户定）
+
+    ★ 以前它是初始化清单里的「待办」，初始化会直接下 15 GB。客户那台
+      （RTX 3060 / 全中文数据目录）就卡在这儿：`uv sync` 建出来的 venv 里有
+      带中文路径的 .pth，Python 3.11 按 GBK 读解不开，装到「准备运行环境」
+      就崩（详见 localclone.repair_pth_files）。而且多数人根本不用本机克隆
+      —— 云端 MiMo 就够了。所以初始化只做必办的事，这一项挪到
+      设置 → 配音 → 本地语音克隆，按需下载。
+      没装 → 报 OK（不是问题）；装了一半/坏了 → WARN + 「去设置」，**不在这里下**。
+    """
     try:
         import localclone
         a = localclone.status()
         why = localclone.blocked_reason()
     except Exception as e:  # noqa: BLE001
-        return _item("clones", "语音克隆引擎", WARN,
-                     f"读不到状态：{type(e).__name__}", "clone", "一键安装")
+        return _item("clones", "语音克隆引擎", OK,
+                     f"读不到状态：{type(e).__name__}（可选功能，不影响使用）")
     if a["ready"]:
-        return _item("clones", "语音克隆引擎", OK, "Index 已就绪")
+        return _item("clones", "语音克隆引擎", OK, "Index 已就绪（可在设置里随时删除）")
     if why:
         # ★ 2026-11-11：显存不够时**不提供安装入口**，也别标成待修项 ——
         #   否则一键初始化每次都要为一件做不了的事亮红灯。
-        return _item("clones", "语音克隆引擎", OK,
-                     f"本机克隆不可用：{why}")
-    return _item("clones", "语音克隆引擎", WARN,
-                 "还没装：Index（约 15 GB，初始化时下载）", "clone", "一键安装")
+        return _item("clones", "语音克隆引擎", OK, f"本机克隆不可用：{why}")
+    if a.get("installed") and a.get("missing"):
+        # 下了一半（运行环境在、模型缺）：这是用户**自己选过**才有的状态，
+        # 值得提醒一句，但下载入口只在设置里 —— 初始化不碰。
+        return _item("clones", "语音克隆引擎", WARN,
+                     f"{a.get('problem') or '上次没装完'}。"
+                     "在 设置 → 配音 → 本地语音克隆 里点「继续下载」",
+                     "settings", "去设置")
+    return _item("clones", "语音克隆引擎", OK,
+                 "没装（可选）：本机跑、不联网，在 设置 → 配音 → 本地语音克隆 里按需下载")
 
 
 # ---------- 汇总 ----------

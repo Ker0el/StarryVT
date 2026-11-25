@@ -129,6 +129,82 @@ def venv_broken(code: int, last_line: str = "") -> bool:
     return code == 103 or "no python at" in low or not python_exe().is_file()
 
 
+def _site_broken(text: str) -> bool:
+    """Python 在 **site 阶段**就崩了的痕迹（`.pth` 按系统代码页解不开）
+
+    2026-11-25 客户：`UnicodeDecodeError: 'gbk' codec can't decode byte 0xaf ...`
+    出现在 `Fatal Python error: init_import_site` 里，uv 只会说
+    「Querying Python at … failed」—— 光看那句根本想不到是路径编码。
+    """
+    low = (text or "").lower()
+    return ("init_import_site" in low
+            or ("codec can't decode" in low and ".pth" in low)
+            or "_editable_" in low and "decode" in low)
+
+
+def repair_pth_files() -> list[str]:
+    """把 site-packages 里 .pth 的「非 ASCII 路径行」改写成纯 ASCII，返回改过的文件名。
+
+    ★ 2026-11-25 客户（Win10 / RTX 3060 / 数据目录 `D:\软件安装包\星译\星译-数据`）：
+      `uv sync` 默认把项目以 **editable** 方式装进 `.venv`，写出的
+      `_editable_impl_indextts.pth` 里是原样的中文路径（UTF-8 字节）。
+      而 index-tts 的 pyproject 要求 Python **<3.12**，克隆环境是 3.11 ——
+      3.11 的 site 模块只按**系统代码页（中文 Windows = GBK）**读 .pth。
+      `软件安装包\星译` 这些字的 UTF-8 字节恰好解不成 GBK，于是这个 venv 里
+      **每一次** Python 启动都在 site 阶段崩掉：
+
+          Fatal Python error: init_import_site: Failed to import the site module
+          UnicodeDecodeError: 'gbk' codec can't decode byte 0xaf in position 5
+
+      `uv sync` 报「Querying Python at … failed with exit status 1」，安装永远卡在
+      「准备运行环境」；已经装好环境的机器跑合成也一样起不来。
+      （Python 3.12 会先试 UTF-8 所以没事 —— 本机用同一个中文路径建 3.11 venv
+        复现到了逐字一致的报错。）
+      修法：路径行改成 `import sys;sys.path.append(...)`，路径里的中文按 Unicode 转义写，
+      —— 转义后整个文件只有 ASCII，哪种代码页读都对；导入结果不变。
+    """
+    sp = src() / ".venv" / "Lib" / "site-packages"
+    if not sp.is_dir():
+        return []
+    fixed: list[str] = []
+    for f in sorted(sp.glob("*.pth")):
+        try:
+            raw = f.read_bytes()
+        except OSError:
+            continue
+        try:
+            raw.decode("ascii")
+            continue                       # 本来就是纯 ASCII，别动它
+        except UnicodeDecodeError:
+            pass
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("cp936", "replace")
+        out: list[str] = []
+        ok = True
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                out.append(line)
+            elif s.startswith(("import ", "import\t")):
+                # 代码行：本来就该是 ASCII；转不了就原样留着（极少见）
+                out.append(s if s.isascii() else s)
+                if not s.isascii():
+                    ok = False
+            else:
+                out.append("import sys;sys.path.append(%s)" % ascii(s))
+        if not ok:
+            diag.write(f"[clone] {f.name} 里有非 ASCII 的 import 行，没动它"[:200], "run")
+            continue
+        try:
+            f.write_text("\n".join(out) + "\n", encoding="ascii")
+            fixed.append(f.name)
+        except (OSError, UnicodeEncodeError) as e:
+            diag.write(f"[clone] 修不了 {f.name}：{e}"[:200], "run")
+    return fixed
+
+
 def repair_venv(params: dict, job: Job) -> bool:
     """删掉 `.venv` 重新 `uv sync`（启动器找不到解释器时）。返回是否修好。"""
     s = src()
@@ -139,7 +215,8 @@ def repair_venv(params: dict, job: Job) -> bool:
     diag.write("[clone] 运行环境的 Python 启动器坏了，重建 .venv…", "run")
     shutil.rmtree(s / ".venv", ignore_errors=True)
     try:
-        _run_streamed(job, [uv, "sync"], cwd=s, env=engine.uv_env(params),
+        _run_streamed(job, [uv, "sync", "--no-install-project"], cwd=s,
+                      env=engine.uv_env(params),
                       report=lambda stage, _pct, msg: diag.write(f"[clone] {msg}"[:220], "run"),
                       stage="clone", tag="环境")
     except Exception as e:  # noqa: BLE001 - 修不好只影响这次，别再往上抛
@@ -348,9 +425,33 @@ def install(params: dict, job: Job, report) -> dict:
     # 2) 运行环境：uv sync（torch cu128 那一套，约 2.5 GB）
     uv = engine.find_uv() or engine.install_uv(params, job, report)
     report("clone", 6, "准备运行环境（torch 等，约 2.5 GB，第一次会久一点）…")
+    # 中文数据目录留下的坏 .pth 会让这个 venv 里的 python **一次都起不来**
+    # （uv 只报「Querying Python failed」，见 repair_pth_files）
+    fixed = repair_pth_files()
+    if fixed:
+        diag.write(f"[clone] 修好了含中文路径的 .pth：{'、'.join(fixed)}", "run")
+    # --no-install-project：源码由 clone_synth 自己插 sys.path，不需要 editable 装；
+    # 不装就不会再写出那种带中文路径的 .pth（2026-11-25 客户就是这么卡死的）。
     # uv 自己要从 GitHub 拿 Python、从 PyPI 拿依赖：代理 / 加速前缀 / 镜像都交给 engine 那份
-    _run_streamed(job, [uv, "sync"], cwd=s, env=engine.uv_env(params),
-                  report=report, stage="clone", tag="环境")
+    def _sync() -> None:
+        _run_streamed(job, [uv, "sync", "--no-install-project"], cwd=s,
+                      env=engine.uv_env(params), report=report, stage="clone", tag="环境")
+
+    try:
+        _sync()
+    except RuntimeError as e:
+        if not _site_broken(str(e)):
+            raise
+        # 还有别的 .pth 解不开（或者当时写坏了）：再修一遍重试；
+        # 依旧不行就把 .venv 删掉重建（依赖都在 uv 缓存里，不会重新下载）
+        diag.write("[clone] 运行环境在 site 阶段起不来，修 .pth 后重试…", "run")
+        repair_pth_files()
+        try:
+            _sync()
+        except RuntimeError:
+            report("clone", 6, "运行环境的 Python 起不来，重建一次…")
+            if not repair_venv(params, job):
+                raise
     if not python_exe().is_file():
         # 2026-11-05：中文数据目录下启动器会吐「No Python at …」，uv sync 却返回 0
         report("clone", 6, "运行环境的 Python 启动器没建好，重建一次…")
@@ -457,6 +558,10 @@ def synth(items, ref: Path | str, params: dict, job: Job, work: Path, progress_c
 
     spec_path = Path(work) / "clone_jobs.json"
     s = src()
+    # 旧版本装好的环境里可能留着带中文路径的 .pth（见 repair_pth_files）：
+    # 不修的话 python 连启动都起不来，用户只会看到「模型没加载起来」
+    if repair_pth_files():
+        diag.write("[clone] 修好了运行环境里含中文路径的 .pth", "run")
     spec_path.write_text(json.dumps({
         "clone_dir": str(s),
         "lang": "ZH",
