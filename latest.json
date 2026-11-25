@@ -1,7 +1,7 @@
 {
-  "version": "6.65",
-  "sha256": "159d1d3b394a447ace7e884ef64d3db54b35975aa3018a38eff65a9586f87935",
-  "notes": "竖屏视频的字幕不再超出画面，同一部片子里字幕字号统一。",
-  "published": "2026-11-15",
-  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.65.exe"
+  "version": "6.66",
+  "sha256": "12d304751b354728e646f4e7163a7b4d7bfddaf5d3d306943279becbb9448db4",
+  "notes": "卸载时默认删除模型和全部数据，不再询问；安装引擎和语音克隆的下载缓存改到引擎数据目录，不再堆在 C 盘。",
+  "published": "2026-11-25",
+  "url": "https://github.com/Ker0el/StarryVT/releases/latest/download/StarryVT-Setup_v6.66.exe"
 }

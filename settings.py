@@ -17,6 +17,34 @@ SETTINGS_PATH = APP_DIR / "settings.json"
 #: 免得把人家故意写的相对路径 / 特殊写法改掉。
 PATH_KEYS = ("finesub_home", "data_home")
 _healed = False          # 这个进程里是否已经自愈过一次（见 load）
+_remembered = False      # 是否已经把这轮的两个数据目录写给卸载器（见 remember_uninstall_paths）
+
+#: 卸载器读的自定义数据目录（Inno 的 [Code] 里按这两个值 DelTree）
+UNINSTALL_REG_KEY = r"Software\StarryVT"
+
+
+def remember_uninstall_paths(data: dict, once: bool = False) -> None:
+    """把「搬过家的」两个数据目录写给卸载器（HKCU，REG_SZ）
+
+    ★ 2026-11-25：Inno 的 [UninstallDelete] 只认安装包里写死的常量路径，用户把
+      「引擎数据目录 / 数据目录」换到 D 盘以后，卸载器根本不知道那两份在哪，
+      于是「卸载了但盘没空」。注册表是 Unicode 的，中文路径也不会乱码；
+      这里只写不读，失败一律忽略 —— 存设置绝不能因为这一步失败。
+    """
+    global _remembered
+    if once and _remembered:
+        return
+    try:
+        import winreg
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, UNINSTALL_REG_KEY, 0,
+                                winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, "DataHome", 0, winreg.REG_SZ,
+                              str(data.get("data_home") or ""))
+            winreg.SetValueEx(k, "EngineHome", 0, winreg.REG_SZ,
+                              str(data.get("finesub_home") or ""))
+        _remembered = True
+    except Exception:  # noqa: BLE001 - 写不进去也不影响任何功能
+        pass
 
 DEFAULTS: dict = {
     "source": "",                        # 本次输入的 视频文件路径 / 视频链接 / 文件夹 / 合集链接
@@ -163,6 +191,7 @@ def load() -> dict:
                   "finesub_exe": data.get("finesub_exe", "")})
         except Exception:  # noqa: BLE001 - 写不进去也要把长路径给调用方
             pass
+    remember_uninstall_paths(data, once=True)
     return data
 
 
@@ -185,6 +214,7 @@ def save(patch: dict) -> dict:
     for i in range(3):
         try:
             os.replace(tmp, SETTINGS_PATH)
+            remember_uninstall_paths(data)
             return data
         except OSError:
             if i == 2:
@@ -197,6 +227,7 @@ def save(patch: dict) -> dict:
         tmp.unlink(missing_ok=True)
     except OSError:
         pass
+    remember_uninstall_paths(data)
     return data
 
 

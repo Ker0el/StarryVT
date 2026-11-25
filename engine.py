@@ -324,6 +324,23 @@ def _ascii_uv_python_dir() -> Path:
     return Path(r"C:\ProgramData\StarryVT\uv-python")
 
 
+def _uv_cache_dir(params: dict) -> Path:
+    r"""uv 的包缓存目录 —— `<引擎数据目录>\cache\uv`
+
+    ★ 2026-11-25 客户报障「装在 D 盘、C 盘却爆红」：以前这里不设 `UV_CACHE_DIR`，
+      于是 `uv tool install`（装引擎本体）和克隆环境的 `uv sync`（torch 那一套）
+      全把轮子缓存进 uv 默认的 `%LOCALAPPDATA%\uv\cache` —— 那是 C 盘，而且
+      环境在 D 盘时跨盘不能硬链接，等于同一批包在 C 盘再整份存一遍。
+      引擎自己跑的 `finesub setup` 早就把缓存指到引擎目录（finesub_bootstrap
+      里写死的），这里跟它对齐，`prune_engine_cache` / `_clean_bad_cache` 也认同一处。
+
+    用户显式设了 `UV_CACHE_DIR` 就不覆盖（有人会为了用 SSD 单独指一个位置）。
+    """
+    home = (params.get("finesub_home") or "").strip()
+    base = Path(home) if home else datadir.default_home()
+    return base / "cache" / "uv"
+
+
 def uv_env(params: dict) -> dict:
     """给 uv 子进程用的环境：代理 + GitHub 加速前缀 + Python 下载镜像 + UTF-8 输出。
 
@@ -335,6 +352,8 @@ def uv_env(params: dict) -> dict:
     env["PYTHONUTF8"] = "1"
     # 见 _uv_python_dir：不能让它去扫 %APPDATA%\uv\python 里的坏 junction
     env["UV_PYTHON_INSTALL_DIR"] = str(_uv_python_dir(params))
+    # 包缓存跟引擎数据目录走（uv 默认放 C 盘的 %LOCALAPPDATA%\uv\cache，见 _uv_cache_dir）
+    env.setdefault("UV_CACHE_DIR", str(_uv_cache_dir(params)))
     # ★ 2026-11-11 客户（诊断报告-20261111-224823）：一次装 6.7 GB，官方源
     #   传一半就被掐（peer closed connection / connection reset）。默认 30 秒读
     #   超时 + 3 次重试对慢线路太紧；同时并发下载几十个文件会把（国内常见的）

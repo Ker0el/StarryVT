@@ -6,7 +6,7 @@
 ;   {app}\licenses\         ← 第三方组件许可证原文
 ;
 #define AppName "星译"
-#define AppVersion "6.65"
+#define AppVersion "6.66"
 #define AppExeName "StarryVt.exe"
 #define StageDir "_stage\app"
 
@@ -124,9 +124,109 @@ begin
   Result := True;
 end;
 
+{ 卸载时删掉「用户换过盘」的数据目录。
+  Inno 的 [UninstallDelete] 只认这里写死的常量路径；两个可搬家的目录
+  （引擎数据目录 / 数据目录）实际在哪，由程序在 settings.save 时写进
+  HKCU\Software\StarryVT（REG_SZ，Unicode —— 中文路径不会乱码）。
+  不弹任何询问框：用户 2026-11-25 定「卸载默认全删，模型和数据都不留」。
+
+  ⚠ 只删「我们知道名字」的子目录，不 DelTree 整个自定义根：
+    用户可能把数据目录选在一个还有别的文件的文件夹里，整个删会伤到无关数据。
+    默认位置（安装目录\data、%LOCALAPPDATA%\StarryVT、%LOCALAPPDATA%\FineSub）
+    由 [UninstallDelete] 整棵删，没有这个顾虑。 }
+function JoinPath(const A, B: String): String;
+var
+  r: String;
+begin
+  r := A;
+  while (Length(r) > 0) and (r[Length(r)] = '\') do
+    Delete(r, Length(r), 1);
+  Result := r + '\' + B;
+end;
+
+procedure DeleteDirSafe(const Dir: String);
+var
+  d: String;
+begin
+  d := Trim(Dir);
+  while (Length(d) > 0) and (d[Length(d)] = '\') do
+    Delete(d, Length(d), 1);
+  { 只接受 X:\某个目录：宁可漏删，也不能因为注册表被写坏而删掉整个盘 }
+  if Length(d) < 4 then exit;
+  if (d[2] <> ':') or (d[3] <> '\') then exit;
+  if DirExists(d) then
+    DelTree(d, True, True, True);
+end;
+
+procedure DeleteDataItems(const Root: String);
+begin
+  DeleteDirSafe(JoinPath(Root, 'voiceclone'));
+  DeleteDirSafe(JoinPath(Root, 'dub_cache'));
+  DeleteDirSafe(JoinPath(Root, 'thumbs'));
+  DeleteDirSafe(JoinPath(Root, 'wheels'));
+  DeleteDirSafe(JoinPath(Root, 'subtitle_preview'));
+end;
+
+procedure DeleteEngineItems(const Root: String);
+begin
+  { 先确认这真是引擎数据目录（models / runtime / 注册脚本三选一），再点名删那几个
+    子目录 —— 不能因为用户在设置里手填了一个普通文件夹就把人家整个清空 }
+  if not (DirExists(JoinPath(Root, 'models'))
+          or DirExists(JoinPath(Root, 'runtime'))
+          or FileExists(JoinPath(Root, 'register-location.cmd'))) then
+    exit;
+  DeleteDirSafe(JoinPath(Root, 'models'));
+  DeleteDirSafe(JoinPath(Root, 'runtime'));
+  DeleteDirSafe(JoinPath(Root, 'cache'));
+  DeleteDirSafe(JoinPath(Root, 'tasks'));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  v: String;
+begin
+  if CurUninstallStep <> usPostUninstall then exit;
+  if RegQueryStringValue(HKCU, 'Software\StarryVT', 'EngineHome', v) then
+  begin
+    DeleteEngineItems(v);
+    RemoveDir(v);                    { 只在已经空了时才成功 }
+  end;
+  if RegQueryStringValue(HKCU, 'Software\StarryVT', 'DataHome', v) then
+  begin
+    DeleteDataItems(v);
+    { 引擎数据目录留空时，默认就跟着数据根走：<数据目录>\engine（见 datadir.py） }
+    DeleteEngineItems(JoinPath(v, 'engine'));
+    RemoveDir(JoinPath(v, 'engine'));
+    RemoveDir(v);
+  end;
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\StarryVT');
+end;
+
 [UninstallDelete]
-; ★ 只删「可以重下」的 {app}\data（引擎模型/运行环境/语音克隆/缩略图缓存）。
-;   **绝不能删整个 {app}**：默认成片目录就是 {app}\backend\output，
-;   删安装目录等于把用户已经翻好的视频一起删掉（2026-10-24 对照 Buzz 发现）。
-;   安装清单里的文件 Inno 自己会删，这里只补它不知道的那些。
+; ★ 2026-11-25 用户定：卸载 = 默认把模型和数据一起删，不问、不保留。
+;   仍然**不能删整个 {app}**：默认成片目录是 {app}\backend\output，
+;   删安装目录会把用户已经翻好的视频一起删掉（2026-10-24 对照 Buzz 发现）。
+;   `{app}\data` 是默认数据根（引擎 / 模型 / 语音克隆 / 缩略图 / wheel）。
+;   用户换过盘的那两份见上面 [Code] 的 CurUninstallStepChanged。
 Type: filesandordirs; Name: "{app}\data"
+; 星译自己的配置：设置、API Key、日志、uv.exe / yt-dlp
+Type: filesandordirs; Name: "{userappdata}\StarryVT"
+; WinUI 界面状态与壁纸
+Type: filesandordirs; Name: "{localappdata}\StarryVT-WinUI"
+; 老版本的数据根（voiceclone 曾默认在这里，可达十几 GB）
+Type: filesandordirs; Name: "{localappdata}\StarryVT"
+; 老版本的引擎默认数据目录
+Type: filesandordirs; Name: "{localappdata}\FineSub"
+; uv 默认包缓存（装引擎 / 克隆环境时留下的轮子；以前一直堆在 C 盘）
+Type: filesandordirs; Name: "{localappdata}\uv\cache"
+; uv 给引擎本体建的工具环境（finesub 启动器就在这儿）
+Type: filesandordirs; Name: "{userappdata}\uv\tools\finesub"
+; 引擎 / 克隆用过的 HuggingFace、ModelScope 默认缓存
+Type: filesandordirs; Name: "{%USERPROFILE}\.cache\huggingface"
+Type: filesandordirs; Name: "{%USERPROFILE}\.cache\modelscope"
+; 启动器副本（真正的 exe 在 uv 工具环境里）
+Type: files; Name: "{%USERPROFILE}\.local\bin\finesub.exe"
+; 更新器下到临时目录的安装包和批处理（每次 282 MB，以前会一直留着）
+Type: files; Name: "{%TEMP}\StarryVT-Setup-new.exe"
+Type: files; Name: "{%TEMP}\starryvt-update.cmd"
+

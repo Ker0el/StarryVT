@@ -203,6 +203,54 @@ def _hf_cache_report() -> list[str]:
     return lines or ["(无)"]
 
 
+def _misc_cache_report(deep: bool) -> list[str]:
+    """uv / HuggingFace / ModelScope 的缓存目录（**不在「数据目录」里**的那几份）
+
+    ★ 2026-11-25 客户报障「装在 D 盘、C 盘却爆红」：之前报告只写「引擎下载缓存」
+      （在引擎数据目录里，跟着 D 盘），C 盘上真正的几 GB —— uv 默认包缓存、
+      uv 工具环境、HF 默认缓存 —— 一个字都没有，客服只能让客户自己翻目录。
+      路径每次都写（便宜）；体积只有 deep=True 时才算（uv 缓存动辄十几万文件）。
+    """
+    la = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    ad = os.environ.get("APPDATA") or str(Path.home())
+    up = os.environ.get("USERPROFILE") or str(Path.home())
+    cache_env = (os.environ.get("UV_CACHE_DIR") or "").strip()
+    rows = (
+        ("uv 包缓存", Path(cache_env) if cache_env else Path(la) / "uv" / "cache",
+         "装引擎/克隆环境时的轮子缓存，可删（会重下）"),
+        ("uv 工具环境", Path(ad) / "uv" / "tools",
+         "引擎启动器在这，别手删"),
+        ("uv 托管 Python", Path(ad) / "uv" / "python", ""),
+        ("HF 默认缓存", Path(up) / ".cache" / "huggingface",
+         "模型齐了就不再用，可删（会重下）"),
+        ("ModelScope 缓存", Path(up) / ".cache" / "modelscope",
+         "克隆模型下完就不再用，可删（会重下）"),
+    )
+    out: list[str] = []
+    for label, path, note in rows:
+        try:
+            if not path.is_dir():
+                continue
+            if deep:
+                size = 0
+                for f in path.rglob("*"):
+                    try:
+                        if f.is_file():
+                            size += f.stat().st_size
+                    except OSError:
+                        continue
+                text = (f"{label}: {path}（{size / 2**30:.2f} GB）"
+                        if size >= 1 << 30 else f"{label}: {path}（{size / 2**20:.0f} MB）")
+            else:
+                text = f"{label}: {path}"
+            if note:
+                text += "  —— " + note
+            out.append(text)
+        except OSError as e:
+            out.append(f"{label}: 读不了（{e}）")
+    return out or ["(没有)"]
+
+
 def _disk_report() -> list[str]:
     import shutil
     out: list[str] = []
@@ -463,6 +511,11 @@ def environment_info(deep: bool = False) -> str:
                      f"（超过 {_eng.CACHE_PRUNE_GB:.0f} GB 会自动清理）")
     except Exception as e:  # noqa: BLE001
         lines.append(f"(读下载缓存失败: {e})")
+    try:
+        lines.append("----- uv / 模型下载缓存（不在数据目录里） -----")
+        lines += _misc_cache_report(deep)
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(读缓存目录失败: {e})")
     try:
         lines.append("----- 下载路由 -----")
         lines += _routes_report()
